@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OutFox</title>
+    <link rel="stylesheet" href="../ui/theme.css" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body class="popup-controller-body">
+    <div class="popup-controller">
+      <!-- Top Brand Header -->
+      <header class="controller-head">
+        <div class="brand-group">
+          <img src="../../icons/icon48.png" width="22" height="22" alt="OutFox" style="border-radius:4px; object-fit:contain;" />
+          <span class="brand-title">OutFox</span>
+        </div>
+        <span class="status-badge" id="popup-engine-status"><span class="status-dot"></span> Active</span>
+      </header>
+
+      <!-- Center Progress Radial Meter -->
+      <div class="controller-meter-card">
+        <div class="meter-radial">
+          <svg viewBox="0 0 160 160" class="radial-svg">
+            <circle cx="80" cy="80" r="62" class="radial-track" />
+            <circle cx="80" cy="80" r="62" class="radial-progress" id="popup-radial-fill" />
+          </svg>
+          <div class="meter-center">
+            <span class="meter-number" id="popup-invites-sent">0</span>
+            <span class="meter-denom" id="popup-invites-cap">/ 25 daily</span>
+          </div>
+        </div>
+        <div class="meter-label">Today's Sent Invites</div>
+      </div>
+
+      <!-- Quick Metrics Row -->
+      <div class="controller-stats-row">
+        <div class="quick-stat">
+          <span class="quick-stat-val" id="popup-acceptance-rate">0%</span>
+          <span class="quick-stat-lbl">Acceptance</span>
+        </div>
+        <div class="quick-stat-divider"></div>
+        <div class="quick-stat">
+          <span class="quick-stat-val" id="popup-active-campaigns">0</span>
+          <span class="quick-stat-lbl">Campaigns</span>
+        </div>
+        <div class="quick-stat-divider"></div>
+        <div class="quick-stat">
+          <span class="quick-stat-val" id="popup-crm-status">Ready</span>
+          <span class="quick-stat-lbl">Sheets CRM</span>
+        </div>
+      </div>
+
+      <!-- Full Dashboard Launch Action -->
+      <div class="controller-actions">
+        <button type="button" class="btn-launch-full" id="btn-open-dashboard">
+          <span>Open Full Dashboard →</span>
+        </button>
+      </div>
+
+      <footer class="controller-foot">
+        <span>OutFox · Safe Pacing Active</span>
+      </footer>
+    </div>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,92 @@
+{
+  "manifest_version": 3,
+  "name": "OutFox — LinkedIn & Email Outreach Automation",
+  "short_name": "OutFox",
+  "version": "1.0.0",
+  "description": "OutFox — Intelligent LinkedIn outreach, personalized messaging, and automated cold email sequences.",
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "activeTab",
+    "tabs",
+    "cookies",
+    "downloads",
+    "scripting",
+    "alarms",
+    "notifications",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://www.googleapis.com/*",
+    "https://gmail.googleapis.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://www.googleapis.com/*",
+    "https://gmail.googleapis.com/*",
+    "https://api.groq.com/*",
+    "https://api.anthropic.com/*",
+    "https://api.openai.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://script.google.com/*",
+    "https://api.hunter.io/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "src/background/index.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/*"],
+      "js": ["src/content/page-inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.linkedin.com/*"],
+      "js": ["src/content/capture.js", "src/content/linkedin.js"],
+      "css": ["src/content/linkedin.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "src/options/options.html",
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/dashboard/*",
+        "src/vendor/apexcharts.min.js",
+        "src/popup/popup.css",
+        "src/ui/theme.css",
+        "sequences/*",
+        "icons/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "oauth2": {
+    "client_id": "272657974342-33vqnbq383euhl43tjimcede05ev23od.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  }
+}

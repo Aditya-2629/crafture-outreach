@@ -1,0 +1,17 @@
+{
+  "name": "outfox",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "OutFox — Multi-Channel Outreach Engine for LinkedIn & Email",
+  "author": "Aditya Chaudhary",
+  "license": "Proprietary",
+  "scripts": {
+    "test": "vitest run",
+    "package": "node scripts/build-extension-zip.js"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "vitest": "^2.1.9"
+  }
+}

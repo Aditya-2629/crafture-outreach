@@ -1,0 +1,69 @@
+{
+  "name": "outfox-client",
+  "version": "1.0.0",
+  "author": "Aditya Chaudhary",
+  "description": "Typed client and agent-framework tool adapters for OutFox.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "linkedin",
+    "agent",
+    "tools",
+    "openai",
+    "langchain",
+    "vercel-ai"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --clean",
+    "gen": "tsx scripts/gen.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "peerDependencies": {
+    "@langchain/core": ">=0.3.0",
+    "ai": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@langchain/core": {
+      "optional": true
+    },
+    "ai": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@langchain/core": "^0.3.40",
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "module": "./dist/index.js"
+}

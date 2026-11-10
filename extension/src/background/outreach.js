@@ -97,7 +97,10 @@ export async function send(action, params, origin = 'approved', context = {}) {
   try {
     await SENDERS[action](params);
   } catch (e) {
-    if (e && e.code === ERROR.INVALID_PARAMS) await quota.release(kind);
+    // Release reserved quota on any client error (400) or invalid params
+    if (e && (e.code === ERROR.INVALID_PARAMS || e.status === 400 || (e.response && e.response.status === 400))) {
+      await quota.release(kind);
+    }
     throw e;
   }
 

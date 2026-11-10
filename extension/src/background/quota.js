@@ -10,9 +10,10 @@
  * account preset and the hard cap, then scaled by the warm-up ramp.
  */
 
-import { ERROR, EngineError, EVENTS, HARD_CAPS } from '../lib/actions.js';
+import { ACTIONS, ERROR, EngineError, EVENTS, HARD_CAPS } from '../lib/actions.js';
 import { getConfig } from '../lib/config.js';
 import { K, get, set, withKeyLock } from '../lib/storage.js';
+import { register } from './engine.js';
 import { emit } from './events.js';
 
 /* ================================================================== */
@@ -473,3 +474,29 @@ export async function humanDelay() {
   await sleepFn(ms);
   return ms;
 }
+
+/* ================================================================== */
+/*  Quota Reset                                                       */
+/* ================================================================== */
+
+/**
+ * Reset quota counters (both daily and hourly) to zero.
+ * @param {readonly string[]} [kinds=KINDS]
+ */
+export async function resetDailyQuota(kinds = KINDS) {
+  return withKeyLock(K.QUOTA, async () => {
+    const state = await readState();
+    for (const k of kinds) {
+      if (state.daily[k] !== undefined) state.daily[k] = 0;
+      if (state.hourly[k] !== undefined) state.hourly[k] = 0;
+    }
+    await writeState(state);
+    return state;
+  });
+}
+
+register(ACTIONS.QUOTA_RESET, (params = {}) => {
+  const kinds = Array.isArray(params?.kinds) && params.kinds.length > 0 ? params.kinds : KINDS;
+  return resetDailyQuota(kinds);
+});
+

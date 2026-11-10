@@ -100,6 +100,8 @@ export const ACTIONS = Object.freeze({
   IMPORT_POST_COMMENTERS: 'import.postCommenters',
 
   DASHBOARD_LIVE_STATS: 'dashboard.live_stats',
+
+  QUOTA_RESET: 'quota.reset',
 });
 
 /* ================================================================== */
@@ -554,6 +556,7 @@ const PARAM_SPECS = {
   [ACTIONS.IMPORT_POST_COMMENTERS]: { required: { postUrl: 'string' } },
 
   [ACTIONS.DASHBOARD_LIVE_STATS]: {},
+  [ACTIONS.QUOTA_RESET]: { optional: { kinds: 'array' } },
 };
 
 function typeOf(value) {

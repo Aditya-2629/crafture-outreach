@@ -548,6 +548,15 @@ export async function tick() {
 
     for (const enrollment of enrollments) {
       if (halted) break;
+
+      // Check live storage status before processing prospect
+      const liveCampaigns = await readCampaigns();
+      const currentCamp = liveCampaigns.find((c) => c.campaignId === campaign.campaignId);
+      if (!currentCamp || currentCamp.status !== 'active') {
+        logDebug('warn', 'Runner', `Campaign ${campaign.campaignId} is paused/stopped. Aborting sequence loop.`);
+        break;
+      }
+
       if (enrollment.status !== 'active') continue;
       if ((enrollment.nextAt || 0) > now) continue;
 
@@ -814,17 +823,26 @@ export async function tick() {
     // stepParams advances variantCursor in memory; without this the rotation
     // restarts at A on every tick and everyone gets the same variant.
     if ((campaign.variantCursor || 0) !== cursorBefore) {
-      campaign.updatedAt = Date.now();
-      await writeCampaigns(campaigns);
+      const freshCampaigns = await readCampaigns();
+      const target = freshCampaigns.find((c) => c.campaignId === campaign.campaignId);
+      if (target) {
+        target.variantCursor = campaign.variantCursor;
+        target.updatedAt = Date.now();
+        await writeCampaigns(freshCampaigns);
+      }
     }
 
     const remaining = (await readEnrollments(campaign.campaignId)).filter(
       (e) => e.status === 'active',
     );
-    if (!remaining.length && enrollments.length && campaign.status === 'active') {
-      campaign.status = 'completed';
-      campaign.updatedAt = Date.now();
-      await writeCampaigns(campaigns);
+    if (!remaining.length && enrollments.length) {
+      const freshCampaigns = await readCampaigns();
+      const target = freshCampaigns.find((c) => c.campaignId === campaign.campaignId);
+      if (target && target.status === 'active') {
+        target.status = 'completed';
+        target.updatedAt = Date.now();
+        await writeCampaigns(freshCampaigns);
+      }
     }
   }
 

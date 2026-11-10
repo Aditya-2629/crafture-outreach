@@ -63,12 +63,13 @@ const SENDERS = {
   [ACTIONS.OUTREACH_MESSAGE]: async ({ publicId, body, recipientUrn }) =>
     voyager.sendMessage({
       recipientUrn: recipientUrn || (await meteredProfileUrn(publicId)),
-      body,
       publicId,
+      body,
     }),
   [ACTIONS.OUTREACH_INMAIL]: async ({ publicId, subject, body, recipientUrn }) =>
     voyager.sendInMail({
       recipientUrn: recipientUrn || (await meteredProfileUrn(publicId)),
+      publicId,
       subject,
       body,
     }),

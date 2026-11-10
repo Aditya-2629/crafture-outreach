@@ -1209,145 +1209,75 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
  * Unverified, for the same reason as the invitation.
  */
 /**
- * Send a message or InMail to a member with intelligent dual-route dispatch.
- * 1. Checks if an active conversation thread exists for the recipient.
- * 2. If existing thread found, sends message referencing `conversationUrn`.
- * 3. If no thread found, sends new conversation message referencing `hostRecipientUrns`.
- * 4. Fallback guardrail: If the primary attempt fails with HTTP 400, automatically
- *    retries using the alternative route before throwing an error.
+ * Send a message matching LinkedIn Web Client 2026.
  */
 export async function sendMessage({
   recipientUrn,
+  publicId,
   body,
   subtype = 'MEMBER_TO_MEMBER',
   inmailSubject,
-  publicId,
 }) {
-  if (!recipientUrn) throw new EngineError(ERROR.INVALID_PARAMS, 'recipientUrn is required.');
+  if (!recipientUrn && !publicId) {
+    throw new EngineError(ERROR.INVALID_PARAMS, 'recipientUrn or publicId is required.');
+  }
   if (!body) throw new EngineError(ERROR.INVALID_PARAMS, 'Message body cannot be empty.');
 
-  const mailboxUrn = await selfProfileUrn();
-  const recipientFsdUrn = toFsdProfileUrn(recipientUrn);
-
-  // 1. Check for existing conversation thread
-  let existingConversationUrn = null;
-  try {
-    const convRes = await getConversations({ count: 50 });
-    const threads = convRes?.threads || [];
-    for (const t of threads) {
-      const isMatch = (t.participants || []).some((p) => {
-        if (p.urn && (p.urn === recipientUrn || p.urn === recipientFsdUrn)) return true;
-        if (p.publicId && (recipientUrn.includes(p.publicId) || (publicId && p.publicId === publicId))) return true;
-        return false;
-      });
-      if (isMatch) {
-        existingConversationUrn = t.conversationUrn || (t.threadId ? conversationUrn(mailboxUrn, t.threadId) : null);
-        if (existingConversationUrn) break;
-      }
-    }
-  } catch (err) {
-    console.warn('[sendMessage] Failed to query existing conversations:', err);
+  // 1. Resolve to valid fsd_profile URN
+  let targetUrn = toFsdProfileUrn(recipientUrn);
+  if (!targetUrn && publicId) {
+    targetUrn = await resolveProfileUrn(publicId);
+  }
+  if (!targetUrn) {
+    throw new EngineError(ERROR.NOT_FOUND, `Could not resolve recipient profile URN for ${publicId || recipientUrn}`);
   }
 
-  const buildExistingPayload = (convUrn) => {
-    const payload = {
-      message: {
-        body: { text: body, attributes: [] },
-        renderContentUnions: [],
-        conversationUrn: convUrn,
-        originToken:
-          typeof crypto !== 'undefined' && crypto.randomUUID
-            ? crypto.randomUUID()
-            : Math.random().toString(36).slice(2) + '-' + Date.now(),
+  // 2. Mailbox URN is our own profile URN
+  const mailboxUrn = await selfProfileUrn();
+
+  // 3. 16-character raw tracking ID (matches LinkedIn Web)
+  const rawBytes = new Uint8Array(16);
+  crypto.getRandomValues(rawBytes);
+  const trackingId = Array.from(rawBytes, (b) => String.fromCharCode(b)).join('');
+
+  // 4. Exact payload from live LinkedIn Web request
+  const payload = {
+    message: {
+      body: {
+        attributes: [],
+        text: body,
       },
-      mailboxUrn,
-      trackingId: generateTrackingId(),
-      dedupeByClientGeneratedToken: false,
-    };
-    if (subtype === 'INMAIL') {
-      payload.messageSubtype = 'INMAIL';
-      if (inmailSubject) payload.message.subject = inmailSubject;
-    }
-    return payload;
+      originToken: crypto.randomUUID(),
+      renderContentUnions: [],
+    },
+    mailboxUrn,
+    trackingId,
+    dedupeByClientGeneratedToken: false,
+    hostRecipientUrns: [targetUrn],
   };
 
-  const buildNewThreadPayload = () => {
-    const payload = {
-      message: {
-        body: { text: body, attributes: [] },
-        renderContentUnions: [],
-        originToken:
-          typeof crypto !== 'undefined' && crypto.randomUUID
-            ? crypto.randomUUID()
-            : Math.random().toString(36).slice(2) + '-' + Date.now(),
-      },
-      mailboxUrn,
-      trackingId: generateTrackingId(),
-      dedupeByClientGeneratedToken: false,
-      hostRecipientUrns: [recipientFsdUrn],
-    };
-    if (subtype === 'INMAIL') {
-      payload.messageSubtype = 'INMAIL';
-      if (inmailSubject) payload.message.subject = inmailSubject;
-    }
-    return payload;
-  };
+  if (subtype === 'INMAIL') {
+    payload.messageSubtype = 'INMAIL';
+    if (inmailSubject) payload.message.subject = inmailSubject;
+  }
 
-  const executeSend = (payload) =>
+  // 5. Send with exact LinkedIn web headers (text/plain;charset=UTF-8)
+  return unverified('createMessage', () =>
     voyagerFetch(`${ENDPOINTS.unverified.createMessage}?action=createMessage`, {
       method: 'POST',
       body: payload,
       headers: {
-        accept: 'application/json, text/plain, */*',
-        'content-type': 'application/json; charset=UTF-8',
+        accept: 'application/json',
+        'content-type': 'text/plain;charset=UTF-8',
+        'x-restli-protocol-version': '2.0.0',
       },
-    });
-
-  return unverified('createMessage', async () => {
-    if (existingConversationUrn) {
-      try {
-        return await executeSend(buildExistingPayload(existingConversationUrn));
-      } catch (err) {
-        // Fallback guardrail: If 400, retry with new thread payload
-        const is400 = (err && err.status === 400) || (err && String(err.message).includes('400'));
-        if (is400) {
-          console.warn('[sendMessage] Existing thread message failed with 400, retrying new thread route...');
-          return await executeSend(buildNewThreadPayload());
-        }
-        throw err;
-      }
-    } else {
-      try {
-        return await executeSend(buildNewThreadPayload());
-      } catch (err) {
-        // Fallback guardrail: If 400, re-check threads or retry with conversationUrn if found
-        const is400 = (err && err.status === 400) || (err && String(err.message).includes('400'));
-        if (is400) {
-          console.warn('[sendMessage] New thread message failed with 400, checking for existing conversation fallback...');
-          try {
-            const retryConv = await getConversations({ count: 20 });
-            const found = (retryConv?.threads || []).find((t) =>
-              (t.participants || []).some(
-                (p) =>
-                  (p.urn && (p.urn === recipientUrn || p.urn === recipientFsdUrn)) ||
-                  (p.publicId && recipientUrn.includes(p.publicId)),
-              ),
-            );
-            if (found) {
-              const retryUrn = found.conversationUrn || conversationUrn(mailboxUrn, found.threadId);
-              return await executeSend(buildExistingPayload(retryUrn));
-            }
-          } catch {}
-        }
-        throw err;
-      }
-    }
-  });
+    }),
+  );
 }
 
 /** Send an InMail. */
-export async function sendInMail({ recipientUrn, subject, body }) {
-  return sendMessage({ recipientUrn, body, subtype: 'INMAIL', inmailSubject: subject });
+export async function sendInMail({ recipientUrn, publicId, subject, body }) {
+  return sendMessage({ recipientUrn, publicId, body, subtype: 'INMAIL', inmailSubject: subject });
 }
 
 /** Follow (or unfollow) a member without connecting. Unverified. */

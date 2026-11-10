@@ -281,6 +281,13 @@ export async function setStatus(campaignId, status) {
   campaign.status = status;
   campaign.updatedAt = Date.now();
   await writeCampaigns(campaigns);
+
+  if (status === 'active') {
+    setTimeout(() => {
+      tick().catch((err) => console.error('[Runner] Immediate tick error on resume:', err));
+    }, 100);
+  }
+
   return withStats(campaign);
 }
 

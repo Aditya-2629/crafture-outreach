@@ -133,3 +133,4 @@ register(ACTIONS.CANDIDATE_SAVE, async ({ candidate }) => ({
 register(ACTIONS.CANDIDATE_DELETE, async ({ id }) => ({
   result: await deleteCandidate(id),
 }));
+

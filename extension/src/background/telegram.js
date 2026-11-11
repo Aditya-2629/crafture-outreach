@@ -1,7 +1,13 @@
 /**
- * OutFox — Telegram Autonomous AI SDR Engine (Phase 3 Upgrade).
- * Includes: Multi-Candidate Persona Switcher, Apollo/Hunter Waterfall Enrichment,
- * Groq Whisper Voice Transcriber, Real-Time Alerts, 1-Tap Booking Closer & Safety Guard.
+ * OutFox — Telegram Autonomous AI SDR Engine.
+ * Features:
+ * - Dynamic Live Workspace Context Injection (lists, campaigns, candidates, quotas)
+ * - Autonomous Sequence Blueprint Architect & Visual Pre-Flight Approval Cards
+ * - Fuzzy Disambiguation ("Did You Mean?")
+ * - Natural Language Blueprint Editing (e.g. "Change note to: ...")
+ * - Full Lifecycle Push Alerts (CAMPAIGN_COMPLETED, QUOTA_HIT, CHALLENGE_DETECTED, INBOUND REPLIES)
+ * - Multi-Candidate Persona Switcher & Apollo/Hunter Waterfall Enrichment
+ * - Groq Whisper Voice Transcriber & 1-Tap Booking Closer
  */
 
 import { ACTIONS, ERROR, EVENTS, EngineError } from '../lib/actions.js';
@@ -23,10 +29,11 @@ let pollAbortController = null;
 let lastUpdateId = 0;
 let lastSearchedList = 'data analyst USA';
 
-// In-Memory Real-Time CRM & Closer Caches
+// In-Memory Real-Time CRM, Blueprint & Closer Caches
 const recentAlertDedupe = new Map(); // key -> timestamp (10 min cache)
 const lastInboundReplies = new Map(); // publicId -> { body, sentiment, intent, at }
 const pendingDrafts = new Map(); // draftId -> { publicId, text, at }
+const pendingBlueprints = new Map(); // blueprintId -> blueprint object
 
 function cleanOldCaches() {
   const now = Date.now();
@@ -38,6 +45,11 @@ function cleanOldCaches() {
   if (pendingDrafts.size > 200) {
     for (const [id, d] of pendingDrafts.entries()) {
       if (now - d.at > 24 * 60 * 60 * 1000) pendingDrafts.delete(id);
+    }
+  }
+  if (pendingBlueprints.size > 100) {
+    for (const [id, bp] of pendingBlueprints.entries()) {
+      if (now - (bp.createdAt || 0) > 24 * 60 * 60 * 1000) pendingBlueprints.delete(id);
     }
   }
 }
@@ -90,6 +102,56 @@ async function sendTelegramAlert(text, options = {}) {
   }
 }
 
+// 🌐 Live Workspace Context Provider
+export async function getLiveWorkspaceContext() {
+  const [allLists, allCamps, activeCand, quotas] = await Promise.all([
+    lists.getAll().catch(() => []),
+    campaigns.getAll().catch(() => []),
+    getActiveCandidate().catch(() => null),
+    snapshotAll().catch(() => ({})),
+  ]);
+
+  return { allLists, allCamps, activeCand, quotas };
+}
+
+// 🔍 Fuzzy Disambiguation Matcher for Lead Lists
+export function findBestMatchingList(allLists, inputName) {
+  if (!inputName || !Array.isArray(allLists) || allLists.length === 0) return null;
+  const target = String(inputName).toLowerCase().trim();
+
+  // 1. Exact match
+  const exact = allLists.find((l) => l.name.toLowerCase().trim() === target);
+  if (exact) return { match: exact, confidence: 1.0 };
+
+  // 2. Substring match
+  const sub = allLists.find((l) => {
+    const name = l.name.toLowerCase().trim();
+    return name.includes(target) || target.includes(name);
+  });
+  if (sub) return { match: sub, confidence: 0.85 };
+
+  // 3. Token / Word overlap
+  const targetWords = target.split(/[\s_\-]+/).filter((w) => w.length > 2);
+  let bestTokenMatch = null;
+  let maxScore = 0;
+  for (const l of allLists) {
+    const listWords = l.name.toLowerCase().split(/[\s_\-]+/).filter((w) => w.length > 2);
+    if (!listWords.length || !targetWords.length) continue;
+    const matches = targetWords.filter((w) => listWords.some((lw) => lw.includes(w) || w.includes(lw))).length;
+    const score = matches / Math.max(targetWords.length, listWords.length);
+    if (score > maxScore) {
+      maxScore = score;
+      bestTokenMatch = l;
+    }
+  }
+
+  if (bestTokenMatch && maxScore >= 0.35) {
+    return { match: bestTokenMatch, confidence: 0.65 };
+  }
+
+  return null;
+}
+
 export async function testTelegram({ botToken, chatId }) {
   if (!botToken || !chatId) {
     throw new EngineError(ERROR.INVALID_PARAMS, 'Both Bot Token and Chat ID are required.');
@@ -105,7 +167,8 @@ export async function testTelegram({ botToken, chatId }) {
     `Mode: *${activeCand?.mode === 'reverse_recruiting' ? 'Reverse Recruiting (Job Pitch)' : 'Agency Sourcing (Placements)'}*\n` +
     `Booking Link: *${activeCand?.bookingLink || 'https://calendly.com'}*\n` +
     `Latency: *${Date.now() - start}ms*\n\n` +
-    `🎯 *Active Superpowers (Phase 1, 2 & 3):*\n` +
+    `🎯 *Active Superpowers:*\n` +
+    `• 📋 *Blueprint Architect:* Pre-flight sequence approval cards\n` +
     `• 🔄 *Candidate Switcher:* \`/switch <name>\` or \`/candidates\`\n` +
     `• 📧 *Apollo & Hunter Enrichment:* \`/enrich <publicId>\`\n` +
     `• 🔥 *Real-Time Alerts:* Inbound replies & acceptances\n` +
@@ -216,8 +279,26 @@ const AI_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'design_campaign_blueprint',
+      description: 'Architect a multi-step sequence blueprint for user pre-flight approval.',
+      parameters: {
+        type: 'object',
+        properties: {
+          campaignName: { type: 'string', description: 'Proposed name for the campaign' },
+          listName: { type: 'string', description: 'Target lead list name to enroll leads from' },
+          hasViewStep: { type: 'boolean', description: 'True if profile view step should precede the invite' },
+          inviteNote: { type: 'string', description: 'Personalized connection request note with {{firstName}}' },
+          followupMessage: { type: 'string', description: 'Warm welcome message sent when connection is accepted' },
+        },
+        required: ['listName'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'create_outreach_campaign',
-      description: 'Design and launch a multi-step outreach sequence campaign attached to a prospect list.',
+      description: 'Launch a multi-step outreach sequence campaign attached to a prospect list.',
       parameters: {
         type: 'object',
         properties: {
@@ -308,6 +389,46 @@ const AI_TOOLS = [
   },
 ];
 
+// 📋 Visual Blueprint Pre-Flight Approval Card
+async function presentCampaignBlueprint(botToken, chatId, blueprint) {
+  const inviteStep = blueprint.steps.find((s) => s.type === 'invite');
+  const msgStep = blueprint.steps.find((s) => s.type === 'message');
+  const viewStep = blueprint.steps.find((s) => s.type === 'view');
+
+  let seqText = '';
+  let stepNum = 1;
+  if (viewStep) {
+    seqText += `${stepNum++}. [VIEW] Soft-touch profile view\n`;
+  }
+  if (inviteStep) {
+    seqText += `${stepNum++}. [INVITE] Note: "${inviteStep.note || ''}"\n`;
+  }
+  if (msgStep) {
+    seqText += `${stepNum++}. [MESSAGE] Follow-Up: "${msgStep.body || ''}" (1 day delay)\n`;
+  }
+
+  const card =
+    `📋 *CAMPAIGN BLUEPRINT PRE-FLIGHT APPROVAL*\n\n` +
+    `🎯 *Campaign Name:* *${blueprint.campaignName}*\n` +
+    `📁 *Target Lead List:* *${blueprint.listName}* (${blueprint.leadCount} leads)\n` +
+    `👤 *Persona Context:* *${blueprint.candidate?.name || 'Default'}* (${blueprint.candidate?.mode === 'reverse_recruiting' ? 'Reverse Recruiting' : 'Agency Sourcing'})\n\n` +
+    `⚡ *Architected Sequence (${blueprint.steps.length} Steps):*\n` +
+    seqText +
+    `\n🛡️ *Safeguards:* Auto-stop on reply: Enabled | Safe Quotas: Active`;
+
+  const replyMarkup = {
+    inline_keyboard: [
+      [{ text: '🚀 Approve & Launch Campaign Now', callback_data: `camp_approve:${blueprint.blueprintId}` }],
+      [
+        { text: '✏️ Edit Note / Pitch', callback_data: `camp_edit_info:${blueprint.blueprintId}` },
+        { text: '❌ Discard Blueprint', callback_data: `camp_discard:${blueprint.blueprintId}` },
+      ],
+    ],
+  };
+
+  return sendTelegramMessage(botToken, chatId, card, { reply_markup: replyMarkup });
+}
+
 async function executeTool(name, args = {}) {
   if (name === 'switch_candidate_workspace') {
     const switched = await setActiveCandidate(args.candidateNameOrSlug);
@@ -332,53 +453,73 @@ async function executeTool(name, args = {}) {
     };
   }
 
-  if (name === 'create_outreach_campaign') {
+  if (name === 'design_campaign_blueprint' || name === 'create_outreach_campaign') {
     const allLists = await lists.getAll();
-    const searchName = String(args.listName || '').toLowerCase().trim();
-    const targetList = allLists.find((l) => l.name.toLowerCase().includes(searchName)) || allLists[0];
+    const activeCand = await getActiveCandidate();
+    const searchName = String(args.listName || '').trim();
 
-    if (!targetList) {
-      throw new Error(`List "${args.listName}" nahi mili. Pehle leads search karke list me save karo.`);
+    const matchObj = findBestMatchingList(allLists, searchName);
+
+    if (!matchObj) {
+      return {
+        type: 'list_not_found',
+        searched: searchName,
+        availableLists: allLists.map((l) => l.name),
+      };
     }
 
-    const activeCand = await getActiveCandidate().catch(() => null);
-    const defaultInvite = activeCand?.pitchTemplate || 'Hi {{firstName}}, saw your profile and would love to connect!';
-    const defaultFollowup = activeCand?.followupTemplate || 'Hey {{firstName}}, glad to connect!';
+    const targetList = matchObj.match;
+    const confidence = matchObj.confidence;
 
+    const blueprintId = 'bp_' + Math.random().toString(36).slice(2, 9);
     const steps = [];
     if (args.hasViewStep !== false) steps.push({ type: 'view' });
 
     steps.push({
       type: 'invite',
-      note: args.inviteNote || defaultInvite,
+      note: args.inviteNote || activeCand.pitchTemplate || 'Hi {{firstName}}, saw your profile and would love to connect!',
     });
 
-    const followupBody = args.followupMessage || defaultFollowup;
+    const followupBody =
+      args.followupMessage ||
+      (activeCand.followupTemplate
+        ? `${activeCand.followupTemplate} (Grab a quick 10-min chat: ${activeCand.bookingLink})`
+        : 'Hey {{firstName}}, glad to connect! Are you currently open to roles?');
+
     if (followupBody) {
       steps.push({
         type: 'message',
         body: followupBody,
+        delayDays: 1,
       });
     }
 
-    const camp = await campaigns.create({
-      name: args.name || `${targetList.name} (${activeCand?.slug || 'Outreach'})`,
+    const blueprint = {
+      blueprintId,
+      campaignName: args.campaignName || args.name || `${targetList.name} (${activeCand?.slug || 'Sequence'})`,
       listId: targetList.listId,
+      listName: targetList.name,
+      leadCount: targetList.count || targetList.itemCount || 0,
+      candidate: activeCand,
       steps,
-      settings: { stopOnReply: true, autopilot: false },
-    });
+      createdAt: Date.now(),
+    };
 
-    const enrolledList = await campaigns.readEnrollments(camp.campaignId);
+    pendingBlueprints.set(blueprintId, blueprint);
+
+    if (confidence >= 0.60 && confidence < 0.90) {
+      return {
+        type: 'disambiguation_required',
+        blueprintId,
+        matchedName: targetList.name,
+        leadCount: blueprint.leadCount,
+        searched: searchName,
+      };
+    }
 
     return {
-      campaignCreated: true,
-      campaignId: camp.campaignId,
-      name: camp.name,
-      enrolledCount: enrolledList.length,
-      stepsCount: steps.length,
-      listUsed: targetList.name,
-      candidate: activeCand?.name || 'Default',
-      steps: steps.map((s, i) => `Step ${i + 1}: ${s.type.toUpperCase()}${s.note ? ` ("${s.note.slice(0, 35)}...")` : ''}`),
+      type: 'blueprint_ready',
+      blueprint,
     };
   }
 
@@ -464,10 +605,27 @@ async function callDynamicAi(userText, options = {}) {
     };
   }
 
-  const activeCand = await getActiveCandidate().catch(() => null);
-  const candContext = activeCand
-    ? `\n\nCurrent Active Persona: ${activeCand.name} (${activeCand.title}, Mode: ${activeCand.mode}, Target Roles: ${activeCand.targetRoles.join(', ')}). All outreach pitches, searches, and booking links must reflect this candidate persona.`
-    : '';
+  const ctx = await getLiveWorkspaceContext();
+  const activeCand = ctx.activeCand;
+  const allLists = ctx.allLists;
+  const allCamps = ctx.allCamps;
+  const quotas = ctx.quotas;
+
+  const invRemaining = Math.max(0, (quotas.invite?.dailyCap || 20) - (quotas.invite?.dailyUsed || 0));
+  const msgRemaining = Math.max(0, (quotas.message?.dailyCap || 40) - (quotas.message?.dailyUsed || 0));
+
+  const workspaceContextStr =
+    `\n\n⚡ CURRENT LIVE WORKSPACE CONTEXT:\n` +
+    `• Active Candidate: "${activeCand?.name || 'Aditya'}" (${activeCand?.title || 'Data Analyst'}, Mode: ${activeCand?.mode || 'reverse_recruiting'})\n` +
+    `• Saved Invite Note: "${activeCand?.pitchTemplate || ''}"\n` +
+    `• Saved Follow-Up: "${activeCand?.followupTemplate || ''}"\n` +
+    `• Booking Link: ${activeCand?.bookingLink || 'https://calendly.com'}\n` +
+    `• Existing Lead Lists (${allLists.length}):\n` +
+    (allLists.length ? allLists.map((l) => `  - "${l.name}" (ID: ${l.listId}, Leads: ${l.count || l.itemCount || 0})`).join('\n') : '  (None yet)') +
+    `\n• Active Campaigns (${allCamps.length}):\n` +
+    (allCamps.length ? allCamps.map((c) => `  - "${c.name}" (${c.status}, Enrolled: ${c.stats?.enrolled || 0})`).join('\n') : '  (None yet)') +
+    `\n• Today's Quota Remaining: Invites: ${invRemaining}, Messages: ${msgRemaining}\n` +
+    `When user requests to launch, design, or create a campaign sequence, call design_campaign_blueprint.`;
 
   const apiKey = ai.apiKey || '';
   const model =
@@ -478,12 +636,14 @@ async function callDynamicAi(userText, options = {}) {
         ? 'gemini-2.0-flash'
         : 'gpt-4o-mini');
 
-  const systemPrompt = (options.systemPrompt || (options.forceText
-    ? 'You are OutFox AI SDR, an expert LinkedIn outreach copywriter. Write concise, warm, professional responses without corporate fluff. Keep under 240 characters.'
-    : 'You are OutFox AI SDR, an autonomous assistant controlling LinkedIn outreach. ' +
-      'Understand user requests in English, Hindi, or Hinglish. ' +
-      'When the user asks to search prospects, save leads to a list, design/create campaigns, send messages, switch candidates, or enrich leads, call the matching function tool. ' +
-      'Always be helpful, warm, and accurate.')) + candContext;
+  const systemPrompt =
+    (options.systemPrompt ||
+      (options.forceText
+        ? 'You are OutFox AI SDR, an expert LinkedIn outreach copywriter. Write concise, warm, professional responses without corporate fluff. Keep under 240 characters.'
+        : 'You are OutFox AI SDR, an autonomous assistant controlling LinkedIn outreach. ' +
+          'Understand user requests in English, Hindi, or Hinglish. ' +
+          'When the user asks to search prospects, save leads to a list, design/create campaigns, send messages, switch candidates, or enrich leads, call the matching function tool. ' +
+          'Always be helpful, warm, and accurate.')) + workspaceContextStr;
 
   let url = '';
   let headers = { 'Content-Type': 'application/json' };
@@ -694,20 +854,21 @@ async function renderDailyStats(botToken, chatId) {
 async function handleUserCommand(botToken, chatId, text) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return;
+  cleanOldCaches();
 
   if (trimmed === '/start' || trimmed === '/help') {
     const activeCand = await getActiveCandidate().catch(() => null);
     const welcome =
       `🦊 *OutFox Mobile AI Copilot Ready!*\n\n` +
       `Active Persona: *${activeCand?.name || 'Aditya'}* (\`${activeCand?.slug || 'aditya'}\`)\n\n` +
+      `📌 *Campaign Blueprints:*\n` +
+      `• _"Design campaign for Data Analyst USA"_\n` +
+      `• _"Change note to: Hi {{firstName}}, saw your work..."_\n\n` +
       `📌 *Candidate Workspace Switcher:*\n` +
       `• \`/switch aditya\` or \`/switch agency\`\n` +
       `• \`/candidates\` — List all personas & 1-tap switch\n\n` +
       `📌 *Email Waterfall Enrichment:*\n` +
       `• \`/enrich <publicId>\` — Discover email via Apollo & Hunter\n\n` +
-      `📌 *Search & Sequence:*\n` +
-      `• _"Search Indian Data Analysts in USA and name that list as Data Analyst USA"_\n` +
-      `• _"Design campaign for Data Analyst USA list view profile then send invite note"_\n\n` +
       `📌 *Closer & Pulse:*\n` +
       `• \`/pulse\` or \`Daily stats\` — Scorecard & remaining quotas\n` +
       `• \`Campaign status\`, \`Pause campaign\`, \`Resume campaign\``;
@@ -728,7 +889,23 @@ async function handleUserCommand(botToken, chatId, text) {
     return sendTelegramMessage(botToken, chatId, welcome, { reply_markup: replyMarkup });
   }
 
-  // 1. Candidate Switcher Commands
+  // 1. Natural Language Blueprint Editing (e.g. "Change note to: ...", "pitch: ...", "update note: ...")
+  if (pendingBlueprints.size > 0 && /^(?:change note to|edit note to|update note to|pitch:|note:)\s*(.+)/i.test(trimmed)) {
+    const editMatch = trimmed.match(/^(?:change note to|edit note to|update note to|pitch:|note:)\s*(.+)/i);
+    const newNote = (editMatch[1] || '').trim();
+    if (newNote) {
+      const bpEntries = Array.from(pendingBlueprints.values());
+      const latestBp = bpEntries[bpEntries.length - 1];
+      const inviteStep = latestBp.steps.find((s) => s.type === 'invite');
+      if (inviteStep) {
+        inviteStep.note = newNote;
+        await sendTelegramMessage(botToken, chatId, `✏️ *Updated connection invite note in blueprint!*`);
+        return presentCampaignBlueprint(botToken, chatId, latestBp);
+      }
+    }
+  }
+
+  // 2. Candidate Switcher Commands
   const switchMatch = trimmed.match(/^\/switch(?:\s+(.+))?$/i);
   if (switchMatch) {
     const target = (switchMatch[1] || '').trim();
@@ -755,14 +932,14 @@ async function handleUserCommand(botToken, chatId, text) {
     return sendCandidatesList(botToken, chatId);
   }
 
-  // 2. Email Waterfall Enrichment Command
+  // 3. Email Waterfall Enrichment Command
   const enrichMatch = trimmed.match(/^\/enrich\s+([a-zA-Z0-9\-_%]+)/i);
   if (enrichMatch) {
     const publicId = enrichMatch[1].trim();
     return handleEnrichLead(botToken, chatId, publicId);
   }
 
-  // 3. Quick Daily Stats / Pulse Command
+  // 4. Quick Daily Stats / Pulse Command
   if (/^\/?(pulse|stats|scorecard|daily\s*stats|report)/i.test(trimmed)) {
     return renderDailyStats(botToken, chatId);
   }
@@ -773,8 +950,44 @@ async function handleUserCommand(botToken, chatId, text) {
     const aiResult = await callDynamicAi(trimmed);
 
     if (aiResult.type === 'tool_call') {
-      await sendTelegramMessage(botToken, chatId, `⚙️ *Executing:* \`${aiResult.name}\`...`);
       const execResult = await executeTool(aiResult.name, aiResult.args);
+
+      if (aiResult.name === 'design_campaign_blueprint' || aiResult.name === 'create_outreach_campaign') {
+        if (execResult.type === 'disambiguation_required') {
+          const disambigMsg =
+            `🤔 *Did you mean list "${execResult.matchedName}" (${execResult.leadCount} leads)?*\n` +
+            `You requested outreach for _"${execResult.searched}"_.`;
+
+          const replyMarkup = {
+            inline_keyboard: [
+              [{ text: `✅ Yes, use "${execResult.matchedName}"`, callback_data: `bp_view:${execResult.blueprintId}` }],
+              [{ text: '📁 Select from All Lists', callback_data: 'list_all_for_camp' }],
+            ],
+          };
+
+          return sendTelegramMessage(botToken, chatId, disambigMsg, { reply_markup: replyMarkup });
+        }
+
+        if (execResult.type === 'list_not_found') {
+          const notFoundMsg =
+            `⚠️ *List "${execResult.searched}" nahi mili.*\n\n` +
+            `Existing lists: ${execResult.availableLists.map((n) => `\`${n}\``).join(', ') || 'None'}\n\n` +
+            `_Pehle leads search karke list banao ya /candidates check karo._`;
+
+          const replyMarkup = {
+            inline_keyboard: [
+              [{ text: '📁 View All Lists', callback_data: 'list_all_for_camp' }],
+              [{ text: '👥 Switch Persona', callback_data: 'show_candidates' }],
+            ],
+          };
+
+          return sendTelegramMessage(botToken, chatId, notFoundMsg, { reply_markup: replyMarkup });
+        }
+
+        if (execResult.type === 'blueprint_ready') {
+          return presentCampaignBlueprint(botToken, chatId, execResult.blueprint);
+        }
+      }
 
       let reply = `✅ *Action Completed Successfully!*\n\n`;
       let replyMarkup = null;
@@ -804,25 +1017,6 @@ async function handleUserCommand(botToken, chatId, text) {
         } else {
           reply += `⚠️ No email found for \`${execResult.publicId}\` across Apollo and Hunter.`;
         }
-      } else if (aiResult.name === 'create_outreach_campaign') {
-        reply +=
-          `🚀 *Campaign Created & Enrolled!*\n\n` +
-          `• Name: *${execResult.name}*\n` +
-          `• Persona: *${execResult.candidate}*\n` +
-          `• Enrolled Leads: *${execResult.enrolledCount}* (from list _"${execResult.listUsed}"_)\n` +
-          `• Sequence Steps (${execResult.stepsCount}):\n` +
-          execResult.steps.map((s) => `  ✓ ${s}`).join('\n') +
-          '\n\n' +
-          `_Campaign dashboard me active ho chuki hai!_`;
-
-        replyMarkup = {
-          inline_keyboard: [
-            [
-              { text: '📊 Check Status', callback_data: 'camp_status' },
-              { text: '⏸️ Pause Campaign', callback_data: 'camp_pause' },
-            ],
-          ],
-        };
       } else if (aiResult.name === 'search_and_save_leads') {
         reply += `🎯 *Found ${execResult.countFound} Prospects on LinkedIn!*\n`;
         if (execResult.listSaved) {
@@ -880,6 +1074,130 @@ async function handleCallback(botToken, chatId, callbackData) {
   const data = String(callbackData || '');
   cleanOldCaches();
 
+  // 1. Blueprint Pre-Flight Approval: Approve & Launch
+  if (data.startsWith('camp_approve:')) {
+    const blueprintId = data.replace('camp_approve:', '').trim();
+    const blueprint = pendingBlueprints.get(blueprintId);
+    if (!blueprint) {
+      return sendTelegramMessage(botToken, chatId, `⚠️ *Blueprint expired or already launched.*`);
+    }
+
+    await sendTelegramMessage(botToken, chatId, `🚀 *Launching campaign sequence for "${blueprint.campaignName}"...*`);
+    try {
+      const camp = await campaigns.create({
+        name: blueprint.campaignName,
+        listId: blueprint.listId,
+        steps: blueprint.steps,
+        settings: { stopOnReply: true, autopilot: false },
+      });
+
+      pendingBlueprints.delete(blueprintId);
+      const enrolled = await campaigns.readEnrollments(camp.campaignId).catch(() => []);
+
+      const launchMsg =
+        `🚀 *Campaign Successfully Launched!*\n\n` +
+        `• Campaign: *${camp.name}*\n` +
+        `• Target List: *${blueprint.listName}*\n` +
+        `• Enrolled Leads: *${enrolled.length}*\n` +
+        `• Sequence Steps: *${blueprint.steps.length}*\n\n` +
+        `_OutFox background runner is now active!_`;
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [
+            { text: '📊 Campaign Status', callback_data: 'camp_status' },
+            { text: '⏸️ Pause Campaign', callback_data: 'camp_pause' },
+          ],
+        ],
+      };
+
+      return sendTelegramMessage(botToken, chatId, launchMsg, { reply_markup: replyMarkup });
+    } catch (err) {
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to launch campaign: ${err.message}`);
+    }
+  }
+
+  // 2. Discard Blueprint
+  if (data.startsWith('camp_discard:')) {
+    const blueprintId = data.replace('camp_discard:', '').trim();
+    pendingBlueprints.delete(blueprintId);
+    return sendTelegramMessage(botToken, chatId, `❌ *Blueprint discarded.*`);
+  }
+
+  // 3. Edit Blueprint Info Prompt
+  if (data.startsWith('camp_edit_info:')) {
+    return sendTelegramMessage(
+      botToken,
+      chatId,
+      `✏️ *To edit this sequence note, send a message:*\n\`Change note to: Hi {{firstName}}, [your custom message]\``
+    );
+  }
+
+  // 4. View Disambiguated Blueprint
+  if (data.startsWith('bp_view:')) {
+    const blueprintId = data.replace('bp_view:', '').trim();
+    const bp = pendingBlueprints.get(blueprintId);
+    if (bp) return presentCampaignBlueprint(botToken, chatId, bp);
+    return sendTelegramMessage(botToken, chatId, `⚠️ *Blueprint expired.*`);
+  }
+
+  // 5. List All Lists for Campaign Selection
+  if (data === 'list_all_for_camp') {
+    const allLists = await lists.getAll();
+    if (!allLists.length) {
+      return sendTelegramMessage(botToken, chatId, `⚠️ *No lead lists found.* Pehle leads search karke list me save karo.`);
+    }
+
+    let text = `📁 *Select a Lead List for Campaign:*\n\n`;
+    allLists.forEach((l) => {
+      text += `• *${l.name}* (${l.count || l.itemCount || 0} leads)\n`;
+    });
+
+    const buttons = allLists.slice(0, 8).map((l) => [
+      { text: `📁 ${l.name}`, callback_data: `sel_list:${l.listId}` },
+    ]);
+
+    return sendTelegramMessage(botToken, chatId, text, { reply_markup: { inline_keyboard: buttons } });
+  }
+
+  // 6. Select Specific List for Campaign Blueprint
+  if (data.startsWith('sel_list:')) {
+    const listId = data.replace('sel_list:', '').trim();
+    const allLists = await lists.getAll();
+    const targetList = allLists.find((l) => l.listId === listId);
+    if (!targetList) return sendTelegramMessage(botToken, chatId, `❌ List not found.`);
+
+    const activeCand = await getActiveCandidate();
+    const blueprintId = 'bp_' + Math.random().toString(36).slice(2, 9);
+    const steps = [
+      { type: 'view' },
+      { type: 'invite', note: activeCand.pitchTemplate },
+      { type: 'message', body: `${activeCand.followupTemplate} (Grab a quick chat: ${activeCand.bookingLink})`, delayDays: 1 },
+    ];
+
+    const blueprint = {
+      blueprintId,
+      campaignName: `${targetList.name} (${activeCand.slug})`,
+      listId: targetList.listId,
+      listName: targetList.name,
+      leadCount: targetList.count || targetList.itemCount || 0,
+      candidate: activeCand,
+      steps,
+      createdAt: Date.now(),
+    };
+
+    pendingBlueprints.set(blueprintId, blueprint);
+    return presentCampaignBlueprint(botToken, chatId, blueprint);
+  }
+
+  // 7. Quick Launch from Search
+  if (data.startsWith('quick_launch:')) {
+    const listName = data.replace('quick_launch:', '').trim();
+    const prompt = `Design a campaign blueprint for list "${listName}".`;
+    return handleUserCommand(botToken, chatId, prompt);
+  }
+
+  // 8. Persona Switcher Callbacks
   if (data === 'show_candidates') {
     return sendCandidatesList(botToken, chatId);
   }
@@ -898,11 +1216,13 @@ async function handleCallback(botToken, chatId, callbackData) {
     }
   }
 
+  // 9. Lead Enrichment Callback
   if (data.startsWith('enrich:')) {
     const publicId = data.replace('enrich:', '').trim();
     return handleEnrichLead(botToken, chatId, publicId);
   }
 
+  // 10. Campaign Controls
   if (data === 'camp_status') {
     const all = await campaigns.getAll();
     const active = all.filter((c) => c.status === 'active');
@@ -930,14 +1250,7 @@ async function handleCallback(botToken, chatId, callbackData) {
     return renderDailyStats(botToken, chatId);
   }
 
-  if (data.startsWith('quick_launch:')) {
-    const listName = data.replace('quick_launch:', '').trim();
-    await sendTelegramMessage(botToken, chatId, `🚀 *Launching campaign for list "${listName}"...*`);
-    const prompt = `Design and launch an outreach campaign for list "${listName}". First view profile, then send connection request note: "Hi {{firstName}}, saw your profile and would love to connect!", and when accepted send warm welcome message: "Hey {{firstName}}, glad to connect! Are you currently open to roles?"`;
-    return handleUserCommand(botToken, chatId, prompt);
-  }
-
-  // 📅 1-Tap Booking Dispatch
+  // 11. 1-Tap Booking Dispatch
   if (data.startsWith('reply_cal:')) {
     const publicId = data.replace('reply_cal:', '').trim();
     const activeCand = await getActiveCandidate().catch(() => null);
@@ -958,7 +1271,7 @@ async function handleCallback(botToken, chatId, callbackData) {
     }
   }
 
-  // ✨ Contextual AI Response Generator
+  // 12. Contextual AI Response Generator
   if (data.startsWith('reply_ai:')) {
     const publicId = data.replace('reply_ai:', '').trim();
     const cached = lastInboundReplies.get(publicId);
@@ -1001,7 +1314,7 @@ async function handleCallback(botToken, chatId, callbackData) {
     }
   }
 
-  // 🚀 Send Pending AI Draft
+  // 13. Send Pending AI Draft
   if (data.startsWith('send_draft:')) {
     const draftId = data.replace('send_draft:', '').trim();
     const draft = pendingDrafts.get(draftId);
@@ -1023,14 +1336,14 @@ async function handleCallback(botToken, chatId, callbackData) {
     }
   }
 
-  // ❌ Cancel Pending AI Draft
+  // 14. Cancel Pending AI Draft
   if (data.startsWith('cancel_draft:')) {
     const draftId = data.replace('cancel_draft:', '').trim();
     pendingDrafts.delete(draftId);
     return sendTelegramMessage(botToken, chatId, `❌ *Draft cancelled.*`);
   }
 
-  // 🚫 Blacklist / Do Not Contact
+  // 15. Blacklist / Do Not Contact
   if (data.startsWith('blacklist:')) {
     const publicId = data.replace('blacklist:', '').trim();
     try {
@@ -1066,7 +1379,7 @@ export async function startTelegramPoller(token, chatId) {
   if (isPolling) return;
   isPolling = true;
 
-  console.log('[Telegram Poller] Starting Phase 3 Persona + Waterfall poll for chat ID:', chatId);
+  console.log('[Telegram Poller] Starting Blueprint + Persona poll for chat ID:', chatId);
 
   (async () => {
     while (isPolling) {
@@ -1121,7 +1434,7 @@ export async function startTelegramPoller(token, chatId) {
   })();
 }
 
-// 🔔 Real-Time Event Subscriber
+// 🔔 Full Lifecycle Event Subscriber
 onEvent(async (name, payload = {}) => {
   try {
     const cfg = await getConfig();
@@ -1208,7 +1521,30 @@ onEvent(async (name, payload = {}) => {
       await sendTelegramAlert(alertMsg, { reply_markup: replyMarkup });
     }
 
-    // 3. Security Checkpoint Freeze (EVENTS.CHALLENGE_DETECTED)
+    // 3. Campaign Finished Processing (EVENTS.CAMPAIGN_COMPLETED)
+    else if (name === EVENTS.CAMPAIGN_COMPLETED) {
+      const campaignId = payload.campaignId;
+      const allCamps = await campaigns.getAll().catch(() => []);
+      const camp = allCamps.find((c) => c.campaignId === campaignId);
+      const stats = camp?.stats || {};
+
+      const alertMsg =
+        `🏁 *CAMPAIGN FINISHED PROCESSING!*\n\n` +
+        `Campaign: *${camp?.name || 'Outreach Campaign'}*\n` +
+        `• Enrolled: *${stats.enrolled || 0}* | Viewed: *${stats.viewed || 0}* | Invites Sent: *${stats.invited || 0}*\n` +
+        `• Accepted: *${stats.accepted || 0}* | Replies: *${stats.replied || 0}*\n\n` +
+        `_All prospect sequence steps have completed processing!_`;
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [{ text: '📊 View Outreach Pulse', callback_data: 'daily_stats' }],
+        ],
+      };
+
+      await sendTelegramAlert(alertMsg, { reply_markup: replyMarkup });
+    }
+
+    // 4. Security Checkpoint Freeze (EVENTS.CHALLENGE_DETECTED)
     else if (name === EVENTS.CHALLENGE_DETECTED) {
       const dedupeKey = 'checkpoint:freeze';
       const lastTime = recentAlertDedupe.get(dedupeKey) || 0;
@@ -1233,8 +1569,8 @@ onEvent(async (name, payload = {}) => {
       const replyMarkup = {
         inline_keyboard: [
           [
-            { text: '📊 Campaign Status', callback_data: 'camp_status' },
-            { text: '▶️ Resume All (After Solving)', callback_data: 'camp_resume' },
+            { text: '📊 Status', callback_data: 'camp_status' },
+            { text: '▶️ Resume After Solving', callback_data: 'camp_resume' },
           ],
         ],
       };
@@ -1242,7 +1578,7 @@ onEvent(async (name, payload = {}) => {
       await sendTelegramAlert(alertMsg, { reply_markup: replyMarkup });
     }
 
-    // 4. Daily Quota Cap Hit (EVENTS.QUOTA_HIT)
+    // 5. Daily Quota Cap Hit (EVENTS.QUOTA_HIT)
     else if (name === EVENTS.QUOTA_HIT) {
       const kind = payload.kind || 'outreach';
       const dedupeKey = `quota_hit:${kind}`;
@@ -1252,11 +1588,11 @@ onEvent(async (name, payload = {}) => {
 
       const alertMsg =
         `⚠️ *DAILY OUTREACH LIMIT REACHED for ${kind}*\n\n` +
-        `OutFox has paused ${kind} actions until the daily quota resets to keep your LinkedIn account safe.`;
+        `OutFox has paused ${kind} automation until morning to protect your LinkedIn account reputation.`;
 
       const replyMarkup = {
         inline_keyboard: [
-          [{ text: '📊 View Outreach Pulse', callback_data: 'daily_stats' }],
+          [{ text: '📊 Outreach Pulse', callback_data: 'daily_stats' }],
         ],
       };
 

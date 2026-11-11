@@ -106,28 +106,28 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
 
           <div style="display: flex; justify-content: center; align-items: center; gap: 32px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; ${currentStep >= 1 ? 'background:#2563eb; color:#FFF;' : 'background:#eef1fc; color:#2563eb;'}">
+              <span style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; ${currentStep >= 1 ? 'background:#ff6b00; color:#FFF;' : 'background:#fff7ed; color:#ff6b00;'}">
                 ${currentStep > 1 ? '✓' : '1'}
               </span>
-              <span style="font-size: 13px; font-weight: 600; color: ${currentStep === 1 ? '#2563eb' : '#14142b'};">Upload</span>
+              <span style="font-size: 13px; font-weight: 600; color: ${currentStep === 1 ? '#ff6b00' : '#14142b'};">Upload</span>
             </div>
 
             <div style="width: 40px; height: 1px; background: rgba(20,20,43,0.1);"></div>
 
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; ${currentStep >= 2 ? 'background:#2563eb; color:#FFF;' : 'background:#eef1fc; color:#6e7191;'}">
+              <span style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; ${currentStep >= 2 ? 'background:#ff6b00; color:#FFF;' : 'background:#fff7ed; color:#6e7191;'}">
                 ${currentStep > 2 ? '✓' : '2'}
               </span>
-              <span style="font-size: 13px; font-weight: 600; color: ${currentStep === 2 ? '#2563eb' : '#6e7191'};">Match data</span>
+              <span style="font-size: 13px; font-weight: 600; color: ${currentStep === 2 ? '#ff6b00' : '#6e7191'};">Match data</span>
             </div>
 
             <div style="width: 40px; height: 1px; background: rgba(20,20,43,0.1);"></div>
 
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; ${currentStep >= 3 ? 'background:#2563eb; color:#FFF;' : 'background:#eef1fc; color:#6e7191;'}">
+              <span style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; ${currentStep >= 3 ? 'background:#ff6b00; color:#FFF;' : 'background:#fff7ed; color:#6e7191;'}">
                 3
               </span>
-              <span style="font-size: 13px; font-weight: 600; color: ${currentStep === 3 ? '#2563eb' : '#6e7191'};">Finalize import</span>
+              <span style="font-size: 13px; font-weight: 600; color: ${currentStep === 3 ? '#ff6b00' : '#6e7191'};">Finalize import</span>
             </div>
           </div>
         </div>
@@ -155,9 +155,9 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
               <!-- Drag & Drop Zone -->
               <div id="drop-zone" style="border: 2px dashed #b9c4f8; border-radius: 16px; padding: 60px 20px; text-align: center; background: #fdfdff; cursor: pointer; transition: all 0.2s ease;">
                 <input type="file" id="csv-file-input" accept=".csv" style="display: none;" />
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ff6b00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 <p style="margin: 0; font-size: 14px; font-weight: 600; color: #14142b;">
-                  Drag & Drop or <span style="color: #2563eb; text-decoration: underline;">Choose file</span> to upload
+                  Drag & Drop or <span style="color: #ff6b00; text-decoration: underline;">Choose file</span> to upload
                 </p>
                 <span style="font-size: 12px; color: #a0a3bd; margin-top: 6px; display: block;">.CSV</span>
               </div>
@@ -165,7 +165,7 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
               <!-- STEP 2: Match Data (Screenshot image_91a26a) -->
               <div style="margin-bottom: 24px;">
                 <h3 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 700; color: #14142b;">
-                  Match your data - <span style="color: #2563eb;">${detectedCount} prospects detected</span>
+                  Match your data - <span style="color: #ff6b00;">${detectedCount} prospects detected</span>
                 </h3>
                 <p style="margin: 0; font-size: 13px; color: #6e7191;">
                   LinkedIn URLs are automatically detected and imported — configure your properties below.
@@ -217,7 +217,7 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
               <!-- STEP 3: Finalize Import (Screenshot image_91a268) -->
               <div style="margin-bottom: 32px;">
                 <h3 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 700; color: #14142b;">
-                  Finalize your import of <span style="color: #2563eb;">${detectedCount} prospects detected</span>
+                  Finalize your import of <span style="color: #ff6b00;">${detectedCount} prospects detected</span>
                 </h3>
                 <p style="margin: 0; font-size: 13px; color: #6e7191;">
                   Matching complete! Configure the import options and then start the import.
@@ -258,8 +258,8 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
             currentStep === 1
               ? `<div></div>`
               : currentStep === 2
-              ? `<button type="button" id="btn-wizard-next" style="padding: 10px 28px; background: #2563eb; color: #FFF; border: none; border-radius: 9999px; font-weight: 700; font-size: 13px; cursor: pointer;">Next →</button>`
-              : `<button type="button" id="btn-wizard-import" style="padding: 10px 32px; background: #2563eb; color: #FFF; border: none; border-radius: 9999px; font-weight: 700; font-size: 14px; cursor: pointer;">Import</button>`
+              ? `<button type="button" id="btn-wizard-next" style="padding: 10px 28px; background: #ff6b00; color: #FFF; border: none; border-radius: 9999px; font-weight: 700; font-size: 13px; cursor: pointer;">Next →</button>`
+              : `<button type="button" id="btn-wizard-import" style="padding: 10px 32px; background: #ff6b00; color: #FFF; border: none; border-radius: 9999px; font-weight: 700; font-size: 14px; cursor: pointer;">Import</button>`
           }
         </div>
 
@@ -275,7 +275,7 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
     if (dropZone && fileInput) {
       dropZone.addEventListener('click', () => fileInput.click());
       fileInput.addEventListener('change', (e) => handleFile(e.target.files?.[0]));
-      dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.background = '#eef1fc'; });
+      dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.background = '#fff7ed'; });
       dropZone.addEventListener('dragleave', () => { dropZone.style.background = '#fdfdff'; });
       dropZone.addEventListener('drop', (e) => {
         e.preventDefault();

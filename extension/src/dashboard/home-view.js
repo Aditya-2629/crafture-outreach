@@ -27,7 +27,7 @@ function ensureHomeStyles() {
     .home-greeting { font-size: 24px; font-weight: 800; color: #14142b; margin: 0; text-transform: capitalize; }
     .home-filters-row { display: flex; gap: 10px; }
     .filter-pill-wrap { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 20px; padding: 4px 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
-    .home-filter-select { border: none; background: transparent; font-size: 12px; font-weight: 700; color: #2563eb; outline: none; cursor: pointer; }
+    .home-filter-select { border: none; background: transparent; font-size: 12px; font-weight: 700; color: #ff6b00; outline: none; cursor: pointer; }
     .hero-blue-banner { background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 24px 32px; color: #ffffff; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08); margin-bottom: 24px; }
     .hero-banner-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 700; margin-bottom: 14px; }
     .hero-metric-box { display: flex; align-items: center; gap: 16px; }
@@ -47,24 +47,24 @@ function ensureHomeStyles() {
     .kpi-card-white { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px 20px; display: flex; align-items: center; position: relative; box-shadow: 0 1px 4px rgba(0,0,0,0.02); }
     .kpi-card-left { display: flex; align-items: center; gap: 14px; flex: 1; }
     .kpi-icon-round { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .round-blue { background: #eef2ff; color: #2563eb; }
+    .round-blue { background: #fff7ed; color: #ff6b00; }
     .round-green { background: #ecfdf5; color: #059669; }
     .round-cyan { background: #e0f2fe; color: #0284c7; }
     .kpi-main-number { font-size: 20px; font-weight: 800; color: #14142b; }
     .kpi-sub-label { font-size: 11.5px; color: #64748b; margin-top: 2px; }
     .kpi-vertical-divider { width: 1px; height: 32px; background: #f1f5f9; margin: 0 16px; }
     .kpi-card-right { text-align: right; }
-    .kpi-rate-number { font-size: 16px; font-weight: 800; color: #2563eb; }
+    .kpi-rate-number { font-size: 16px; font-weight: 800; color: #ff6b00; }
     .kpi-info-icon { position: absolute; top: 12px; right: 12px; color: #cbd5e1; cursor: pointer; display: flex; align-items: center; }
-    .kpi-info-icon:hover { color: #2563eb; }
+    .kpi-info-icon:hover { color: #ff6b00; }
     .actions-sent-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
     .actions-sent-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
     .actions-sent-title { font-size: 15px; font-weight: 800; color: #14142b; display: flex; align-items: center; gap: 6px; }
     .actions-type-tabs { display: flex; gap: 10px; margin-bottom: 16px; }
     .action-type-pill { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 14px; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.15s; }
-    .action-type-pill.is-active { background: #ffffff; border-color: #2563eb; box-shadow: 0 2px 8px rgba(49, 90, 231, 0.1); }
+    .action-type-pill.is-active { background: #ffffff; border-color: #ff6b00; box-shadow: 0 2px 8px rgba(255, 107, 0, 0.1); }
     .pill-ico { display: flex; align-items: center; justify-content: center; }
-    .ico-blue { color: #2563eb; }
+    .ico-blue { color: #ff6b00; }
     .ico-cyan { color: #00c2ff; }
     .ico-coral { color: #ff7675; }
     .ico-purple { color: #7c71f8; }
@@ -72,12 +72,12 @@ function ensureHomeStyles() {
     .pill-name { font-size: 12px; color: #64748b; font-weight: 600; }
     .chart-legend-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; font-weight: 700; color: #14142b; }
     .btn-download-chart-csv { background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 4px; display: flex; align-items: center; }
-    .btn-download-chart-csv:hover { color: #2563eb; }
+    .btn-download-chart-csv:hover { color: #ff6b00; }
     .emails-sent-empty-box { background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 14px; padding: 28px; text-align: center; margin-top: 14px; }
-    .empty-cat-icon { width: 44px; height: 44px; border-radius: 12px; background: #eef2ff; color: #2563eb; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px auto; }
+    .empty-cat-icon { width: 44px; height: 44px; border-radius: 12px; background: #fff7ed; color: #ff6b00; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px auto; }
     .empty-email-title { font-size: 14px; font-weight: 800; color: #14142b; margin: 0 0 4px 0; }
     .empty-email-sub { font-size: 12px; color: #64748b; margin: 0 0 16px 0; }
-    .btn-email-strategy { background: #2563eb; color: #ffffff; border: none; border-radius: 20px; padding: 8px 20px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .btn-email-strategy { background: #ff6b00; color: #ffffff; border: none; border-radius: 20px; padding: 8px 20px; font-size: 12px; font-weight: 700; cursor: pointer; }
     .home-side-col { display: flex; flex-direction: column; gap: 20px; }
     .side-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
     .card-plan-badge { font-size: 10.5px; font-weight: 700; background: #f1f5f9; color: #475569; padding: 4px 10px; border-radius: 6px; display: inline-block; margin-bottom: 16px; }
@@ -106,7 +106,7 @@ export async function renderHomeView(container, ctx = {}) {
 
   container.innerHTML = `
     <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
-      <div style="width:34px; height:34px; border:3px solid #eef1fc; border-top-color:#2563eb; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      <div style="width:34px; height:34px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
     </div>
     <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
   `;
@@ -309,10 +309,10 @@ export async function renderHomeView(container, ctx = {}) {
           </div>
 
           <div class="emails-sent-empty-box">
-            <span class="empty-cat-icon">${ICONS.alien}</span>
+            <img src="../../icons/icon48.png" width="40" height="40" alt="OutFox" style="border-radius: 10px; margin-bottom: 12px; box-shadow: 0 4px 14px rgba(255, 107, 0, 0.2);" />
             <h4 class="empty-email-title">You haven't sent any emails yet</h4>
             <p class="empty-email-sub">Start reaching out directly via integrated Google or Outlook mailbox!</p>
-            <button type="button" class="btn-email-strategy" id="btn-start-email-strategy">
+            <button type="button" class="btn-email-strategy" id="btn-start-email-strategy" style="background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);">
               Start my email campaign strategy
             </button>
           </div>
@@ -430,16 +430,16 @@ function renderSvg30DayChart(timeline, activeAction) {
   const colW = Math.max(6, Math.min(12, stepX * 0.5));
 
   const colors = {
-    invitations: '#2563eb',
+    invitations: '#ff6b00',
     messages: '#00c2ff',
     visits: '#ff7675',
     follows: '#7c71f8',
   };
-  const activeColor = colors[activeAction] || '#2563eb';
+  const activeColor = colors[activeAction] || '#ff6b00';
 
   let gridSvg = `
-    <line x1="${padL}" y1="${padT}" x2="${w - padR}" y2="${padT}" stroke="#eef1fc" stroke-width="1" />
-    <line x1="${padL}" y1="${padT + chartH / 2}" x2="${w - padR}" y2="${padT + chartH / 2}" stroke="#eef1fc" stroke-width="1" />
+    <line x1="${padL}" y1="${padT}" x2="${w - padR}" y2="${padT}" stroke="#fff7ed" stroke-width="1" />
+    <line x1="${padL}" y1="${padT + chartH / 2}" x2="${w - padR}" y2="${padT + chartH / 2}" stroke="#fff7ed" stroke-width="1" />
     <line x1="${padL}" y1="${padT + chartH}" x2="${w - padR}" y2="${padT + chartH}" stroke="#e2e8f0" stroke-width="1" />
     <text x="${padL - 10}" y="${padT + 4}" fill="#94a3b8" font-size="10" text-anchor="end">${maxVal}</text>
     <text x="${padL - 10}" y="${padT + chartH / 2 + 4}" fill="#94a3b8" font-size="10" text-anchor="end">${Math.round(maxVal / 2)}</text>

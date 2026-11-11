@@ -29,13 +29,13 @@ function ensureQueueStyles() {
     .badge-quota-reached { font-size: 11px; font-weight: 700; background: #fef2f2; color: #dc2626; padding: 2px 8px; border-radius: 6px; }
     .badge-quota-active { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; background: #ecfdf5; color: #059669; padding: 2px 8px; border-radius: 6px; }
     .btn-update-activity { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 20px; padding: 8px 16px; font-size: 12px; font-weight: 700; color: #14142b; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.15s; }
-    .btn-update-activity:hover { border-color: #2563eb; color: #2563eb; background: #f8fafc; }
+    .btn-update-activity:hover { border-color: #ff6b00; color: #ff6b00; background: #f8fafc; }
     .spin-icon-update { display: flex; align-items: center; justify-content: center; }
     .spin-icon-update.is-spinning { animation: spin 0.8s linear infinite; }
     .queue-channel-tabs { display: flex; gap: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px; }
     .channel-tab { background: transparent; border: none; font-size: 13.5px; font-weight: 600; color: #64748b; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; }
-    .channel-tab.is-active { background: #eef2ff; color: #2563eb; font-weight: 700; }
-    .tab-count-pill { font-size: 11px; padding: 2px 6px; border-radius: 9999px; background: rgba(49, 90, 231, 0.1); color: #2563eb; }
+    .channel-tab.is-active { background: #fff7ed; color: #ff6b00; font-weight: 700; }
+    .tab-count-pill { font-size: 11px; padding: 2px 6px; border-radius: 9999px; background: rgba(255, 107, 0, 0.1); color: #ff6b00; }
     .queue-filters-bar { display: flex; gap: 10px; margin-bottom: 16px; }
     .filter-pill-select { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #14142b; outline: none; cursor: pointer; }
     .filter-pill-btn { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #14142b; cursor: pointer; }
@@ -50,7 +50,7 @@ function ensureQueueStyles() {
     .queue-table { width: 100%; border-collapse: collapse; }
     .queue-table th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; color: #64748b; background: #f8fafc; border-bottom: 1px solid #e2e8f0; letter-spacing: 0.5px; }
     .queue-table td { padding: 12px; font-size: 13px; color: #14142b; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
-    .queue-action-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #2563eb; background: #eef2ff; padding: 4px 10px; border-radius: 6px; }
+    .queue-action-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #ff6b00; background: #fff7ed; padding: 4px 10px; border-radius: 6px; }
     .q-icon { display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; }
     .prospect-name { font-weight: 600; color: #14142b; }
     .queue-campaign-tag { font-size: 12px; color: #64748b; background: #f1f5f9; padding: 3px 8px; border-radius: 4px; }
@@ -72,7 +72,7 @@ function ensureQueueStyles() {
     .quota-progress-card.is-warning { border-color: #fca5a5; background: #fff5f5; }
     .quota-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
     .quota-icon-wrap { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .icon-invites { background: #eef2ff; color: #2563eb; }
+    .icon-invites { background: #fff7ed; color: #ff6b00; }
     .icon-messages { background: #e0f2fe; color: #0284c7; }
     .icon-visits { background: #fff1ee; color: #ff7a59; }
     .quota-meta { flex: 1; }
@@ -81,7 +81,7 @@ function ensureQueueStyles() {
     .quota-info-icon { color: #cbd5e1; cursor: pointer; display: flex; align-items: center; }
     .quota-bar-track { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
     .quota-bar-fill { height: 100%; border-radius: 3px; }
-    .fill-invites { background: #2563eb; }
+    .fill-invites { background: #ff6b00; }
     .fill-messages { background: #0284c7; }
     .fill-visits { background: #ff7a59; }
     .quota-count-line { font-size: 11px; color: #64748b; text-align: right; }
@@ -96,7 +96,7 @@ export async function renderQueueView(container, ctx = {}) {
 
   container.innerHTML = `
     <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
-      <div style="width:34px; height:34px; border:3px solid #eef1fc; border-top-color:#2563eb; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      <div style="width:34px; height:34px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
     </div>
     <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
   `;

@@ -16,7 +16,7 @@ export async function renderInboxView(container, ctx = {}) {
 
   container.innerHTML = `
     <div class="inbox-loading-container" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:60vh; gap:14px;">
-      <div class="spinner" style="width:36px; height:36px; border:3px solid #e2e8f0; border-top-color:#2563eb; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      <div class="spinner" style="width:36px; height:36px; border:3px solid #e2e8f0; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
       <span style="font-size:14px; font-weight:600; color:#64748b;">Syncing conversations from LinkedIn...</span>
     </div>
   `;
@@ -129,7 +129,7 @@ export async function renderInboxView(container, ctx = {}) {
           <div style="padding:18px 20px 14px; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between;">
             <div style="display:flex; align-items:center; gap:8px;">
               <h2 style="font-size:18px; font-weight:800; color:#0f172a; margin:0;">Discussions</h2>
-              <span style="background:#eff6ff; color:#2563eb; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px;">${normalizedThreads.length}</span>
+              <span style="background:#fff7ed; color:#ff6b00; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px;">${normalizedThreads.length}</span>
             </div>
             <button type="button" id="btn-sync-inbox" style="background:#f8fafc; border:1px solid #e2e8f0; color:#475569; padding:5px 12px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px; transition:all 0.2s;">
               ↻ Refresh
@@ -137,19 +137,19 @@ export async function renderInboxView(container, ctx = {}) {
           </div>
 
           <!-- Blue Sync Alert Banner (matches Waalaxy) -->
-          <div style="background:#eff6ff; border-left:4px solid #3b82f6; padding:10px 14px; margin:12px 16px 6px; border-radius:6px; display:flex; align-items:flex-start; gap:8px;">
-            <span style="color:#2563eb; font-size:14px;">ℹ</span>
-            <p style="margin:0; font-size:11.5px; color:#1e40af; line-height:1.4;">
+          <div style="background:#fff7ed; border-left:4px solid #ff741f; padding:10px 14px; margin:12px 16px 6px; border-radius:6px; display:flex; align-items:flex-start; gap:8px;">
+            <span style="color:#ff6b00; font-size:14px;">ℹ</span>
+            <p style="margin:0; font-size:11.5px; color:#c2410c; line-height:1.4;">
               Syncing live conversations from your LinkedIn Primary Inbox in real time.
             </p>
           </div>
 
           <!-- Filter Tabs (All / Unread) -->
           <div style="display:flex; gap:8px; padding:10px 16px 6px;">
-            <button type="button" class="btn-inbox-tab ${activeFilter === 'all' ? 'is-active' : ''}" data-filter="all" style="flex:1; padding:7px 12px; border-radius:8px; border:none; font-size:12.5px; font-weight:700; cursor:pointer; background:${activeFilter === 'all' ? '#2563eb' : '#f1f5f9'}; color:${activeFilter === 'all' ? '#fff' : '#64748b'};">
+            <button type="button" class="btn-inbox-tab ${activeFilter === 'all' ? 'is-active' : ''}" data-filter="all" style="flex:1; padding:7px 12px; border-radius:8px; border:none; font-size:12.5px; font-weight:700; cursor:pointer; background:${activeFilter === 'all' ? '#ff6b00' : '#f1f5f9'}; color:${activeFilter === 'all' ? '#fff' : '#64748b'};">
               All (${normalizedThreads.length})
             </button>
-            <button type="button" class="btn-inbox-tab ${activeFilter === 'unread' ? 'is-active' : ''}" data-filter="unread" style="flex:1; padding:7px 12px; border-radius:8px; border:none; font-size:12.5px; font-weight:700; cursor:pointer; background:${activeFilter === 'unread' ? '#2563eb' : '#f1f5f9'}; color:${activeFilter === 'unread' ? '#fff' : '#64748b'};">
+            <button type="button" class="btn-inbox-tab ${activeFilter === 'unread' ? 'is-active' : ''}" data-filter="unread" style="flex:1; padding:7px 12px; border-radius:8px; border:none; font-size:12.5px; font-weight:700; cursor:pointer; background:${activeFilter === 'unread' ? '#ff6b00' : '#f1f5f9'}; color:${activeFilter === 'unread' ? '#fff' : '#64748b'};">
               Unread (${unreadCount})
             </button>
           </div>
@@ -177,8 +177,8 @@ export async function renderInboxView(container, ctx = {}) {
                     .map((t) => {
                       const isSelected = selectedThread && selectedThread.threadId === t.threadId;
                       return `
-                  <div class="inbox-thread-card" data-id="${t.threadId}" style="display:flex; align-items:flex-start; gap:12px; padding:12px; border-radius:10px; cursor:pointer; margin-bottom:4px; transition:all 0.15s; background:${isSelected ? '#f1f5f9' : '#fff'}; border:${isSelected ? '1.5px solid #2563eb' : '1px solid transparent'};">
-                    <div style="width:40px; height:40px; min-width:40px; border-radius:50%; background:linear-gradient(135deg, #2563eb, #7c3aed); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; box-shadow:0 2px 6px rgba(37,99,235,0.2);">
+                  <div class="inbox-thread-card" data-id="${t.threadId}" style="display:flex; align-items:flex-start; gap:12px; padding:12px; border-radius:10px; cursor:pointer; margin-bottom:4px; transition:all 0.15s; background:${isSelected ? '#f1f5f9' : '#fff'}; border:${isSelected ? '1.5px solid #ff6b00' : '1px solid transparent'};">
+                    <div style="width:40px; height:40px; min-width:40px; border-radius:50%; background:linear-gradient(135deg, #ff741f 0%, #ea580c 100%); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; box-shadow:0 2px 6px rgba(37,99,235,0.2);">
                       ${t.initials}
                     </div>
                     <div style="flex:1; min-width:0;">
@@ -190,7 +190,7 @@ export async function renderInboxView(container, ctx = {}) {
                         ${t.snippet}
                       </p>
                     </div>
-                    ${t.unread ? `<span style="width:8px; height:8px; border-radius:50%; background:#2563eb; margin-top:6px;"></span>` : ''}
+                    ${t.unread ? `<span style="width:8px; height:8px; border-radius:50%; background:#ff6b00; margin-top:6px;"></span>` : ''}
                   </div>
                 `;
                     })
@@ -205,14 +205,14 @@ export async function renderInboxView(container, ctx = {}) {
             !selectedThread
               ? `
               <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px; text-align:center;">
-                <div style="width:72px; height:72px; border-radius:50%; background:#eff6ff; display:flex; align-items:center; justify-content:center; font-size:32px; margin-bottom:16px;">
+                <div style="width:72px; height:72px; border-radius:50%; background:#fff7ed; display:flex; align-items:center; justify-content:center; font-size:32px; margin-bottom:16px;">
                   💬
                 </div>
                 <h3 style="font-size:20px; font-weight:800; color:#0f172a; margin:0 0 8px;">Create a conversation to start 💬</h3>
                 <p style="font-size:13px; color:#64748b; max-width:360px; margin:0 0 20px; line-height:1.5;">
                   Select a discussion from the left to read conversation history, view profiles, and send replies.
                 </p>
-                <button type="button" id="btn-create-first-convo" style="background:#2563eb; color:#fff; border:none; padding:10px 20px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 4px 12px rgba(37,99,235,0.25);">
+                <button type="button" id="btn-create-first-convo" style="background:#ff6b00; color:#fff; border:none; padding:10px 20px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 4px 12px rgba(37,99,235,0.25);">
                   + Select a conversation to start
                 </button>
               </div>
@@ -220,7 +220,7 @@ export async function renderInboxView(container, ctx = {}) {
               : `
               <div style="padding:16px 24px; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between; background:#fff;">
                 <div style="display:flex; align-items:center; gap:12px;">
-                  <div style="width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg, #2563eb, #7c3aed); color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700;">
+                  <div style="width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg, #ff741f 0%, #ea580c 100%); color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700;">
                     ${selectedThread.initials}
                   </div>
                   <div>
@@ -231,7 +231,7 @@ export async function renderInboxView(container, ctx = {}) {
                       </span>
                       ${
                         selectedThread.recipientPublicId
-                          ? `<a href="https://linkedin.com/in/${selectedThread.recipientPublicId}" target="_blank" rel="noopener noreferrer" style="font-size:11.5px; font-weight:600; color:#2563eb; text-decoration:none;">View LinkedIn Profile ↗</a>`
+                          ? `<a href="https://linkedin.com/in/${selectedThread.recipientPublicId}" target="_blank" rel="noopener noreferrer" style="font-size:11.5px; font-weight:600; color:#ff6b00; text-decoration:none;">View LinkedIn Profile ↗</a>`
                           : ''
                       }
                     </div>
@@ -245,7 +245,7 @@ export async function renderInboxView(container, ctx = {}) {
                   isFetchingMessages
                     ? `
                     <div style="display:flex; align-items:center; justify-content:center; height:100%; color:#94a3b8; font-size:13px; font-weight:600; gap:8px;">
-                      <div class="spinner" style="width:20px; height:20px; border:2px solid #cbd5e1; border-top-color:#2563eb; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+                      <div class="spinner" style="width:20px; height:20px; border:2px solid #cbd5e1; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
                       Loading messages...
                     </div>
                   `
@@ -262,7 +262,7 @@ export async function renderInboxView(container, ctx = {}) {
                             const isMe = m.fromMe;
                             return `
                         <div style="display:flex; flex-direction:column; align-items:${isMe ? 'flex-end' : 'flex-start'};">
-                          <div style="max-width:70%; padding:12px 16px; border-radius:${isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px'}; background:${isMe ? '#2563eb' : '#fff'}; color:${isMe ? '#fff' : '#0f172a'}; box-shadow:0 2px 8px rgba(0,0,0,0.04); border:${isMe ? 'none' : '1px solid #e2e8f0'}; font-size:13.5px; line-height:1.45; word-break:break-word;">
+                          <div style="max-width:70%; padding:12px 16px; border-radius:${isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px'}; background:${isMe ? '#ff6b00' : '#fff'}; color:${isMe ? '#fff' : '#0f172a'}; box-shadow:0 2px 8px rgba(0,0,0,0.04); border:${isMe ? 'none' : '1px solid #e2e8f0'}; font-size:13.5px; line-height:1.45; word-break:break-word;">
                             ${m.body}
                           </div>
                           <span style="font-size:10.5px; font-weight:500; color:#94a3b8; margin-top:4px; padding:0 4px;">
@@ -280,7 +280,7 @@ export async function renderInboxView(container, ctx = {}) {
                 <textarea id="inbox-reply-text" rows="2" placeholder="Write a reply to ${selectedThread.senderName}..." style="width:100%; padding:10px 14px; border:1.5px solid #cbd5e1; border-radius:10px; font-size:13px; outline:none; resize:none; font-family:inherit; box-sizing:border-box; transition:border-color 0.2s;"></textarea>
                 <div style="display:flex; align-items:center; justify-content:space-between;">
                   <span style="font-size:11px; color:#94a3b8;">Shift + Enter for new line</span>
-                  <button type="button" id="btn-send-inbox-reply" style="background:#2563eb; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; box-shadow:0 2px 8px rgba(37,99,235,0.25);">
+                  <button type="button" id="btn-send-inbox-reply" style="background:#ff6b00; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; box-shadow:0 2px 8px rgba(37,99,235,0.25);">
                     Send Reply →
                   </button>
                 </div>

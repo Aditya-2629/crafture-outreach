@@ -317,7 +317,7 @@
             <button type="button" class="outfox-dossier-close" id="btn-close-dossier">✕</button>
           </div>
           <div id="dossier-content" style="display: flex; flex-direction: column; gap: 14px; padding: 20px 0; text-align: center;">
-            <div class="outfox-loading-spin" style="width:24px; height:24px; border:2.5px solid #eef1fc; border-top-color:#2563eb; border-radius:50%; margin:0 auto; animation: spin 0.8s infinite linear;"></div>
+            <div class="outfox-loading-spin" style="width:24px; height:24px; border:2.5px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; margin:0 auto; animation: spin 0.8s infinite linear;"></div>
             <span style="font-size: 13px; color: #6e7191;">Analyzing profile with Groq/Gemini AI...</span>
           </div>
         </div>
@@ -353,7 +353,7 @@
             </div>
 
             <div class="outfox-hook-box">
-              <span class="outfox-dossier-lbl" style="color: #2563eb;">BEST ICEBREAKER HOOK</span>
+              <span class="outfox-dossier-lbl" style="color: #ff6b00;">BEST ICEBREAKER HOOK</span>
               <p class="outfox-hook-text" id="outfox-hook-copy-target">"${hook}"</p>
               <button type="button" class="outfox-btn-copy" id="btn-copy-hook">
                 Copy Hook
@@ -604,7 +604,7 @@
             <div id="container-list-name-input" style="margin-top: 4px;">
               <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
                 <label id="label-list-custom-name" style="font-size: 12px; font-weight: 600; color: #475569;">New List Name:</label>
-                <span id="hint-list-action" style="font-size: 11px; color: #2563eb; font-weight: 600;">Custom Name</span>
+                <span id="hint-list-action" style="font-size: 11px; color: #ff6b00; font-weight: 600;">Custom Name</span>
               </div>
               <input type="text" id="input-import-list-name" class="outfox-input" placeholder="e.g. Austin Software Engineers" value="${defaultNewName}" style="width: 100%; box-sizing: border-box;" />
             </div>
@@ -623,11 +623,11 @@
           <div id="outfox-import-progress-view" style="display: none; flex-direction: column; gap: 12px; padding: 6px 0;">
             <div style="display: flex; justify-content: space-between; align-items: baseline;">
               <span id="outfox-progress-status" style="font-size: 13.5px; font-weight: 600; color: #14142b;">Scraping Page 1...</span>
-              <span id="outfox-progress-counter" style="font-size: 13px; font-weight: 700; color: #2563eb;">0 / 50</span>
+              <span id="outfox-progress-counter" style="font-size: 13px; font-weight: 700; color: #ff6b00;">0 / 50</span>
             </div>
 
-            <div style="background: #eef1fc; border-radius: 9999px; height: 10px; overflow: hidden; width: 100%;">
-              <div id="outfox-progress-fill" style="background: #2563eb; height: 100%; width: 0%; border-radius: 9999px; transition: width 0.3s ease;"></div>
+            <div style="background: #fff7ed; border-radius: 9999px; height: 10px; overflow: hidden; width: 100%;">
+              <div id="outfox-progress-fill" style="background: #ff6b00; height: 100%; width: 0%; border-radius: 9999px; transition: width 0.3s ease;"></div>
             </div>
 
             <span id="outfox-progress-hint" style="font-size: 11.5px; color: #6e7191;">Simulating natural human pacing (2.5s - 3.5s delay between pages)...</span>

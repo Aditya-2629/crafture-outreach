@@ -198,20 +198,20 @@ function ensureSettingsStyles() {
     .subsidebar-menu { display: flex; flex-direction: column; gap: 6px; }
     .settings-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid transparent; background: transparent; font-size: 13px; font-weight: 600; color: #475569; cursor: pointer; transition: all 0.15s ease; text-align: left; box-sizing: border-box; }
     .settings-menu-item:hover { background: #f1f5f9; color: #14142b; }
-    .settings-menu-item.is-active { background: #ffffff; border-color: #e2e8f0; color: #2563eb; font-weight: 700; box-shadow: 0 2px 8px rgba(49, 90, 231, 0.08); }
+    .settings-menu-item.is-active { background: #ffffff; border-color: #e2e8f0; color: #ff6b00; font-weight: 700; box-shadow: 0 2px 8px rgba(255, 107, 0, 0.08); }
     .menu-icon-circle { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .icon-bg-blue { background: #2563eb; color: #ffffff; }
+    .icon-bg-blue { background: #ff6b00; color: #ffffff; }
     .icon-bg-teal { background: #00bfa5; color: #ffffff; }
     .icon-bg-purple { background: #8b5cf6; color: #ffffff; }
     .icon-bg-pink { background: #ec4899; color: #ffffff; }
-    .badge-tab-new { font-size: 10px; font-weight: 700; background: #eef2ff; color: #2563eb; padding: 2px 8px; border-radius: 9999px; margin-left: auto; }
+    .badge-tab-new { font-size: 10px; font-weight: 700; background: #fff7ed; color: #ff6b00; padding: 2px 8px; border-radius: 9999px; margin-left: auto; }
     .settings-main-canvas { flex: 1; padding: 32px 40px; overflow-y: auto; box-sizing: border-box; }
     
     .activity-head-row { margin-bottom: 28px; }
     .activity-title-group { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
     .activity-main-title { font-size: 22px; font-weight: 800; color: #14142b; margin: 0; }
     .activity-sub-text { font-size: 13px; color: #64748b; margin: 6px 0 0 0; }
-    .tz-live-clock-badge { display: inline-flex; align-items: center; gap: 6px; background: #eef2ff; color: #2563eb; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; border: 1px solid rgba(49,90,231,0.15); }
+    .tz-live-clock-badge { display: inline-flex; align-items: center; gap: 6px; background: #fff7ed; color: #ff6b00; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; border: 1px solid rgba(49,90,231,0.15); }
     .live-activity-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 9999px; font-size: 11.5px; font-weight: 700; }
     .live-activity-pill.is-running { background: #ecfdf5; color: #059669; }
     .live-activity-pill.is-paused { background: #fef2f2; color: #dc2626; }
@@ -229,7 +229,7 @@ function ensureSettingsStyles() {
     .ios-switch input { opacity: 0; width: 0; height: 0; }
     .ios-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: 0.2s; border-radius: 24px; }
     .ios-slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: 0.2s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-    .ios-switch input:checked + .ios-slider { background-color: #2563eb; }
+    .ios-switch input:checked + .ios-slider { background-color: #ff6b00; }
     .ios-switch input:checked + .ios-slider:before { transform: translateX(20px); }
     
     .days-toggle-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
@@ -238,12 +238,12 @@ function ensureSettingsStyles() {
     .day-toggle-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
     .day-card-name { font-size: 11px; font-weight: 700; color: #475569; letter-spacing: 0.5px; }
     
-    .slider-labels-top { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; color: #2563eb; margin-bottom: 12px; }
+    .slider-labels-top { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; color: #ff6b00; margin-bottom: 12px; }
     .dual-range-track-wrap { position: relative; height: 24px; margin: 12px 0; }
     .dual-range-track { position: absolute; top: 8px; left: 0; right: 0; height: 8px; background: #e2e8f0; border-radius: 4px; }
-    .dual-range-fill { position: absolute; height: 100%; background: #2563eb; border-radius: 4px; }
+    .dual-range-fill { position: absolute; height: 100%; background: #ff6b00; border-radius: 4px; }
     .range-slider-input { position: absolute; top: 0; left: 0; width: 100%; height: 24px; pointer-events: none; -webkit-appearance: none; background: transparent; margin: 0; }
-    .range-slider-input::-webkit-slider-thumb { pointer-events: all; width: 22px; height: 22px; border-radius: 50%; background: #ffffff; border: 2.5px solid #2563eb; box-shadow: 0 2px 6px rgba(0,0,0,0.2); cursor: pointer; -webkit-appearance: none; }
+    .range-slider-input::-webkit-slider-thumb { pointer-events: all; width: 22px; height: 22px; border-radius: 50%; background: #ffffff; border: 2.5px solid #ff6b00; box-shadow: 0 2px 6px rgba(0,0,0,0.2); cursor: pointer; -webkit-appearance: none; }
     .slider-labels-bottom { display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; font-weight: 600; margin-top: 6px; }
     
     .quotas-section-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
@@ -258,7 +258,7 @@ function ensureSettingsStyles() {
     @media (max-width: 550px) { .quota-cards-row { grid-template-columns: 1fr; } }
     .quota-input-card, .quota-edit-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 14px; min-width: 0; display: flex; align-items: center; gap: 12px; }
     .q-card-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .icon-circle-blue { background: #eef2ff; color: #2563eb; }
+    .icon-circle-blue { background: #fff7ed; color: #ff6b00; }
     .icon-circle-coral { background: #fff1ee; color: #ff7a59; }
     .icon-circle-purple { background: #f5f3ff; color: #8b5cf6; }
     .q-card-content { flex: 1; min-width: 0; }
@@ -268,8 +268,8 @@ function ensureSettingsStyles() {
     .quota-max-label, .q-input-total { font-size: 13px; font-weight: 700; color: #94a3b8; white-space: nowrap; }
     
     .settings-save-bar { margin-top: 24px; display: flex; justify-content: flex-end; }
-    .btn-primary-settings { background: #2563eb; color: #ffffff; border: none; border-radius: 10px; padding: 10px 24px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(49, 90, 231, 0.25); transition: background 0.15s; }
-    .btn-primary-settings:hover { background: #1d4ed8; }
+    .btn-primary-settings { background: #ff6b00; color: #ffffff; border: none; border-radius: 10px; padding: 10px 24px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25); transition: background 0.15s; }
+    .btn-primary-settings:hover { background: #e05a00; }
 
     .waalaxy-white-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
     .card-header-with-icon { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
@@ -286,7 +286,7 @@ function ensureSettingsStyles() {
     .badge-status-running { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; background: #ecfdf5; color: #059669; }
     .btn-disconnect-acc { background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
     .btn-disconnect-acc:hover { color: #ef4444; background: #fee2e2; }
-    .btn-link-add-email { background: transparent; border: none; color: #2563eb; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 0; }
+    .btn-link-add-email { background: transparent; border: none; color: #ff6b00; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 0; }
     .btn-link-add-email:hover { text-decoration: underline; }
 
     .signatures-split-view { display: grid; grid-template-columns: 260px 1fr; gap: 24px; margin-top: 10px; }
@@ -294,10 +294,10 @@ function ensureSettingsStyles() {
     .sig-pane-label { font-size: 12px; font-weight: 600; color: #64748b; }
     .waalaxy-select-small { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #14142b; outline: none; cursor: pointer; }
     .sig-list-header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: #14142b; margin-top: 8px; }
-    .btn-sig-link { background: transparent; border: none; color: #2563eb; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .btn-sig-link { background: transparent; border: none; color: #ff6b00; font-size: 12px; font-weight: 700; cursor: pointer; }
     .sig-nav-list { display: flex; flex-direction: column; gap: 6px; }
     .sig-nav-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; cursor: pointer; transition: all 0.12s; }
-    .sig-nav-item:hover, .sig-nav-item.is-active { background: #eef2ff; border-color: #2563eb; color: #2563eb; font-weight: 600; }
+    .sig-nav-item:hover, .sig-nav-item.is-active { background: #fff7ed; border-color: #ff6b00; color: #ff6b00; font-weight: 600; }
     .btn-del-sig { background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 12px; }
     .btn-del-sig:hover { color: #ef4444; }
     .empty-sig-txt { font-size: 12px; color: #94a3b8; font-style: italic; }
@@ -306,8 +306,8 @@ function ensureSettingsStyles() {
     .sig-empty-canvas { display: flex; flex-direction: column; align-items: center; text-align: center; }
     .sig-empty-title { font-size: 16px; font-weight: 800; color: #14142b; margin: 0 0 6px 0; }
     .sig-empty-sub { font-size: 13px; color: #64748b; max-width: 320px; line-height: 1.5; margin: 0 0 18px 0; }
-    .btn-create-sig-blue { background: #2563eb; color: #ffffff; border: none; padding: 10px 24px; border-radius: 20px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(49, 90, 231, 0.25); transition: background 0.15s; }
-    .btn-create-sig-blue:hover { background: #1d4ed8; }
+    .btn-create-sig-blue { background: #ff6b00; color: #ffffff; border: none; padding: 10px 24px; border-radius: 20px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(255, 107, 0, 0.25); transition: background 0.15s; }
+    .btn-create-sig-blue:hover { background: #e05a00; }
     .sig-editor-box { width: 100%; display: flex; flex-direction: column; gap: 8px; }
     .input-text-sig { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: #ffffff; }
     .sig-textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; font-family: inherit; resize: vertical; background: #ffffff; }
@@ -317,16 +317,16 @@ function ensureSettingsStyles() {
     .integrations-cards-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
     @media (max-width: 800px) { .integrations-cards-grid { grid-template-columns: 1fr; } }
     .integration-item-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 2px 6px rgba(0,0,0,0.02); transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); position: relative; }
-    .integration-item-card:hover { border-color: #c7d2fe; box-shadow: 0 8px 24px rgba(49, 90, 231, 0.08); transform: translateY(-1px); }
+    .integration-item-card:hover { border-color: #c7d2fe; box-shadow: 0 8px 24px rgba(255, 107, 0, 0.08); transform: translateY(-1px); }
     .int-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .int-card-head-left { display: flex; align-items: center; gap: 12px; }
     .int-logo-ico { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; flex-shrink: 0; }
     .int-card-title { font-size: 15px; font-weight: 700; color: #14142b; margin: 0; }
     .int-card-desc { font-size: 12.5px; color: #64748b; line-height: 1.5; margin: 12px 0 20px 0; min-height: 48px; }
-    .btn-int-action { background: #ffffff; border: 1.5px solid #2563eb; color: #2563eb; border-radius: 20px; padding: 8px 18px; font-size: 12.5px; font-weight: 600; cursor: pointer; align-self: flex-start; transition: all 0.15s ease; }
-    .btn-int-action:hover { background: #eef2ff; }
-    .btn-int-active { background: #2563eb; color: #ffffff; border: none; box-shadow: 0 4px 12px rgba(49, 90, 231, 0.25); }
-    .btn-int-active:hover { background: #1d4ed8; }
+    .btn-int-action { background: #ffffff; border: 1.5px solid #ff6b00; color: #ff6b00; border-radius: 20px; padding: 8px 18px; font-size: 12.5px; font-weight: 600; cursor: pointer; align-self: flex-start; transition: all 0.15s ease; }
+    .btn-int-action:hover { background: #fff7ed; }
+    .btn-int-active { background: #ff6b00; color: #ffffff; border: none; box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25); }
+    .btn-int-active:hover { background: #e05a00; }
 
     .history-table-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
     .import-history-table { width: 100%; border-collapse: collapse; }
@@ -338,7 +338,7 @@ function ensureSettingsStyles() {
     .empty-history-cell { text-align: center; padding: 36px; color: #94a3b8; font-size: 13px; }
 
     .btn-connect-provider { width: 100%; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 14px 20px; display: flex; align-items: center; justify-content: center; gap: 12px; cursor: pointer; transition: all 0.15s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
-    .btn-connect-provider:hover { border-color: #2563eb; background: #f8fafc; box-shadow: 0 4px 12px rgba(49, 90, 231, 0.1); transform: translateY(-1px); }
+    .btn-connect-provider:hover { border-color: #ff6b00; background: #f8fafc; box-shadow: 0 4px 12px rgba(255, 107, 0, 0.1); transform: translateY(-1px); }
   `;
 }
 
@@ -356,7 +356,7 @@ export async function renderSettingsView(container, ctx = {}) {
 
   container.innerHTML = `
     <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
-      <div style="width:34px; height:34px; border:3px solid #eef1fc; border-top-color:#2563eb; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      <div style="width:34px; height:34px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
     </div>
     <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
   `;
@@ -806,7 +806,7 @@ export async function renderSettingsView(container, ctx = {}) {
                 <div class="integration-item-card">
                   <div class="int-card-head">
                     <div class="int-card-head-left">
-                      <span class="int-logo-ico" style="background:#2563eb; color:#fff;">${ICONS.sparkles}</span>
+                      <span class="int-logo-ico" style="background:#ff6b00; color:#fff;">${ICONS.sparkles}</span>
                       <h3 class="int-card-title">IA Connector (MCP)</h3>
                     </div>
                     <span class="badge-status-running"><span class="live-dot-circle"></span> SSE Ready</span>
@@ -1226,7 +1226,7 @@ export function openAiEngineRouterModal({ aiModels = [], onSave }) {
             return `
               <div class="ai-model-card" data-idx="${idx}" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px; display:flex; align-items:center; justify-content:space-between; gap:14px; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
                 <div style="display:flex; align-items:center; gap:12px; min-width:0;">
-                  <span style="font-size:11px; font-weight:800; padding:4px 10px; border-radius:6px; flex-shrink:0; background:${idx === 0 ? '#eef2ff' : '#f1f5f9'}; color:${idx === 0 ? '#2563eb' : '#64748b'};">${priorityBadge}</span>
+                  <span style="font-size:11px; font-weight:800; padding:4px 10px; border-radius:6px; flex-shrink:0; background:${idx === 0 ? '#fff7ed' : '#f1f5f9'}; color:${idx === 0 ? '#ff6b00' : '#64748b'};">${priorityBadge}</span>
                   <div style="min-width:0;">
                     <div style="display:flex; align-items:center; gap:8px;">
                       <strong style="font-size:14px; color:#14142b; text-transform:capitalize;">${m.provider}</strong>
@@ -1271,7 +1271,7 @@ export function openAiEngineRouterModal({ aiModels = [], onSave }) {
               <input type="password" id="new-ai-api-key" placeholder="gsk_..." style="width:100%; box-sizing:border-box; padding:8px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:12.5px; outline:none;" />
             </div>
             <div>
-              <button type="button" id="btn-add-ai-model" style="padding:9px 18px; background:#2563eb; color:#fff; border:none; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; white-space:nowrap;">
+              <button type="button" id="btn-add-ai-model" style="padding:9px 18px; background:#ff6b00; color:#fff; border:none; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; white-space:nowrap;">
                 + Add
               </button>
             </div>

@@ -583,7 +583,7 @@ export function openMcpGuideModal() {
     <div class="modal-dialog glass-card guide-dialog" style="max-width: 640px;">
       <div class="modal-head">
         <div class="guide-head-group">
-          <span class="guide-logo-icon" style="background:#2563eb; color:#fff;">${ICONS.terminal}</span>
+          <span class="guide-logo-icon" style="background:#ff6b00; color:#fff;">${ICONS.terminal}</span>
           <h3 class="modal-title">OutFox MCP Server — Local IDE Agent Setup</h3>
         </div>
         <button type="button" class="btn-close-modal" id="btn-close-mcp-guide">✕</button>

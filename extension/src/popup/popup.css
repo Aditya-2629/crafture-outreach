@@ -1,6 +1,6 @@
 /**
  * OutFox — Authentic Waalaxy Quick Controller Popup Stylesheet
- * 340px Light Theme (#f8fafc / #FFFFFF / #2563eb)
+ * 340px Light Theme (#f8fafc / #FFFFFF / #ff6b00)
  */
 
 * {
@@ -57,7 +57,7 @@ body.popup-controller-body {
 }
 
 .brand-title span {
-  color: var(--primary, #2563eb);
+  color: var(--primary, #ff6b00);
 }
 
 .status-badge {
@@ -91,7 +91,7 @@ body.popup-controller-body {
   background: var(--surface, #FFFFFF);
   border: 1px solid rgba(20, 20, 43, 0.06);
   border-radius: var(--radius-card, 14px);
-  box-shadow: 0px 8px 20px rgba(37, 79, 229, 0.06);
+  box-shadow: 0px 8px 20px rgba(255, 107, 0, 0.06);
 }
 
 .meter-radial {
@@ -111,13 +111,13 @@ body.popup-controller-body {
 
 .radial-track {
   fill: none;
-  stroke: var(--primary-soft, #eef1fc);
+  stroke: var(--primary-soft, #fff7ed);
   stroke-width: 10;
 }
 
 .radial-progress {
   fill: none;
-  stroke: var(--primary, #2563eb);
+  stroke: var(--primary, #ff6b00);
   stroke-width: 10;
   stroke-linecap: round;
   stroke-dasharray: 390;
@@ -163,7 +163,7 @@ body.popup-controller-body {
   background: var(--surface, #FFFFFF);
   border: 1px solid rgba(20, 20, 43, 0.06);
   border-radius: var(--radius-card, 14px);
-  box-shadow: 0px 4px 12px rgba(37, 79, 229, 0.04);
+  box-shadow: 0px 4px 12px rgba(255, 107, 0, 0.04);
 }
 
 .quick-stat {
@@ -196,13 +196,13 @@ body.popup-controller-body {
   width: 100%;
   padding: 12px 18px;
   border-radius: var(--radius-pill, 9999px);
-  background: var(--primary, #2563eb);
+  background: var(--primary, #ff6b00);
   color: #FFFFFF;
   font-size: 13px;
   font-weight: 600;
   border: none;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(49, 90, 231, 0.28);
+  box-shadow: 0 4px 14px rgba(255, 107, 0, 0.28);
   transition: var(--transition, all 0.2s ease);
   display: flex;
   align-items: center;
@@ -213,8 +213,8 @@ body.popup-controller-body {
 
 .btn-launch-full:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(49, 90, 231, 0.38);
-  background: var(--primary-hover, #1d4ed8);
+  box-shadow: 0 6px 18px rgba(255, 107, 0, 0.38);
+  background: var(--primary-hover, #e05a00);
 }
 
 /* Footer */

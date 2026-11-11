@@ -17,7 +17,7 @@ export async function renderProspectsView(container, ctx = {}) {
   // Show clean loading spinner while reading local storage
   container.innerHTML = `
     <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
-      <div style="width:32px; height:32px; border:3px solid #eef1fc; border-top-color:#2563eb; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      <div style="width:32px; height:32px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
     </div>
     <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
   `;
@@ -259,7 +259,7 @@ export async function renderProspectsView(container, ctx = {}) {
       return `<span class="prospect-pill" title="Must accept connection request before messaging" style="background:#fff1ee; color:#ea580c; font-weight:600; padding:4px 10px; border-radius:9999px; font-size:11px; cursor:help;">${ICONS.ban} Needs Connection</span>`;
     }
     if (status === 'Invite Sent') {
-      return `<span class="prospect-pill" style="background:#eef1fc; color:#2563eb; font-weight:600; padding:4px 10px; border-radius:9999px; font-size:11px;">${ICONS.invitation} Invite Sent</span>`;
+      return `<span class="prospect-pill" style="background:#fff7ed; color:#ff6b00; font-weight:600; padding:4px 10px; border-radius:9999px; font-size:11px;">${ICONS.invitation} Invite Sent</span>`;
     }
     if (status === 'Visited') {
       return `<span class="prospect-pill" style="background:#f4f6fc; color:#6e7191; font-weight:600; padding:4px 10px; border-radius:9999px; font-size:11px;">${ICONS.visit} Visited</span>`;
@@ -308,7 +308,7 @@ export async function renderProspectsView(container, ctx = {}) {
         <aside class="lists-sidebar-card" style="width:230px; background:#FFFFFF; border:1px solid rgba(20,20,43,0.08); border-radius:14px; padding:16px; box-shadow:0 10px 25px rgba(37,79,229,0.04); display:flex; flex-direction:column; gap:8px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <h4 style="margin:0; font-size:12px; text-transform:uppercase; color:#a0a3bd; letter-spacing:0.5px; font-weight:700;">Lists</h4>
-            <button type="button" id="btn-add-new-list" style="border:none; background:transparent; color:#2563eb; font-weight:700; font-size:18px; cursor:pointer;" title="Create New List">+</button>
+            <button type="button" id="btn-add-new-list" style="border:none; background:transparent; color:#ff6b00; font-weight:700; font-size:18px; cursor:pointer;" title="Create New List">+</button>
           </div>
 
           <div class="list-nav-scroll" style="display:flex; flex-direction:column; gap:4px; flex:1;">
@@ -357,7 +357,7 @@ export async function renderProspectsView(container, ctx = {}) {
               <button type="button" id="btn-deselect-all" class="bulk-deselect-btn" title="Deselect all">
                 ${ICONS.x} <span id="bulk-selected-count">${selectedIds.size} selected</span>
               </button>
-              <button type="button" id="bulk-btn-start-campaign" class="btn btn-sm" style="background:#2563eb; color:#FFF; font-weight:700; border-radius:9999px; padding:8px 16px; border:none; cursor:pointer;">
+              <button type="button" id="bulk-btn-start-campaign" class="btn btn-sm" style="background:#ff6b00; color:#FFF; font-weight:700; border-radius:9999px; padding:8px 16px; border:none; cursor:pointer;">
                 ${ICONS.rocket} Start a campaign
               </button>
               <button type="button" id="bulk-btn-add-campaign" class="btn-bulk-action">
@@ -389,13 +389,13 @@ export async function renderProspectsView(container, ctx = {}) {
           <div class="list-header-row" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
             <div style="display:flex; align-items:center; gap:12px;">
               ${isEditingTitle ? `
-                <input type="text" id="input-rename-list" value="${activeTitle}" style="font-size:20px; font-weight:700; color:#14142b; padding:4px 10px; border:2px solid #2563eb; border-radius:8px; outline:none;" />
+                <input type="text" id="input-rename-list" value="${activeTitle}" style="font-size:20px; font-weight:700; color:#14142b; padding:4px 10px; border:2px solid #ff6b00; border-radius:8px; outline:none;" />
                 <button type="button" id="btn-save-rename" class="btn-pill btn-primary btn-sm" style="padding:6px 14px; font-size:12px;">Save</button>
                 <button type="button" id="btn-cancel-rename" class="btn-pill btn-soft btn-sm" style="padding:6px 14px; font-size:12px;">Cancel</button>
               ` : `
                 <h2 style="margin:0; font-size:22px; font-weight:700; color:#14142b;">${activeTitle}</h2>
                 ${currentList ? `<button type="button" id="btn-edit-title" style="border:none; background:transparent; cursor:pointer; color:#a0a3bd; font-size:16px;" title="Rename list">${ICONS.edit}</button>` : ''}
-                <span style="background:#eef1fc; color:#2563eb; font-weight:700; font-size:12px; padding:3px 10px; border-radius:9999px;">${filtered.length} prospects</span>
+                <span style="background:#fff7ed; color:#ff6b00; font-weight:700; font-size:12px; padding:3px 10px; border-radius:9999px;">${filtered.length} prospects</span>
               `}
             </div>
 
@@ -462,9 +462,9 @@ export async function renderProspectsView(container, ctx = {}) {
           <div style="background:#FFFFFF; border:1px solid rgba(20,20,43,0.08); border-radius:14px; box-shadow:0 10px 25px rgba(37,79,229,0.04); overflow:hidden;">
             ${filtered.length === 0 ? `
               <div style="padding:60px 20px; text-align:center; color:#6e7191;">
-                <span style="display:flex; justify-content:center; margin-bottom:12px; color:#2563eb;">${ICONS.alien}</span>
-                <h3 style="margin:0 0 6px 0; color:#14142b; font-size:16px; font-weight:700;">No signs of life detected</h3>
-                <p style="margin:0; font-size:13px; color:#a0a3bd;">Your mission: Import prospects from LinkedIn search or a CSV.</p>
+                <img src="../../icons/icon48.png" width="52" height="52" alt="OutFox" style="border-radius: 14px; margin: 0 auto 14px; display: block; box-shadow: 0 6px 20px rgba(255, 107, 0, 0.22);" />
+                <h3 style="margin: 0 0 6px 0; color: #14142b; font-size: 16px; font-weight: 700;">No prospects found in this list</h3>
+                <p style="margin: 0; font-size: 13px; color: #a0a3bd;">Import prospects from LinkedIn search or upload a CSV to start your sequence.</p>
                 <button type="button" class="btn-import-prospects" id="btn-empty-import" style="margin:18px auto 0; font-size:12px; padding:8px 18px;">
                   ${ICONS.download} Import prospects
                 </button>
@@ -493,12 +493,12 @@ export async function renderProspectsView(container, ctx = {}) {
                       </td>
                       <td style="padding:12px 16px; vertical-align:middle;">
                         <div style="display:flex; align-items:center; gap:10px;">
-                          <div style="width:32px; height:32px; border-radius:50%; background:#eef1fc; color:#2563eb; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:12px;">
+                          <div style="width:32px; height:32px; border-radius:50%; background:#fff7ed; color:#ff6b00; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:12px;">
                             ${(p.fullName[0] || 'L').toUpperCase()}
                           </div>
                           <div>
                             <span style="font-weight:600; color:#14142b; display:block;">${p.fullName}</span>
-                            <a href="${p.profileUrl}" target="_blank" style="font-size:11px; color:#2563eb; text-decoration:none;">Profile ↗</a>
+                            <a href="${p.profileUrl}" target="_blank" style="font-size:11px; color:#ff6b00; text-decoration:none;">Profile ↗</a>
                           </div>
                         </div>
                       </td>
@@ -1174,7 +1174,7 @@ function mountWaalaxyImportDrawer(container, onImportSuccess, ctx = {}) {
                   <strong style="color:#14142b; font-size:14px; display:block; margin-bottom:4px;">Move duplicates to import list</strong>
                   <span style="font-size:12px; color:#6e7191; line-height:1.4; display:block;">Enable this option to automatically move leads that are already in one of your lists, to the list you are importing into.</span>
                 </div>
-                <input type="checkbox" id="toggle-opt-duplicates" ${moveDuplicates ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer; accent-color:#2563eb;" />
+                <input type="checkbox" id="toggle-opt-duplicates" ${moveDuplicates ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer; accent-color:#ff6b00;" />
               </div>
 
               <!-- Toggle 2: Clean Import -->
@@ -1183,7 +1183,7 @@ function mountWaalaxyImportDrawer(container, onImportSuccess, ctx = {}) {
                   <strong style="color:#14142b; font-size:14px; display:block; margin-bottom:4px;">Clean my import</strong>
                   <span style="font-size:12px; color:#6e7191; line-height:1.4; display:block;">Activate this option to remove "false positive" prospects from your last import.</span>
                 </div>
-                <input type="checkbox" id="toggle-opt-clean" ${cleanImport ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer; accent-color:#2563eb;" />
+                <input type="checkbox" id="toggle-opt-clean" ${cleanImport ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer; accent-color:#ff6b00;" />
               </div>
             </div>
           ` : drawerState === 'form' && config ? `
@@ -1230,7 +1230,7 @@ function mountWaalaxyImportDrawer(container, onImportSuccess, ctx = {}) {
 
               <!-- Action Buttons -->
               <div style="margin-top:auto; display:flex; flex-direction:column; gap:12px; padding-top:20px;">
-                <button type="button" id="btn-execute-import" class="btn btn-primary" style="width:100%; padding:12px; font-size:14px; font-weight:700; border-radius:9999px; background:#2563eb; color:#FFF; border:none; cursor:pointer;">
+                <button type="button" id="btn-execute-import" class="btn btn-primary" style="width:100%; padding:12px; font-size:14px; font-weight:700; border-radius:9999px; background:#ff6b00; color:#FFF; border:none; cursor:pointer;">
                   Import
                 </button>
                 <button type="button" id="btn-cancel-form" style="background:transparent; border:none; color:#6e7191; font-weight:600; font-size:13px; cursor:pointer; text-align:center;">

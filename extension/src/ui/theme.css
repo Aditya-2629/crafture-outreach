@@ -3,11 +3,13 @@
  */
 
 :root {
-  /* OutFox Brand Core Tokens */
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --primary-soft: #eff6ff;
-  --primary-glow: rgba(37, 99, 235, 0.15);
+  /* OutFox Fox Orange Brand Core Tokens */
+  --primary: #ff6b00;
+  --primary-hover: #e05a00;
+  --primary-soft: #fff7ed;
+  --primary-border-soft: #ffedd5;
+  --primary-glow: rgba(255, 107, 0, 0.22);
+  --primary-gradient: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);
 
   --bg-page: #f8fafc;
   --surface: #ffffff;
@@ -20,7 +22,7 @@
 
   --border: #e2e8f0;
   --border-subtle: #f1f5f9;
-  --border-focus: #2563eb;
+  --border-focus: #ff6b00;
 
   --success: #10b981;
   --success-soft: #ecfdf5;

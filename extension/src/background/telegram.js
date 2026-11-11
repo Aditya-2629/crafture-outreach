@@ -1,10 +1,11 @@
 /**
  * OutFox — Telegram Autonomous AI SDR Engine.
  * Features:
+ * - Bulletproof Markdown Entity Delivery & Plain Text Fallback
+ * - Conversational Sequence Step Editing (Step 2 Invite, Step 3 Follow-up, Name)
  * - Dynamic Live Workspace Context Injection (lists, campaigns, candidates, quotas)
  * - Autonomous Sequence Blueprint Architect & Visual Pre-Flight Approval Cards
  * - Fuzzy Disambiguation ("Did You Mean?")
- * - Natural Language Blueprint Editing (e.g. "Change note to: ...")
  * - Full Lifecycle Push Alerts (CAMPAIGN_COMPLETED, QUOTA_HIT, CHALLENGE_DETECTED, INBOUND REPLIES)
  * - Multi-Candidate Persona Switcher & Apollo/Hunter Waterfall Enrichment
  * - Groq Whisper Voice Transcriber & 1-Tap Booking Closer
@@ -72,14 +73,33 @@ async function callTelegramApi(token, method, payload = {}) {
   return data.result;
 }
 
+// 🛡️ Bulletproof Telegram Message Dispatcher with Entity Error Fallback
 export async function sendTelegramMessage(token, chatId, text, options = {}) {
-  return callTelegramApi(token, 'sendMessage', {
-    chat_id: chatId,
-    text,
-    parse_mode: 'Markdown',
-    disable_web_page_preview: true,
-    ...options,
-  });
+  try {
+    return await callTelegramApi(token, 'sendMessage', {
+      chat_id: chatId,
+      text,
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true,
+      ...options,
+    });
+  } catch (err) {
+    if (
+      err.message &&
+      (err.message.includes("can't parse entities") ||
+        err.message.includes('entity') ||
+        err.message.includes('parsing'))
+    ) {
+      console.warn('[Telegram] Markdown parse failed, falling back to plain text:', err.message);
+      return await callTelegramApi(token, 'sendMessage', {
+        chat_id: chatId,
+        text: text.replace(/[*_`\[\]]/g, ''),
+        disable_web_page_preview: true,
+        ...options,
+      });
+    }
+    throw err;
+  }
 }
 
 export async function answerCallbackQuery(token, callbackQueryId, text = '') {
@@ -152,6 +172,63 @@ export function findBestMatchingList(allLists, inputName) {
   return null;
 }
 
+// 💬 Multi-Line Natural Language Blueprint Editing Parser
+function parseBlueprintEditCommand(text) {
+  const clean = String(text || '').trim();
+  const lower = clean.toLowerCase();
+
+  const isEdit =
+    lower.includes('change') ||
+    lower.includes('update') ||
+    lower.includes('edit') ||
+    lower.includes('set note') ||
+    lower.includes('set pitch') ||
+    lower.includes('set followup') ||
+    lower.includes('set message');
+
+  if (!isEdit) return null;
+
+  let targetStep = 'invite';
+  if (
+    lower.includes('step 3') ||
+    lower.includes('3 step') ||
+    lower.includes('step3') ||
+    lower.includes('follow up') ||
+    lower.includes('followup') ||
+    lower.includes('message')
+  ) {
+    targetStep = 'followup';
+  } else if (
+    lower.includes('step 1') ||
+    lower.includes('1 step') ||
+    lower.includes('view')
+  ) {
+    targetStep = 'view';
+  } else if (lower.includes('name') || lower.includes('title')) {
+    targetStep = 'name';
+  }
+
+  // Extract content across multiple lines or after prefix
+  const lines = clean.split('\n');
+  let extractedContent = '';
+  if (lines.length > 1 && /(change|update|edit|want to|set)/i.test(lines[0])) {
+    extractedContent = lines.slice(1).join('\n').trim();
+  } else {
+    extractedContent = clean
+      .replace(
+        /^(i\s+want\s+to\s+)?(change|update|edit|set)\s+(the\s+)?(3\s*step|step\s*3|2\s*step|step\s*2|follow\s*up|followup|invite|note|pitch|message|name)?\s*(to\s+this|to\s*:?|:)?\s*/i,
+        ''
+      )
+      .trim();
+  }
+
+  // Normalize {{full_name}} to {{firstName}} for personal LinkedIn outreach
+  extractedContent = extractedContent.replace(/\{\{\s*full_name\s*\}\}/gi, '{{firstName}}');
+
+  if (!extractedContent) return null;
+  return { targetStep, newContent: extractedContent };
+}
+
 export async function testTelegram({ botToken, chatId }) {
   if (!botToken || !chatId) {
     throw new EngineError(ERROR.INVALID_PARAMS, 'Both Bot Token and Chat ID are required.');
@@ -169,6 +246,7 @@ export async function testTelegram({ botToken, chatId }) {
     `Latency: *${Date.now() - start}ms*\n\n` +
     `🎯 *Active Superpowers:*\n` +
     `• 📋 *Blueprint Architect:* Pre-flight sequence approval cards\n` +
+    `• ✏️ *Conversational Editor:* Edit note or follow-up anytime\n` +
     `• 🔄 *Candidate Switcher:* \`/switch <name>\` or \`/candidates\`\n` +
     `• 📧 *Apollo & Hunter Enrichment:* \`/enrich <publicId>\`\n` +
     `• 🔥 *Real-Time Alerts:* Inbound replies & acceptances\n` +
@@ -297,6 +375,25 @@ const AI_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'edit_campaign_blueprint',
+      description: 'Update or modify the pending outreach campaign blueprint before launch (e.g. change invite note, change step 3 follow-up message, or campaign name).',
+      parameters: {
+        type: 'object',
+        properties: {
+          stepToEdit: {
+            type: 'string',
+            enum: ['invite', 'followup', 'name'],
+            description: "Which step to edit: 'invite' (step 2 note), 'followup' (step 3 message), or 'name'.",
+          },
+          newText: { type: 'string', description: 'The updated text provided by the user.' },
+        },
+        required: ['stepToEdit', 'newText'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'create_outreach_campaign',
       description: 'Launch a multi-step outreach sequence campaign attached to a prospect list.',
       parameters: {
@@ -389,39 +486,49 @@ const AI_TOOLS = [
   },
 ];
 
-// 📋 Visual Blueprint Pre-Flight Approval Card
-async function presentCampaignBlueprint(botToken, chatId, blueprint) {
-  const inviteStep = blueprint.steps.find((s) => s.type === 'invite');
-  const msgStep = blueprint.steps.find((s) => s.type === 'message');
-  const viewStep = blueprint.steps.find((s) => s.type === 'view');
+// 📋 Visual Blueprint Pre-Flight Approval Card (Handles escaping & custom headers safely)
+async function presentCampaignBlueprint(botToken, chatId, blueprintOrId, maybeBp, maybeNotice) {
+  let blueprint = blueprintOrId;
+  let notice = '';
+
+  if (typeof blueprintOrId === 'string' && typeof maybeBp === 'object' && maybeBp !== null) {
+    blueprint = maybeBp;
+    blueprint.blueprintId = blueprint.blueprintId || blueprintOrId;
+    notice = typeof maybeNotice === 'string' ? maybeNotice : '';
+  } else if (typeof maybeBp === 'string') {
+    notice = maybeBp;
+  }
+
+  const bpId = blueprint.blueprintId || (typeof blueprintOrId === 'string' ? blueprintOrId : '');
 
   let seqText = '';
-  let stepNum = 1;
-  if (viewStep) {
-    seqText += `${stepNum++}. [VIEW] Soft-touch profile view\n`;
-  }
-  if (inviteStep) {
-    seqText += `${stepNum++}. [INVITE] Note: "${inviteStep.note || ''}"\n`;
-  }
-  if (msgStep) {
-    seqText += `${stepNum++}. [MESSAGE] Follow-Up: "${msgStep.body || ''}" (1 day delay)\n`;
-  }
+  (blueprint.steps || []).forEach((s, idx) => {
+    seqText += `*${idx + 1}. [${s.type.toUpperCase()}]* — ${s.desc || s.type}\n`;
+    if (s.note) seqText += `   📝 Note: _"${String(s.note).replace(/_/g, '\\_')}"_\n`;
+    if (s.body) seqText += `   💬 Message: _"${String(s.body).replace(/_/g, '\\_')}"_\n`;
+  });
+
+  const campNameEscaped = String(blueprint.campaignName || blueprint.name || 'Outreach Campaign').replace(/_/g, '\\_');
+  const listNameEscaped = String(blueprint.listName || 'Leads').replace(/_/g, '\\_');
+  const candNameEscaped = String(blueprint.candidate?.name || 'Default').replace(/_/g, '\\_');
+  const modeLabel = blueprint.candidate?.mode === 'reverse_recruiting' ? 'Reverse Recruiting' : 'Agency Sourcing';
 
   const card =
+    (notice ? `${notice}\n\n` : '') +
     `📋 *CAMPAIGN BLUEPRINT PRE-FLIGHT APPROVAL*\n\n` +
-    `🎯 *Campaign Name:* *${blueprint.campaignName}*\n` +
-    `📁 *Target Lead List:* *${blueprint.listName}* (${blueprint.leadCount} leads)\n` +
-    `👤 *Persona Context:* *${blueprint.candidate?.name || 'Default'}* (${blueprint.candidate?.mode === 'reverse_recruiting' ? 'Reverse Recruiting' : 'Agency Sourcing'})\n\n` +
-    `⚡ *Architected Sequence (${blueprint.steps.length} Steps):*\n` +
+    `🎯 *Campaign Name:* *${campNameEscaped}*\n` +
+    `📁 *Target Lead List:* *${listNameEscaped}* (${blueprint.leadCount || 0} leads)\n` +
+    `👤 *Persona Context:* *${candNameEscaped}* (${modeLabel})\n\n` +
+    `⚡ *Architected Sequence (${(blueprint.steps || []).length} Steps):*\n` +
     seqText +
     `\n🛡️ *Safeguards:* Auto-stop on reply: Enabled | Safe Quotas: Active`;
 
   const replyMarkup = {
     inline_keyboard: [
-      [{ text: '🚀 Approve & Launch Campaign Now', callback_data: `camp_approve:${blueprint.blueprintId}` }],
+      [{ text: '🚀 Approve & Launch Campaign Now', callback_data: `camp_approve:${bpId}` }],
       [
-        { text: '✏️ Edit Note / Pitch', callback_data: `camp_edit_info:${blueprint.blueprintId}` },
-        { text: '❌ Discard Blueprint', callback_data: `camp_discard:${blueprint.blueprintId}` },
+        { text: '✏️ Edit Note / Pitch', callback_data: `camp_edit_info:${bpId}` },
+        { text: '❌ Discard Blueprint', callback_data: `camp_discard:${bpId}` },
       ],
     ],
   };
@@ -453,6 +560,40 @@ async function executeTool(name, args = {}) {
     };
   }
 
+  if (name === 'edit_campaign_blueprint') {
+    if (pendingBlueprints.size === 0) {
+      return { ok: false, error: 'No active campaign blueprint found to edit. Please create a blueprint first.' };
+    }
+    const entries = Array.from(pendingBlueprints.entries());
+    const [latestId, bp] = entries[entries.length - 1];
+
+    let cleanText = String(args.newText || '').trim();
+    cleanText = cleanText.replace(/\{\{\s*full_name\s*\}\}/gi, '{{firstName}}');
+
+    if (args.stepToEdit === 'followup') {
+      bp.followupMessage = cleanText;
+      const msgStep = bp.steps.find((s) => s.type === 'message');
+      if (msgStep) msgStep.body = cleanText;
+      else bp.steps.push({ type: 'message', body: cleanText, delayDays: 1, desc: 'Follow-up message after acceptance' });
+      return { ok: true, stepToEdit: 'followup', blueprintId: latestId, blueprint: bp };
+    }
+
+    if (args.stepToEdit === 'invite') {
+      bp.inviteNote = cleanText;
+      const inviteStep = bp.steps.find((s) => s.type === 'invite');
+      if (inviteStep) inviteStep.note = cleanText;
+      return { ok: true, stepToEdit: 'invite', blueprintId: latestId, blueprint: bp };
+    }
+
+    if (args.stepToEdit === 'name') {
+      bp.campaignName = cleanText;
+      bp.name = cleanText;
+      return { ok: true, stepToEdit: 'name', blueprintId: latestId, blueprint: bp };
+    }
+
+    return { ok: false, error: `Unknown step: ${args.stepToEdit}` };
+  }
+
   if (name === 'design_campaign_blueprint' || name === 'create_outreach_campaign') {
     const allLists = await lists.getAll();
     const activeCand = await getActiveCandidate();
@@ -473,11 +614,12 @@ async function executeTool(name, args = {}) {
 
     const blueprintId = 'bp_' + Math.random().toString(36).slice(2, 9);
     const steps = [];
-    if (args.hasViewStep !== false) steps.push({ type: 'view' });
+    if (args.hasViewStep !== false) steps.push({ type: 'view', desc: 'Soft-touch profile view' });
 
     steps.push({
       type: 'invite',
       note: args.inviteNote || activeCand.pitchTemplate || 'Hi {{firstName}}, saw your profile and would love to connect!',
+      desc: 'Personalized connection request note',
     });
 
     const followupBody =
@@ -491,6 +633,7 @@ async function executeTool(name, args = {}) {
         type: 'message',
         body: followupBody,
         delayDays: 1,
+        desc: 'Warm follow-up after connection is accepted',
       });
     }
 
@@ -625,7 +768,7 @@ async function callDynamicAi(userText, options = {}) {
     `\n• Active Campaigns (${allCamps.length}):\n` +
     (allCamps.length ? allCamps.map((c) => `  - "${c.name}" (${c.status}, Enrolled: ${c.stats?.enrolled || 0})`).join('\n') : '  (None yet)') +
     `\n• Today's Quota Remaining: Invites: ${invRemaining}, Messages: ${msgRemaining}\n` +
-    `When user requests to launch, design, or create a campaign sequence, call design_campaign_blueprint.`;
+    `When user requests to launch, design, or create a campaign sequence, call design_campaign_blueprint. When modifying sequence steps or pitches, call edit_campaign_blueprint.`;
 
   const apiKey = ai.apiKey || '';
   const model =
@@ -642,7 +785,7 @@ async function callDynamicAi(userText, options = {}) {
         ? 'You are OutFox AI SDR, an expert LinkedIn outreach copywriter. Write concise, warm, professional responses without corporate fluff. Keep under 240 characters.'
         : 'You are OutFox AI SDR, an autonomous assistant controlling LinkedIn outreach. ' +
           'Understand user requests in English, Hindi, or Hinglish. ' +
-          'When the user asks to search prospects, save leads to a list, design/create campaigns, send messages, switch candidates, or enrich leads, call the matching function tool. ' +
+          'When the user asks to search prospects, save leads to a list, design/create campaigns, edit campaign steps, send messages, switch candidates, or enrich leads, call the matching function tool. ' +
           'Always be helpful, warm, and accurate.')) + workspaceContextStr;
 
   let url = '';
@@ -861,9 +1004,10 @@ async function handleUserCommand(botToken, chatId, text) {
     const welcome =
       `🦊 *OutFox Mobile AI Copilot Ready!*\n\n` +
       `Active Persona: *${activeCand?.name || 'Aditya'}* (\`${activeCand?.slug || 'aditya'}\`)\n\n` +
-      `📌 *Campaign Blueprints:*\n` +
+      `📌 *Campaign Blueprints & Editing:*\n` +
       `• _"Design campaign for Data Analyst USA"_\n` +
-      `• _"Change note to: Hi {{firstName}}, saw your work..."_\n\n` +
+      `• _"Change step 3 follow up to: Hey {{firstName}}..."_\n` +
+      `• _"Change invite note to: Hi {{firstName}}..."_\n\n` +
       `📌 *Candidate Workspace Switcher:*\n` +
       `• \`/switch aditya\` or \`/switch agency\`\n` +
       `• \`/candidates\` — List all personas & 1-tap switch\n\n` +
@@ -889,18 +1033,32 @@ async function handleUserCommand(botToken, chatId, text) {
     return sendTelegramMessage(botToken, chatId, welcome, { reply_markup: replyMarkup });
   }
 
-  // 1. Natural Language Blueprint Editing (e.g. "Change note to: ...", "pitch: ...", "update note: ...")
-  if (pendingBlueprints.size > 0 && /^(?:change note to|edit note to|update note to|pitch:|note:)\s*(.+)/i.test(trimmed)) {
-    const editMatch = trimmed.match(/^(?:change note to|edit note to|update note to|pitch:|note:)\s*(.+)/i);
-    const newNote = (editMatch[1] || '').trim();
-    if (newNote) {
-      const bpEntries = Array.from(pendingBlueprints.values());
-      const latestBp = bpEntries[bpEntries.length - 1];
-      const inviteStep = latestBp.steps.find((s) => s.type === 'invite');
-      if (inviteStep) {
-        inviteStep.note = newNote;
-        await sendTelegramMessage(botToken, chatId, `✏️ *Updated connection invite note in blueprint!*`);
-        return presentCampaignBlueprint(botToken, chatId, latestBp);
+  // 1. Conversational Sequence Step Editing Interceptor (Step 2, Step 3, or Campaign Name)
+  if (pendingBlueprints.size > 0) {
+    const editCmd = parseBlueprintEditCommand(trimmed);
+    if (editCmd && editCmd.newContent) {
+      const entries = Array.from(pendingBlueprints.entries());
+      const [latestId, bp] = entries[entries.length - 1];
+
+      if (editCmd.targetStep === 'followup') {
+        bp.followupMessage = editCmd.newContent;
+        const msgStep = bp.steps.find((s) => s.type === 'message');
+        if (msgStep) msgStep.body = editCmd.newContent;
+        else bp.steps.push({ type: 'message', body: editCmd.newContent, delayDays: 1, desc: 'Follow-up message after acceptance' });
+        return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Step 3 (Follow-Up Message) Updated Successfully!*');
+      }
+
+      if (editCmd.targetStep === 'invite') {
+        bp.inviteNote = editCmd.newContent;
+        const inviteStep = bp.steps.find((s) => s.type === 'invite');
+        if (inviteStep) inviteStep.note = editCmd.newContent;
+        return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Step 2 (Connection Note) Updated Successfully!*');
+      }
+
+      if (editCmd.targetStep === 'name') {
+        bp.campaignName = editCmd.newContent;
+        bp.name = editCmd.newContent;
+        return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Campaign Name Updated Successfully!*');
       }
     }
   }
@@ -951,6 +1109,20 @@ async function handleUserCommand(botToken, chatId, text) {
 
     if (aiResult.type === 'tool_call') {
       const execResult = await executeTool(aiResult.name, aiResult.args);
+
+      if (aiResult.name === 'edit_campaign_blueprint') {
+        if (execResult.ok && execResult.blueprint) {
+          const notice =
+            execResult.stepToEdit === 'followup'
+              ? '✏️ *Step 3 (Follow-Up Message) Updated Successfully!*'
+              : execResult.stepToEdit === 'invite'
+                ? '✏️ *Step 2 (Connection Note) Updated Successfully!*'
+                : '✏️ *Campaign Name Updated Successfully!*';
+          return presentCampaignBlueprint(botToken, chatId, execResult.blueprintId, execResult.blueprint, notice);
+        } else {
+          return sendTelegramMessage(botToken, chatId, `⚠️ ${execResult.error || 'Failed to edit blueprint.'}`);
+        }
+      }
 
       if (aiResult.name === 'design_campaign_blueprint' || aiResult.name === 'create_outreach_campaign') {
         if (execResult.type === 'disambiguation_required') {
@@ -1082,10 +1254,10 @@ async function handleCallback(botToken, chatId, callbackData) {
       return sendTelegramMessage(botToken, chatId, `⚠️ *Blueprint expired or already launched.*`);
     }
 
-    await sendTelegramMessage(botToken, chatId, `🚀 *Launching campaign sequence for "${blueprint.campaignName}"...*`);
+    await sendTelegramMessage(botToken, chatId, `🚀 *Launching campaign sequence for "${blueprint.campaignName || blueprint.name}"...*`);
     try {
       const camp = await campaigns.create({
-        name: blueprint.campaignName,
+        name: blueprint.campaignName || blueprint.name,
         listId: blueprint.listId,
         steps: blueprint.steps,
         settings: { stopOnReply: true, autopilot: false },
@@ -1129,7 +1301,10 @@ async function handleCallback(botToken, chatId, callbackData) {
     return sendTelegramMessage(
       botToken,
       chatId,
-      `✏️ *To edit this sequence note, send a message:*\n\`Change note to: Hi {{firstName}}, [your custom message]\``
+      `✏️ *To edit this sequence, send a message:*\n\n` +
+      `• *Step 2 (Invite Note):*\n\`Change invite note to: Hi {{firstName}}, ...\`\n\n` +
+      `• *Step 3 (Follow-Up Message):*\n\`Change step 3 follow up to: Hey {{firstName}}, thanks for connecting! ...\`\n\n` +
+      `• *Campaign Name:*\n\`Change campaign name to: Austin Tech Sourcing\``
     );
   }
 
@@ -1170,9 +1345,9 @@ async function handleCallback(botToken, chatId, callbackData) {
     const activeCand = await getActiveCandidate();
     const blueprintId = 'bp_' + Math.random().toString(36).slice(2, 9);
     const steps = [
-      { type: 'view' },
-      { type: 'invite', note: activeCand.pitchTemplate },
-      { type: 'message', body: `${activeCand.followupTemplate} (Grab a quick chat: ${activeCand.bookingLink})`, delayDays: 1 },
+      { type: 'view', desc: 'Soft-touch profile view' },
+      { type: 'invite', note: activeCand.pitchTemplate, desc: 'Personalized connection request note' },
+      { type: 'message', body: `${activeCand.followupTemplate} (Grab a quick chat: ${activeCand.bookingLink})`, delayDays: 1, desc: 'Warm follow-up after connection is accepted' },
     ];
 
     const blueprint = {
@@ -1561,7 +1736,7 @@ onEvent(async (name, payload = {}) => {
       }
 
       const alertMsg =
-        `🚨 *CRITICAL SAFETY ALERT: CHECKPOINT DETECTED!*\n\n` +
+        `🚨 *SECURITY CHECKPOINT DETECTED!*\n\n` +
         `LinkedIn is asking you to confirm it's you.\n\n` +
         `🛡️ *Safety Guard Activated:* All outreach runners and sequences have been paused automatically.\n` +
         `👉 Please open LinkedIn in your browser and complete the check yourself, then tap Resume All below.`;

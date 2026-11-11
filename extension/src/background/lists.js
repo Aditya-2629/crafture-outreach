@@ -268,6 +268,17 @@ export async function importCsv(listId, csv) {
   return { added, duplicates, invalid };
 }
 
+export async function update(listId, { name, tags } = {}) {
+  await requireList(listId);
+  const lists = await readLists();
+  const list = lists.find((l) => l.listId === listId);
+  if (name !== undefined) list.name = String(name).trim();
+  if (tags !== undefined) list.tags = tags;
+  list.updatedAt = Date.now();
+  await writeLists(lists);
+  return list;
+}
+
 /* ================================================================== */
 /*  Action registrations                                              */
 /* ================================================================== */
@@ -282,3 +293,4 @@ register(ACTIONS.LIST_REMOVE, ({ listId, publicIds }) => removeMembers(listId, p
 register(ACTIONS.LIST_MEMBERS, ({ listId, start, count }) => members(listId, { start, count }));
 register(ACTIONS.LIST_DELETE, ({ listId }) => del(listId));
 register(ACTIONS.LIST_IMPORT_CSV, ({ listId, csv }) => importCsv(listId, csv));
+register(ACTIONS.LIST_UPDATE, ({ listId, name, tags }) => update(listId, { name, tags }));

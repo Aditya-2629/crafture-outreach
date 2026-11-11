@@ -68,6 +68,7 @@ export const ACTIONS = Object.freeze({
   LIST_MEMBERS: 'list.members',
   LIST_DELETE: 'list.delete',
   LIST_IMPORT_CSV: 'list.importCsv',
+  LIST_UPDATE: 'list.update',
 
   CAMPAIGN_CREATE: 'campaign.create',
   CAMPAIGN_GET_ALL: 'campaign.getAll',
@@ -514,6 +515,10 @@ const PARAM_SPECS = {
   },
   [ACTIONS.LIST_DELETE]: { required: { listId: 'string' } },
   [ACTIONS.LIST_IMPORT_CSV]: { required: { listId: 'string', csv: 'string' } },
+  [ACTIONS.LIST_UPDATE]: {
+    required: { listId: 'string' },
+    optional: { name: 'string', tags: 'array' },
+  },
 
   [ACTIONS.CAMPAIGN_CREATE]: {
     required: { name: 'string', steps: 'array' },

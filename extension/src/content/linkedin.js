@@ -407,8 +407,8 @@
 
     const isFirstDegree =
       /1st/i.test(card?.textContent || '') ||
-      location.search.includes('network=%5B%22F%22%5D') ||
-      location.search.includes('network=%5B"F"%5D') ||
+      window.location.search.includes('network=%5B%22F%22%5D') ||
+      window.location.search.includes('network=%5B"F"%5D') ||
       Boolean(card?.querySelector('button[aria-label*="Message"]'));
 
     const badgeText =
@@ -428,7 +428,7 @@
 
     const fullName = nameEl?.textContent?.replace(/\s+/g, ' ').trim() || publicId;
     const headline = headlineEl?.textContent?.replace(/\s+/g, ' ').trim() || 'LinkedIn Prospect';
-    const location = locationEl?.textContent?.replace(/\s+/g, ' ').trim() || '';
+    const profileLocation = locationEl?.textContent?.replace(/\s+/g, ' ').trim() || '';
 
     let company = '';
     if (headline.includes(' at ')) {
@@ -444,7 +444,8 @@
       isConnected: isFirstDegree,
       fullName,
       headline,
-      location,
+      location: profileLocation,
+      company,
       importedFrom: 'linkedin_search',
       enrolledAt: Date.now(),
     };
@@ -558,6 +559,11 @@
         lists = Array.isArray(lRes) ? lRes : (lRes?.lists || []);
       } catch {}
 
+      // Extract search keywords for smart default list naming
+      const searchKeywords = new URLSearchParams(window.location.search).get('keywords') || '';
+      const cleanKeywords = searchKeywords.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      const defaultNewName = cleanKeywords ? `${cleanKeywords} (Search)` : `Search Import - ${new Date().toLocaleDateString()}`;
+
       // Open Modal Overlay
       const overlay = document.createElement('div');
       overlay.className = 'outfox-import-overlay';
@@ -589,10 +595,18 @@
 
             <div>
               <label style="font-size: 12.5px; font-weight: 600; color: #14142b; display: block; margin-bottom: 6px;">Destination List:</label>
-              <select id="select-import-list" class="outfox-select" style="margin-top: 0;">
-                <option value="__new__">+ Create New List: Search Import (${new Date().toLocaleDateString()})</option>
-                ${lists.map((l) => `<option value="${l.id}">${l.name} (${l.count || 0} leads)</option>`).join('')}
+              <select id="select-import-list" class="outfox-select" style="margin-top: 0; width: 100%;">
+                <option value="__new__">✨ + Create New List</option>
+                ${lists.map((l) => `<option value="${l.listId || l.id}">${l.name} (${l.count || 0} leads)</option>`).join('')}
               </select>
+            </div>
+
+            <div id="container-list-name-input" style="margin-top: 4px;">
+              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                <label id="label-list-custom-name" style="font-size: 12px; font-weight: 600; color: #475569;">New List Name:</label>
+                <span id="hint-list-action" style="font-size: 11px; color: #2563eb; font-weight: 600;">Custom Name</span>
+              </div>
+              <input type="text" id="input-import-list-name" class="outfox-input" placeholder="e.g. Austin Software Engineers" value="${defaultNewName}" style="width: 100%; box-sizing: border-box;" />
             </div>
 
             <div style="background: #f8fafc; border-radius: 10px; padding: 10px 14px; font-size: 12px; color: #6e7191; line-height: 1.4;">
@@ -647,6 +661,24 @@
         });
       });
 
+      const selectEl = overlay.querySelector('#select-import-list');
+      const nameInput = overlay.querySelector('#input-import-list-name');
+      const nameLabel = overlay.querySelector('#label-list-custom-name');
+      const nameHint = overlay.querySelector('#hint-list-action');
+
+      selectEl?.addEventListener('change', () => {
+        if (selectEl.value === '__new__') {
+          if (nameLabel) nameLabel.textContent = 'New List Name:';
+          if (nameHint) nameHint.textContent = '✨ Creates New';
+          if (nameInput) nameInput.value = defaultNewName;
+        } else {
+          const selectedList = lists.find((l) => (l.listId || l.id) === selectEl.value);
+          if (nameLabel) nameLabel.textContent = 'Rename List (Optional):';
+          if (nameHint) nameHint.textContent = '✏️ Rename';
+          if (nameInput && selectedList) nameInput.value = selectedList.name;
+        }
+      });
+
       function closeOverlay() {
         if (isCrawling) {
           cancelled = true;
@@ -676,6 +708,8 @@
 
         const select = overlay.querySelector('#select-import-list');
         let targetListId = select?.value;
+        const customName = nameInput?.value?.trim();
+        let finalListName = customName || defaultNewName;
 
         // Switch to progress view
         const configView = overlay.querySelector('#outfox-import-config-view');
@@ -714,9 +748,16 @@
           if (counterEl) counterEl.textContent = `${collected.length} / ${targetCount}`;
 
           if (targetListId === '__new__') {
-            const listName = `Search Import - ${new Date().toLocaleDateString()}`;
-            const created = await call('list.create', { name: listName });
+            const created = await call('list.create', { name: finalListName });
             targetListId = created?.listId || created?.id;
+          } else if (targetListId) {
+            const originalList = lists.find((l) => (l.listId || l.id) === targetListId);
+            if (customName && originalList && customName !== originalList.name) {
+              await call('list.update', { listId: targetListId, name: customName });
+              finalListName = customName;
+            } else {
+              finalListName = originalList?.name || 'Selected List';
+            }
           }
 
           if (targetListId) {
@@ -725,7 +766,7 @@
 
           logDebug('good', 'Importer', `Successfully enrolled ${collected.length} leads across ${pageCount} pages!`);
           overlay.remove();
-          showToast(`✓ Successfully imported ${collected.length} leads across ${pageCount} search pages!`, 'success', 5000);
+          showToast(`✓ Successfully imported ${collected.length} leads into "${finalListName}"!`, 'success', 5000);
         } catch (err) {
           logDebug('bad', 'Importer', `Auto-pagination import failed: ${err.message}`);
           overlay.remove();

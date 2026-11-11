@@ -8,7 +8,7 @@ import { call } from '../ui/api.js';
 import { ACTIONS } from '../lib/actions.js';
 import { ICONS } from '../ui/icons.js';
 import { openUiConfirm, openUiAlert, openUiPrompt } from './modal-engine.js';
-import { openSheetCrmGuide } from './guide-modal.js';
+import { openSheetCrmGuide, openTelegramGuideModal, openMcpGuideModal } from './guide-modal.js';
 
 let activeSettingsTab = 'activity';
 let liveClockInterval = null;
@@ -449,6 +449,10 @@ export async function renderSettingsView(container, ctx = {}) {
       storage.googleSheetUrl || config.googleSheetUrl || storage.googleSheetWebhookUrl || config.googleSheetWebhookUrl,
     );
     const hasWebhook = Boolean(storage.webhookUrl || config.webhookUrl);
+    const hasTelegram = Boolean(
+      (config.telegram && config.telegram.enabled && config.telegram.botToken) ||
+      (storage.telegram && storage.telegram.enabled && storage.telegram.botToken)
+    );
 
     container.innerHTML = `
       <div class="waalaxy-settings-layout">
@@ -811,7 +815,24 @@ export async function renderSettingsView(container, ctx = {}) {
                   <button type="button" class="btn-int-action" id="btn-mcp-guide">How to connect ? ↗</button>
                 </div>
 
-                <!-- 4. Webhooks (Zapier & Make) -->
+                <!-- 4. Telegram Mobile AI Assistant -->
+                <div class="integration-item-card">
+                  <div class="int-card-head">
+                    <div class="int-card-head-left">
+                      <span class="int-logo-ico" style="background:#229ED9; color:#fff;">${ICONS.telegram}</span>
+                      <h3 class="int-card-title">Telegram Mobile AI Assistant</h3>
+                    </div>
+                    ${hasTelegram
+                      ? `<span class="badge-status-running"><span class="live-dot-circle"></span> Connected</span>`
+                      : `<span class="live-activity-pill is-paused" style="font-size:11px;">○ Not Configured</span>`}
+                  </div>
+                  <p class="int-card-desc">Connect OutFox MCP with Telegram. Control campaigns, search prospects, and trigger messages directly from your phone.</p>
+                  <button type="button" class="btn-int-action ${hasTelegram ? 'btn-int-active' : ''}" id="btn-setup-telegram">
+                    ${hasTelegram ? 'Manage Telegram Assistant ⚙' : 'Setup Telegram Assistant ↗'}
+                  </button>
+                </div>
+
+                <!-- 5. Webhooks (Zapier & Make) -->
                 <div class="integration-item-card">
                   <div class="int-card-head">
                     <div class="int-card-head-left">
@@ -1137,19 +1158,12 @@ export async function renderSettingsView(container, ctx = {}) {
 
     // 3. IA Connector (MCP)
     container.querySelector('#btn-mcp-guide')?.addEventListener('click', () => {
-      openUiAlert({
-        title: 'MCP Connector (Claude Desktop & ChatGPT)',
-        message: `Connect your AI assistant to OutFox via Model Context Protocol on port 3000:<br><br>
-        <strong>Claude Desktop / Cursor Configuration:</strong><br>
-        <pre style="background:#f1f5f9; padding:12px; border-radius:8px; font-size:12px; overflow-x:auto; margin-top:8px;">{
-  "mcpServers": {
-    "outfox-outreach": {
-      "url": "http://127.0.0.1:3000/sse"
-    }
-  }
-}</pre><br>
-        The SSE endpoint runs locally inside OutFox and exposes tools for campaign management and prospect enrollment.`,
-      });
+      openMcpGuideModal();
+    });
+
+    // 4. Telegram Mobile AI Assistant
+    container.querySelector('#btn-setup-telegram')?.addEventListener('click', () => {
+      openTelegramGuideModal(() => paint());
     });
 
     // 4. Webhooks (Zapier & Make)

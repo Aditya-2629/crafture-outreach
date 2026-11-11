@@ -19,7 +19,8 @@
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://www.googleapis.com/*",
-    "https://gmail.googleapis.com/*"
+    "https://gmail.googleapis.com/*",
+    "https://api.telegram.org/*"
   ],
   "optional_host_permissions": [
     "https://www.googleapis.com/*",

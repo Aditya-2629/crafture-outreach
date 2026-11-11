@@ -102,6 +102,10 @@ export const ACTIONS = Object.freeze({
   DASHBOARD_LIVE_STATS: 'dashboard.live_stats',
 
   QUOTA_RESET: 'quota.reset',
+
+  TELEGRAM_STATUS: 'telegram.status',
+  TELEGRAM_SAVE: 'telegram.save',
+  TELEGRAM_TEST: 'telegram.test',
 });
 
 /* ================================================================== */
@@ -285,6 +289,13 @@ export const DEFAULT_CONFIG = {
   enrichment: { provider: 'none' },
   bridge: { enabled: true, port: 47829, token: '8824d1f6b5220b57550a33f124e346f8' },
   mailbox: { connected: false, email: '' },
+  telegram: {
+    enabled: false,
+    botToken: '',
+    chatId: '',
+    status: 'disconnected',
+    lastSyncAt: 0,
+  },
 };
 
 const ACCOUNT_PRESETS = ['free', 'premium', 'salesnav', 'recruiter'];
@@ -557,6 +568,15 @@ const PARAM_SPECS = {
 
   [ACTIONS.DASHBOARD_LIVE_STATS]: {},
   [ACTIONS.QUOTA_RESET]: { optional: { kinds: 'array' } },
+
+  [ACTIONS.TELEGRAM_STATUS]: {},
+  [ACTIONS.TELEGRAM_TEST]: {
+    required: { botToken: 'string', chatId: 'string' },
+  },
+  [ACTIONS.TELEGRAM_SAVE]: {
+    required: { botToken: 'string', chatId: 'string' },
+    optional: { enabled: 'boolean' },
+  },
 };
 
 function typeOf(value) {
@@ -722,6 +742,7 @@ export function clampConfig(cfg = {}) {
     ai: { ...d.ai, ...(input.ai || {}) },
     enrichment: { ...d.enrichment, ...(input.enrichment || {}) },
     bridge: { ...d.bridge, ...(input.bridge || {}) },
+    telegram: { ...(d.telegram || {}), ...(input.telegram || {}) },
   };
 
   out.warmup.enabled = toBoolean(out.warmup.enabled, d.warmup.enabled);

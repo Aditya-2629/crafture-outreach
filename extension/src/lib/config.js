@@ -28,6 +28,7 @@ export async function setConfig(partial) {
     enrichment: { ...current.enrichment, ...(input.enrichment || {}) },
     bridge: { ...current.bridge, ...(input.bridge || {}) },
     mailbox: { ...(current.mailbox || {}), ...(input.mailbox || {}) },
+    telegram: { ...(current.telegram || {}), ...(input.telegram || {}) },
   };
   const updated = clampConfig(merged);
   await set(K.CONFIG, updated);

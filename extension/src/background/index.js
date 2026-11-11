@@ -30,6 +30,7 @@ import './research.js';
 import './status.js';
 import './sync.js';
 import './stats.js';
+import './telegram.js';
 
 import { ensureConnected, onAlarm, startKeepalive } from './bridge.js';
 

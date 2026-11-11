@@ -399,6 +399,14 @@ export function openTelegramGuideModal(onSaved) {
                     <button type="button" class="btn btn-secondary" id="btn-paste-tg-chat-id" style="padding: 0 14px; font-size: 12px; font-weight: 600; cursor: pointer;">Paste</button>
                   </div>
                 </div>
+
+                <div style="margin-top: 2px;">
+                  <label style="font-size: 11.5px; font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">📅 10-Min Booking Link (Calendly / Cal.com):</label>
+                  <div style="display: flex; gap: 8px;">
+                    <input type="text" id="input-tg-booking-link" placeholder="https://calendly.com/your-name/15min" style="flex: 1; padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: #fff;" />
+                    <button type="button" class="btn btn-secondary" id="btn-paste-tg-booking" style="padding: 0 14px; font-size: 12px; font-weight: 600; cursor: pointer;">Paste</button>
+                  </div>
+                </div>
               </div>
 
               <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
@@ -442,8 +450,10 @@ export function openTelegramGuideModal(onSaved) {
 
   const tokenInput = backdrop.querySelector('#input-tg-bot-token');
   const chatIdInput = backdrop.querySelector('#input-tg-chat-id');
+  const bookingInput = backdrop.querySelector('#input-tg-booking-link');
   const pasteTokenBtn = backdrop.querySelector('#btn-paste-tg-token');
   const pasteChatIdBtn = backdrop.querySelector('#btn-paste-tg-chat-id');
+  const pasteBookingBtn = backdrop.querySelector('#btn-paste-tg-booking');
   const testBtn = backdrop.querySelector('#btn-test-tg-conn');
   const saveBtn = backdrop.querySelector('#btn-save-tg');
   const feedback = backdrop.querySelector('#tg-test-feedback');
@@ -454,6 +464,7 @@ export function openTelegramGuideModal(onSaved) {
       const data = res?.data || res;
       if (data?.maskedToken && tokenInput) tokenInput.value = data.maskedToken;
       if (data?.chatId && chatIdInput) chatIdInput.value = data.chatId;
+      if (data?.bookingLink && bookingInput) bookingInput.value = data.bookingLink;
     });
   }
 
@@ -468,6 +479,13 @@ export function openTelegramGuideModal(onSaved) {
     try {
       const text = await navigator.clipboard.readText();
       if (text && chatIdInput) chatIdInput.value = text.trim();
+    } catch {}
+  });
+
+  pasteBookingBtn?.addEventListener('click', async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && bookingInput) bookingInput.value = text.trim();
     } catch {}
   });
 
@@ -518,6 +536,7 @@ export function openTelegramGuideModal(onSaved) {
   saveBtn?.addEventListener('click', async () => {
     const botToken = tokenInput?.value?.trim();
     const chatId = chatIdInput?.value?.trim();
+    const bookingLink = bookingInput?.value?.trim() || '';
     if (!botToken || !chatId) {
       if (feedback) {
         feedback.style.display = 'block';
@@ -528,7 +547,7 @@ export function openTelegramGuideModal(onSaved) {
     }
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving...';
-    chrome.runtime.sendMessage({ action: 'telegram.save', params: { botToken, chatId, enabled: true } }, (res) => {
+    chrome.runtime.sendMessage({ action: 'telegram.save', params: { botToken, chatId, bookingLink, enabled: true } }, (res) => {
       saveBtn.disabled = false;
       saveBtn.textContent = 'Saved!';
       showGuideToast('Telegram Mobile AI Assistant enabled!');

@@ -1,20 +1,43 @@
 /**
- * OutFox — Telegram Autonomous AI SDR Engine (Phase 1 Upgrade).
- * Includes: Groq Whisper Voice Transcriber + Inline Action Buttons + Dynamic AI
+ * OutFox — Telegram Autonomous AI SDR Engine (Phase 2 Upgrade).
+ * Real-Time Inbound Alerts, 1-Tap Booking Closer, Safety Guard & Daily Pulse.
  */
 
-import { ACTIONS, ERROR, EngineError } from '../lib/actions.js';
+import { ACTIONS, ERROR, EVENTS, EngineError } from '../lib/actions.js';
 import { getConfig, setConfig } from '../lib/config.js';
 import { register } from './engine.js';
 import * as voyager from './voyager.js';
 import * as campaigns from './campaigns.js';
 import * as lists from './lists.js';
+import { onEvent } from './events.js';
+import { getLiveDashboardStats } from './stats.js';
+import { snapshotAll } from './quota.js';
+import { addToBlacklist } from '../lib/storage.js';
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
 let isPolling = false;
 let pollAbortController = null;
 let lastUpdateId = 0;
 let lastSearchedList = 'data analyst USA';
+
+// In-Memory Real-Time CRM & Closer Caches
+const recentAlertDedupe = new Map(); // key -> timestamp (10 min cache)
+const lastInboundReplies = new Map(); // publicId -> { body, sentiment, intent, at }
+const pendingDrafts = new Map(); // draftId -> { publicId, text, at }
+
+function cleanOldCaches() {
+  const now = Date.now();
+  if (recentAlertDedupe.size > 1000) {
+    for (const [k, time] of recentAlertDedupe.entries()) {
+      if (now - time > 15 * 60 * 1000) recentAlertDedupe.delete(k);
+    }
+  }
+  if (pendingDrafts.size > 200) {
+    for (const [id, d] of pendingDrafts.entries()) {
+      if (now - d.at > 24 * 60 * 60 * 1000) pendingDrafts.delete(id);
+    }
+  }
+}
 
 export function maskToken(token) {
   if (!token || typeof token !== 'string') return '';
@@ -53,25 +76,42 @@ export async function answerCallbackQuery(token, callbackQueryId, text = '') {
   } catch {}
 }
 
+async function sendTelegramAlert(text, options = {}) {
+  try {
+    const cfg = await getConfig();
+    const tg = cfg.telegram || {};
+    if (!tg.enabled || !tg.botToken || !tg.chatId) return;
+    return await sendTelegramMessage(tg.botToken, tg.chatId, text, options);
+  } catch (err) {
+    console.warn('[Telegram Alert Error]', err?.message || err);
+  }
+}
+
 export async function testTelegram({ botToken, chatId }) {
   if (!botToken || !chatId) {
     throw new EngineError(ERROR.INVALID_PARAMS, 'Both Bot Token and Chat ID are required.');
   }
   const start = Date.now();
   const me = await callTelegramApi(botToken, 'getMe');
+  const cfg = await getConfig();
+  const booking = cfg.telegram?.bookingLink || cfg.bookingLink || 'Not set';
+
   const testMsg =
     `🦊 *OutFox Mobile AI Copilot Connected!*\n\n` +
     `Bot: *${me.first_name || 'OutFox'}* (@${me.username || 'bot'})\n` +
+    `Booking Link: *${booking}*\n` +
     `Latency: *${Date.now() - start}ms*\n\n` +
-    `🎯 *Phase 1 Active Superpowers:*\n` +
-    `• 🎙️ *Voice Notes:* Mic se bolkar command bhejo!\n` +
-    `• 🔘 *Action Buttons:* 1-tap se campaign launch, pause & resume.\n` +
-    `• 🧠 *Dynamic AI:* Groq/Gemini Function Calling.`;
+    `🎯 *Active Superpowers (Phase 1 & 2):*\n` +
+    `• 🔥 *Real-Time Alerts:* Inbound replies & accepted invites push directly to chat.\n` +
+    `• 📅 *1-Tap Booking Dispatch:* 1-click meeting scheduling.\n` +
+    `• ✨ *AI Reply Generator:* Contextual 2-sentence response drafts.\n` +
+    `• 🚨 *Checkpoint Safety Guard:* Auto-freezes campaigns if CAPTCHA appears.\n` +
+    `• 📊 *Outreach Pulse:* Daily quota & conversion scorecard.`;
 
   const replyMarkup = {
     inline_keyboard: [
       [
-        { text: '📊 Campaign Status', callback_data: 'camp_status' },
+        { text: '📊 Outreach Pulse', callback_data: 'daily_stats' },
         { text: '⏸️ Pause All', callback_data: 'camp_pause' },
       ],
       [{ text: '▶️ Resume All', callback_data: 'camp_resume' }],
@@ -82,11 +122,12 @@ export async function testTelegram({ botToken, chatId }) {
   return { ok: true, botUsername: me.username, latencyMs: Date.now() - start };
 }
 
-export async function saveTelegram({ botToken, chatId, enabled = true }) {
+export async function saveTelegram({ botToken, chatId, bookingLink = '', enabled = true }) {
   const cfg = await getConfig();
   const current = cfg.telegram || {};
   const tokenToSave = botToken && !botToken.includes('•••') ? botToken.trim() : current.botToken;
   const chatIdToSave = chatId ? String(chatId).trim() : current.chatId;
+  const bookingLinkToSave = bookingLink !== undefined ? String(bookingLink).trim() : (current.bookingLink || '');
 
   if (enabled && (!tokenToSave || !chatIdToSave)) {
     throw new EngineError(ERROR.INVALID_PARAMS, 'Bot Token and Chat ID are required.');
@@ -96,6 +137,7 @@ export async function saveTelegram({ botToken, chatId, enabled = true }) {
     ...current,
     botToken: tokenToSave,
     chatId: chatIdToSave,
+    bookingLink: bookingLinkToSave,
     enabled: Boolean(enabled),
     status: enabled ? 'connected' : 'disconnected',
     updatedAt: Date.now(),
@@ -105,7 +147,12 @@ export async function saveTelegram({ botToken, chatId, enabled = true }) {
   if (enabled) restartTelegramPoller(tokenToSave, chatIdToSave);
   else stopTelegramPoller();
 
-  return { status: updated.status, enabled: updated.enabled, maskedToken: maskToken(tokenToSave) };
+  return {
+    status: updated.status,
+    enabled: updated.enabled,
+    maskedToken: maskToken(tokenToSave),
+    bookingLink: updated.bookingLink,
+  };
 }
 
 export async function getTelegramStatus() {
@@ -117,6 +164,7 @@ export async function getTelegramStatus() {
     maskedToken: maskToken(t.botToken),
     hasToken: Boolean(t.botToken),
     chatId: t.chatId || '',
+    bookingLink: t.bookingLink || '',
     isPolling,
   };
 }
@@ -336,7 +384,7 @@ async function executeTool(name, args = {}) {
   throw new Error(`Unknown tool: ${name}`);
 }
 
-async function callDynamicAi(userText) {
+async function callDynamicAi(userText, options = {}) {
   const cfg = await getConfig();
   const ai = cfg.ai || {};
   const provider = ai.provider || 'none';
@@ -357,15 +405,17 @@ async function callDynamicAi(userText) {
         ? 'gemini-2.0-flash'
         : 'gpt-4o-mini');
 
-  const systemPrompt =
-    'You are OutFox AI SDR, an autonomous assistant controlling LinkedIn outreach. ' +
-    'Understand user requests in English, Hindi, or Hinglish. ' +
-    'When the user asks to search prospects, save leads to a list, design/create campaigns, send messages, or manage campaigns, call the matching function tool. ' +
-    'Always be helpful, warm, and accurate.';
+  const systemPrompt = options.systemPrompt || (options.forceText
+    ? 'You are OutFox AI SDR, an expert LinkedIn outreach copywriter. Write concise, warm, professional responses without corporate fluff. Keep under 240 characters.'
+    : 'You are OutFox AI SDR, an autonomous assistant controlling LinkedIn outreach. ' +
+      'Understand user requests in English, Hindi, or Hinglish. ' +
+      'When the user asks to search prospects, save leads to a list, design/create campaigns, send messages, or manage campaigns, call the matching function tool. ' +
+      'Always be helpful, warm, and accurate.');
 
   let url = '';
   let headers = { 'Content-Type': 'application/json' };
   let body = {};
+  const useTools = !options.forceText;
 
   if (provider === 'groq') {
     url = `${ai.baseUrl || 'https://api.groq.com'}/openai/v1/chat/completions`;
@@ -373,8 +423,7 @@ async function callDynamicAi(userText) {
     body = {
       model,
       messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
-      tools: AI_TOOLS,
-      tool_choice: 'auto',
+      ...(useTools ? { tools: AI_TOOLS, tool_choice: 'auto' } : {}),
     };
   } else if (provider === 'gemini') {
     url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
@@ -382,8 +431,7 @@ async function callDynamicAi(userText) {
     body = {
       model: model.includes('gemini') ? model : 'gemini-2.0-flash',
       messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
-      tools: AI_TOOLS,
-      tool_choice: 'auto',
+      ...(useTools ? { tools: AI_TOOLS, tool_choice: 'auto' } : {}),
     };
   } else if (provider === 'openai' || provider === 'openai-compatible') {
     url = `${ai.baseUrl || 'https://api.openai.com/v1'}/chat/completions`;
@@ -391,8 +439,7 @@ async function callDynamicAi(userText) {
     body = {
       model,
       messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
-      tools: AI_TOOLS,
-      tool_choice: 'auto',
+      ...(useTools ? { tools: AI_TOOLS, tool_choice: 'auto' } : {}),
     };
   } else if (provider === 'anthropic') {
     url = `${ai.baseUrl || 'https://api.anthropic.com'}/v1/messages`;
@@ -404,11 +451,15 @@ async function callDynamicAi(userText) {
       max_tokens: 1024,
       system: systemPrompt,
       messages: [{ role: 'user', content: userText }],
-      tools: AI_TOOLS.map((t) => ({
-        name: t.function.name,
-        description: t.function.description,
-        input_schema: t.function.parameters,
-      })),
+      ...(useTools
+        ? {
+            tools: AI_TOOLS.map((t) => ({
+              name: t.function.name,
+              description: t.function.description,
+              input_schema: t.function.parameters,
+            })),
+          }
+        : {}),
     };
   } else if (provider === 'ollama') {
     url = `${ai.baseUrl || 'http://127.0.0.1:11434'}/api/chat`;
@@ -416,7 +467,7 @@ async function callDynamicAi(userText) {
       model: model || 'llama3.1',
       stream: false,
       messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
-      tools: AI_TOOLS,
+      ...(useTools ? { tools: AI_TOOLS } : {}),
     };
   } else {
     throw new Error(`Unsupported AI provider: ${provider}`);
@@ -436,16 +487,18 @@ async function callDynamicAi(userText) {
   const data = await res.json();
 
   if (provider === 'anthropic') {
-    const toolUse = (data.content || []).find((c) => c.type === 'tool_use');
-    if (toolUse) {
-      return { type: 'tool_call', name: toolUse.name, args: toolUse.input || {} };
+    if (useTools) {
+      const toolUse = (data.content || []).find((c) => c.type === 'tool_use');
+      if (toolUse) {
+        return { type: 'tool_call', name: toolUse.name, args: toolUse.input || {} };
+      }
     }
     const textPart = (data.content || []).find((c) => c.type === 'text');
     return { type: 'text', content: textPart?.text || 'Understood.' };
   }
 
   const msg = data.choices?.[0]?.message;
-  if (msg?.tool_calls?.length > 0) {
+  if (useTools && msg?.tool_calls?.length > 0) {
     const firstCall = msg.tool_calls[0];
     return {
       type: 'tool_call',
@@ -454,7 +507,53 @@ async function callDynamicAi(userText) {
     };
   }
 
-  return { type: 'text', content: msg?.content || 'Haan bhai, batao kya karna hai?' };
+  return { type: 'text', content: msg?.content || 'Understood.' };
+}
+
+// 📊 Outreach Pulse Scorecard Generator
+async function renderDailyStats(botToken, chatId) {
+  const [stats, quotas, allCamp] = await Promise.all([
+    getLiveDashboardStats().catch(() => null),
+    snapshotAll().catch(() => ({})),
+    campaigns.getAll().catch(() => []),
+  ]);
+
+  const activeCount = allCamp.filter((c) => c.status === 'active').length;
+  const pausedCount = allCamp.filter((c) => c.status === 'paused').length;
+
+  const invUsed = quotas.invite?.dailyUsed || 0;
+  const invCap = quotas.invite?.dailyCap || 20;
+  const invLeft = Math.max(0, invCap - invUsed);
+
+  const msgUsed = quotas.message?.dailyUsed || 0;
+  const msgCap = quotas.message?.dailyCap || 40;
+  const msgLeft = Math.max(0, msgCap - msgUsed);
+
+  const acceptRate = stats?.kpis?.acceptanceRate ?? 0;
+  const replyRate = stats?.kpis?.responseRate ?? 0;
+
+  const pulseMsg =
+    `📊 *OUTFOX DAILY PULSE SCORECARD*\n\n` +
+    `⚡ *Campaigns:*\n` +
+    `• Active: *${activeCount}* | Paused: *${pausedCount}* | Total: *${allCamp.length}*\n\n` +
+    `📈 *Daily Outreach Remaining:*\n` +
+    `• Invites Today: *${invUsed} / ${invCap}* (${invLeft} remaining)\n` +
+    `• Messages Today: *${msgUsed} / ${msgCap}* (${msgLeft} remaining)\n\n` +
+    `🎯 *Conversion Rates:*\n` +
+    `• Connection Acceptance: *${acceptRate}%*\n` +
+    `• Inbound Reply Rate: *${replyRate}%*`;
+
+  const replyMarkup = {
+    inline_keyboard: [
+      [
+        { text: '📊 Campaign Status', callback_data: 'camp_status' },
+        { text: '⏸️ Pause All', callback_data: 'camp_pause' },
+      ],
+      [{ text: '▶️ Resume All', callback_data: 'camp_resume' }],
+    ],
+  };
+
+  return sendTelegramMessage(botToken, chatId, pulseMsg, { reply_markup: replyMarkup });
 }
 
 async function handleUserCommand(botToken, chatId, text) {
@@ -464,20 +563,21 @@ async function handleUserCommand(botToken, chatId, text) {
   if (trimmed === '/start' || trimmed === '/help') {
     const welcome =
       `🦊 *OutFox Mobile AI Copilot Ready!*\n\n` +
-      `Tu mujhse mobile par kisi bhi bhasha (Hindi/Hinglish/English) me text ya voice note bhej sakta hai:\n\n` +
+      `Tu mujhse mobile par text ya voice notes bhej sakta hai:\n\n` +
       `📌 *Search & Save:*\n` +
       `• _"Search Indian Data Analysts in USA and name that list as Data Analyst USA"_\n\n` +
       `📌 *Create Sequence Campaign:*\n` +
       `• _"Design campaign for Data Analyst USA list view profile then send invite note"_\n\n` +
-      `📌 *Direct Messaging:*\n` +
+      `📌 *Direct Messaging & Closer:*\n` +
       `• _"Sahil ko follow-up message bhej do: Are you free for a call?"_\n\n` +
-      `📌 *Controls:*\n` +
-      `• _"Campaign status"_, _"Pause campaign"_, _"Resume campaign"_`;
+      `📌 *Pulse & Controls:*\n` +
+      `• \`/pulse\` or \`Daily stats\` — Live scorecard & quota status\n` +
+      `• \`Campaign status\`, \`Pause campaign\`, \`Resume campaign\``;
 
     const replyMarkup = {
       inline_keyboard: [
         [
-          { text: '📊 Campaign Status', callback_data: 'camp_status' },
+          { text: '📊 Outreach Pulse', callback_data: 'daily_stats' },
           { text: '⏸️ Pause All', callback_data: 'camp_pause' },
         ],
         [{ text: '▶️ Resume All', callback_data: 'camp_resume' }],
@@ -485,6 +585,11 @@ async function handleUserCommand(botToken, chatId, text) {
     };
 
     return sendTelegramMessage(botToken, chatId, welcome, { reply_markup: replyMarkup });
+  }
+
+  // Quick Daily Stats / Pulse Command
+  if (/^\/?(pulse|stats|scorecard|daily\s*stats|report)/i.test(trimmed)) {
+    return renderDailyStats(botToken, chatId);
   }
 
   try {
@@ -532,7 +637,7 @@ async function handleUserCommand(botToken, chatId, text) {
           inline_keyboard: [
             [{ text: `🚀 Launch Campaign for "${targetList}"`, callback_data: `quick_launch:${targetList}` }],
             [
-              { text: '📊 Status', callback_data: 'camp_status' },
+              { text: '📊 Pulse', callback_data: 'daily_stats' },
               { text: '⏸️ Pause All', callback_data: 'camp_pause' },
             ],
           ],
@@ -572,6 +677,7 @@ async function handleUserCommand(botToken, chatId, text) {
 
 async function handleCallback(botToken, chatId, callbackData) {
   const data = String(callbackData || '');
+  cleanOldCaches();
 
   if (data === 'camp_status') {
     const all = await campaigns.getAll();
@@ -596,11 +702,122 @@ async function handleCallback(botToken, chatId, callbackData) {
     return sendTelegramMessage(botToken, chatId, `▶️ *Success:* ${paused.length} campaign(s) resumed. Runner triggered!`);
   }
 
+  if (data === 'daily_stats') {
+    return renderDailyStats(botToken, chatId);
+  }
+
   if (data.startsWith('quick_launch:')) {
     const listName = data.replace('quick_launch:', '').trim();
     await sendTelegramMessage(botToken, chatId, `🚀 *Launching campaign for list "${listName}"...*`);
     const prompt = `Design and launch an outreach campaign for list "${listName}". First view profile, then send connection request note: "Hi {{firstName}}, saw your profile and would love to connect!", and when accepted send warm welcome message: "Hey {{firstName}}, glad to connect! Are you currently open to roles?"`;
     return handleUserCommand(botToken, chatId, prompt);
+  }
+
+  // 📅 1-Tap Booking Dispatch
+  if (data.startsWith('reply_cal:')) {
+    const publicId = data.replace('reply_cal:', '').trim();
+    const cfg = await getConfig();
+    const bookingLink = cfg.telegram?.bookingLink || cfg.bookingLink || 'https://calendly.com';
+    const body = `Thanks for getting back to me! Here is a direct link to grab a quick 10-15 min chat on my calendar: ${bookingLink} - looking forward to speaking!`;
+
+    await sendTelegramMessage(botToken, chatId, `⏳ *Dispatching booking link to* \`${publicId}\`...`);
+    try {
+      await voyager.sendMessage({ publicId, body });
+      return sendTelegramMessage(
+        botToken,
+        chatId,
+        `✅ *1-Tap Booking Link Sent!*\nDelivered to \`${publicId}\` on LinkedIn.`
+      );
+    } catch (err) {
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to send booking link: ${err.message}`);
+    }
+  }
+
+  // ✨ Contextual AI Response Generator
+  if (data.startsWith('reply_ai:')) {
+    const publicId = data.replace('reply_ai:', '').trim();
+    const cached = lastInboundReplies.get(publicId);
+
+    await sendTelegramMessage(botToken, chatId, `✨ *Drafting contextual AI reply for* \`${publicId}\`...`);
+
+    let prompt = '';
+    if (cached && cached.body) {
+      prompt = `A LinkedIn lead (${publicId}) sent this inbound reply: "${cached.body}". Write a warm, high-converting 2-sentence LinkedIn response answering them and inviting them to a brief 10-minute call. Under 240 chars. No corporate fluff. Output only the message text.`;
+    } else {
+      prompt = `A LinkedIn lead (${publicId}) just accepted my connection request. Write a warm, high-converting 2-sentence LinkedIn welcome message thanking them for connecting and inviting them to a brief 10-minute call. Under 240 chars. No corporate fluff. Output only the message text.`;
+    }
+
+    try {
+      const aiRes = await callDynamicAi(prompt, { forceText: true });
+      let draftText = (aiRes.type === 'text' ? aiRes.content : '') || '';
+      draftText = draftText.replace(/^["']|["']$/g, '').trim();
+
+      const draftId = 'd_' + Math.random().toString(36).slice(2, 9);
+      pendingDrafts.set(draftId, { publicId, text: draftText, at: Date.now() });
+
+      const previewMsg =
+        `✨ *AI Generated Response Draft:*\n` +
+        `👤 *Lead:* \`${publicId}\`\n\n` +
+        `"${draftText}"`;
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [{ text: '🚀 Send This AI Reply Now', callback_data: `send_draft:${draftId}` }],
+          [
+            { text: '🔄 Regenerate', callback_data: `reply_ai:${publicId}` },
+            { text: '❌ Cancel', callback_data: `cancel_draft:${draftId}` },
+          ],
+        ],
+      };
+
+      return sendTelegramMessage(botToken, chatId, previewMsg, { reply_markup: replyMarkup });
+    } catch (err) {
+      return sendTelegramMessage(botToken, chatId, `❌ AI draft generation failed: ${err.message}`);
+    }
+  }
+
+  // 🚀 Send Pending AI Draft
+  if (data.startsWith('send_draft:')) {
+    const draftId = data.replace('send_draft:', '').trim();
+    const draft = pendingDrafts.get(draftId);
+    if (!draft) {
+      return sendTelegramMessage(botToken, chatId, `⚠️ *Draft expired or already sent.*`);
+    }
+
+    await sendTelegramMessage(botToken, chatId, `⏳ *Delivering message to* \`${draft.publicId}\`...`);
+    try {
+      await voyager.sendMessage({ publicId: draft.publicId, body: draft.text });
+      pendingDrafts.delete(draftId);
+      return sendTelegramMessage(
+        botToken,
+        chatId,
+        `🚀 *AI Reply Successfully Delivered!*\nDelivered to \`${draft.publicId}\` on LinkedIn.`
+      );
+    } catch (err) {
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to deliver reply: ${err.message}`);
+    }
+  }
+
+  // ❌ Cancel Pending AI Draft
+  if (data.startsWith('cancel_draft:')) {
+    const draftId = data.replace('cancel_draft:', '').trim();
+    pendingDrafts.delete(draftId);
+    return sendTelegramMessage(botToken, chatId, `❌ *Draft cancelled.*`);
+  }
+
+  // 🚫 Blacklist / Do Not Contact
+  if (data.startsWith('blacklist:')) {
+    const publicId = data.replace('blacklist:', '').trim();
+    try {
+      await addToBlacklist(publicId);
+      return sendTelegramMessage(
+        botToken,
+        chatId,
+        `🚫 *Lead Blacklisted:* \`${publicId}\` added to Do Not Contact.`
+      );
+    } catch (err) {
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to blacklist: ${err.message}`);
+    }
   }
 }
 
@@ -624,7 +841,7 @@ export async function startTelegramPoller(token, chatId) {
   if (isPolling) return;
   isPolling = true;
 
-  console.log('[Telegram Poller] Starting Phase 1 Voice + Buttons poll for chat ID:', chatId);
+  console.log('[Telegram Poller] Starting Phase 2 Voice + Closer poll for chat ID:', chatId);
 
   (async () => {
     while (isPolling) {
@@ -679,6 +896,151 @@ export async function startTelegramPoller(token, chatId) {
   })();
 }
 
+// 🔔 Real-Time Event Subscriber
+onEvent(async (name, payload = {}) => {
+  try {
+    const cfg = await getConfig();
+    const tg = cfg.telegram || {};
+    if (!tg.enabled || !tg.botToken || !tg.chatId) return;
+
+    const now = Date.now();
+    cleanOldCaches();
+
+    // 1. Inbound Replies (EVENTS.REPLY_RECEIVED / EVENTS.POSITIVE_REPLY)
+    if (name === EVENTS.REPLY_RECEIVED || name === EVENTS.POSITIVE_REPLY) {
+      const publicId = payload.publicId || payload.fromPublicId;
+      if (!publicId) return;
+
+      const dedupeKey = `inbound:${publicId}:${payload.body || payload.text || ''}`;
+      const lastTime = recentAlertDedupe.get(dedupeKey) || 0;
+      if (now - lastTime < 10 * 60 * 1000) return;
+      recentAlertDedupe.set(dedupeKey, now);
+
+      const bodyText = payload.body || payload.text || '';
+      const sentiment = payload.sentiment || (name === EVENTS.POSITIVE_REPLY ? 'positive' : 'neutral');
+      const intent = payload.intent || 'interest';
+
+      lastInboundReplies.set(publicId, {
+        body: bodyText,
+        sentiment,
+        intent,
+        at: now,
+      });
+
+      const sentimentLabel =
+        sentiment === 'positive' || name === EVENTS.POSITIVE_REPLY
+          ? 'High Interest / Ready to Connect!'
+          : `${sentiment.toUpperCase()} Interest`;
+
+      const alertMsg =
+        `🔥 *HOT LEAD INBOUND REPLY!*\n\n` +
+        `👤 *Lead:* \`${publicId}\`\n` +
+        `🔗 [Open LinkedIn Profile](https://linkedin.com/in/${publicId})\n` +
+        `✨ *AI Sentiment:* ${sentimentLabel}\n\n` +
+        `💬 *Inbound Reply:*\n` +
+        `"${bodyText}"`;
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [{ text: '📅 Send 10-Min Booking Link', callback_data: `reply_cal:${publicId}` }],
+          [
+            { text: '✨ AI Draft Reply', callback_data: `reply_ai:${publicId}` },
+            { text: '🚫 Do Not Contact', callback_data: `blacklist:${publicId}` },
+          ],
+        ],
+      };
+
+      await sendTelegramAlert(alertMsg, { reply_markup: replyMarkup });
+    }
+
+    // 2. Accepted Connections (EVENTS.INVITE_ACCEPTED)
+    else if (name === EVENTS.INVITE_ACCEPTED) {
+      const publicId = payload.publicId;
+      if (!publicId) return;
+
+      const dedupeKey = `accepted:${publicId}`;
+      const lastTime = recentAlertDedupe.get(dedupeKey) || 0;
+      if (now - lastTime < 10 * 60 * 1000) return;
+      recentAlertDedupe.set(dedupeKey, now);
+
+      const alertMsg =
+        `🤝 *CONNECTION REQUEST ACCEPTED!*\n\n` +
+        `👤 *Lead:* \`${publicId}\`\n` +
+        `🔗 [Open LinkedIn Profile](https://linkedin.com/in/${publicId})\n\n` +
+        `Candidate accepted your invitation! Choose an action:`;
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [
+            { text: '📅 Send Booking Link', callback_data: `reply_cal:${publicId}` },
+            { text: '✨ AI Draft Welcome', callback_data: `reply_ai:${publicId}` },
+          ],
+        ],
+      };
+
+      await sendTelegramAlert(alertMsg, { reply_markup: replyMarkup });
+    }
+
+    // 3. Security Checkpoint Freeze (EVENTS.CHALLENGE_DETECTED)
+    else if (name === EVENTS.CHALLENGE_DETECTED) {
+      const dedupeKey = 'checkpoint:freeze';
+      const lastTime = recentAlertDedupe.get(dedupeKey) || 0;
+      if (now - lastTime < 10 * 60 * 1000) return;
+      recentAlertDedupe.set(dedupeKey, now);
+
+      // Auto-freeze all active campaigns
+      try {
+        const all = await campaigns.getAll();
+        const active = all.filter((c) => c.status === 'active');
+        for (const c of active) await campaigns.setStatus(c.campaignId, 'paused');
+      } catch (e) {
+        console.error('[Telegram Safety Guard Error]', e);
+      }
+
+      const alertMsg =
+        `🚨 *CRITICAL SAFETY ALERT: CHECKPOINT DETECTED!*\n\n` +
+        `LinkedIn is asking you to confirm it's you.\n\n` +
+        `🛡️ *Safety Guard Activated:* All outreach runners and sequences have been paused automatically.\n` +
+        `👉 Please open LinkedIn in your browser and complete the check yourself, then tap Resume All below.`;
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [
+            { text: '📊 Campaign Status', callback_data: 'camp_status' },
+            { text: '▶️ Resume All (After Solving)', callback_data: 'camp_resume' },
+          ],
+        ],
+      };
+
+      await sendTelegramAlert(alertMsg, { reply_markup: replyMarkup });
+    }
+
+    // 4. Daily Quota Cap Hit (EVENTS.QUOTA_HIT)
+    else if (name === EVENTS.QUOTA_HIT) {
+      const kind = payload.kind || 'outreach';
+      const dedupeKey = `quota_hit:${kind}`;
+      const lastTime = recentAlertDedupe.get(dedupeKey) || 0;
+      if (now - lastTime < 10 * 60 * 1000) return;
+      recentAlertDedupe.set(dedupeKey, now);
+
+      const alertMsg =
+        `⚠️ *DAILY OUTREACH LIMIT REACHED for ${kind}*\n\n` +
+        `OutFox has paused ${kind} actions until the daily quota resets to keep your LinkedIn account safe.`;
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [{ text: '📊 View Outreach Pulse', callback_data: 'daily_stats' }],
+        ],
+      };
+
+      await sendTelegramAlert(alertMsg, { reply_markup: replyMarkup });
+    }
+  } catch (err) {
+    console.error('[Telegram onEvent Handler Error]', err);
+  }
+});
+
+// Auto-start poller on module load if configured
 getConfig().then((cfg) => {
   if (cfg.telegram && cfg.telegram.enabled && cfg.telegram.botToken && cfg.telegram.chatId) {
     startTelegramPoller(cfg.telegram.botToken, cfg.telegram.chatId);

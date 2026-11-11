@@ -295,6 +295,7 @@ export const DEFAULT_CONFIG = {
     chatId: '',
     status: 'disconnected',
     lastSyncAt: 0,
+    bookingLink: '',
   },
 };
 
@@ -765,6 +766,10 @@ export function clampConfig(cfg = {}) {
   };
 
   if (input.webhookUrl !== undefined) out.webhookUrl = input.webhookUrl;
+
+  if (out.telegram && typeof out.telegram.bookingLink === 'string') {
+    out.telegram.bookingLink = out.telegram.bookingLink.trim();
+  }
 
   return out;
 }

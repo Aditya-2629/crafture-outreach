@@ -38,6 +38,16 @@ export const MAX_EVENT_LOG = 500;
 /** Installed by bridge.js: `(frame) => void`. */
 let sink = null;
 
+const listeners = new Set();
+
+export function onEvent(fn) {
+  if (typeof fn === 'function') {
+    listeners.add(fn);
+    return () => listeners.delete(fn);
+  }
+  return () => {};
+}
+
 export function setSink(fn) {
   sink = typeof fn === 'function' ? fn : null;
 }
@@ -48,7 +58,7 @@ export function hasSink() {
 
 function notify(name, payload) {
   const spec = NOTIFY[name];
-  if (!spec || !chrome.notifications) return;
+  if (!spec || typeof chrome === 'undefined' || !chrome.notifications) return;
   try {
     chrome.notifications.create({
       type: 'basic',
@@ -167,10 +177,20 @@ export async function emit(name, payload = {}) {
     /* a disconnected bridge must never fail the action that emitted */
   }
 
+  for (const fn of listeners) {
+    try {
+      fn(name, payload);
+    } catch (e) {
+      console.warn('[events] listener error:', e);
+    }
+  }
+
   notify(name, payload);
 
   try {
-    await chrome.runtime.sendMessage({ type: 'EVENT', event: name, payload });
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      await chrome.runtime.sendMessage({ type: 'EVENT', event: name, payload });
+    }
   } catch {
     /* nobody listening (no popup open) */
   }

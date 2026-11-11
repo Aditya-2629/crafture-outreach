@@ -1,7 +1,6 @@
 /**
- * OutFox — Telegram Autonomous AI SDR Engine
- * Dynamically uses the AI Provider (Groq, Gemini, OpenAI, Claude, Ollama)
- * configured by the user in OutFox Settings -> AI Engine.
+ * OutFox — Telegram Autonomous AI SDR Engine (Phase 1 Upgrade).
+ * Includes: Groq Whisper Voice Transcriber + Inline Action Buttons + Dynamic AI
  */
 
 import { ACTIONS, ERROR, EngineError } from '../lib/actions.js';
@@ -15,6 +14,7 @@ const TELEGRAM_API_BASE = 'https://api.telegram.org';
 let isPolling = false;
 let pollAbortController = null;
 let lastUpdateId = 0;
+let lastSearchedList = 'data analyst USA';
 
 export function maskToken(token) {
   if (!token || typeof token !== 'string') return '';
@@ -44,21 +44,41 @@ export async function sendTelegramMessage(token, chatId, text, options = {}) {
   });
 }
 
+export async function answerCallbackQuery(token, callbackQueryId, text = '') {
+  try {
+    await callTelegramApi(token, 'answerCallbackQuery', {
+      callback_query_id: callbackQueryId,
+      text,
+    });
+  } catch {}
+}
+
 export async function testTelegram({ botToken, chatId }) {
   if (!botToken || !chatId) {
     throw new EngineError(ERROR.INVALID_PARAMS, 'Both Bot Token and Chat ID are required.');
   }
   const start = Date.now();
   const me = await callTelegramApi(botToken, 'getMe');
-  const testMsg = `🦊 *OutFox Mobile AI Copilot Connected!*\n\n` +
-    `Bot Name: *${me.first_name || 'OutFox'}* (@${me.username || 'bot'})\n` +
+  const testMsg =
+    `🦊 *OutFox Mobile AI Copilot Connected!*\n\n` +
+    `Bot: *${me.first_name || 'OutFox'}* (@${me.username || 'bot'})\n` +
     `Latency: *${Date.now() - start}ms*\n\n` +
-    `Tu ab apne mobile se direct commands bhej sakta hai:\n` +
-    `• \`Search Austin Data Analyst OPT\`\n` +
-    `• \`Campaign status dikhao\`\n` +
-    `• \`Pause campaign\` / \`Resume campaign\``;
+    `🎯 *Phase 1 Active Superpowers:*\n` +
+    `• 🎙️ *Voice Notes:* Mic se bolkar command bhejo!\n` +
+    `• 🔘 *Action Buttons:* 1-tap se campaign launch, pause & resume.\n` +
+    `• 🧠 *Dynamic AI:* Groq/Gemini Function Calling.`;
 
-  await sendTelegramMessage(botToken, chatId, testMsg);
+  const replyMarkup = {
+    inline_keyboard: [
+      [
+        { text: '📊 Campaign Status', callback_data: 'camp_status' },
+        { text: '⏸️ Pause All', callback_data: 'camp_pause' },
+      ],
+      [{ text: '▶️ Resume All', callback_data: 'camp_resume' }],
+    ],
+  };
+
+  await sendTelegramMessage(botToken, chatId, testMsg, { reply_markup: replyMarkup });
   return { ok: true, botUsername: me.username, latencyMs: Date.now() - start };
 }
 
@@ -101,10 +121,60 @@ export async function getTelegramStatus() {
   };
 }
 
-// =========================================================================
-// AI Tools Schema (Exposed to dynamic LLM)
-// =========================================================================
+// 🎙️ Voice Note Transcriber via Groq Whisper
+async function transcribeVoice(botToken, fileId) {
+  const cfg = await getConfig();
+  const apiKey = cfg.ai?.apiKey;
+  if (!apiKey) {
+    throw new Error('Groq API Key not found. Please set your Groq key in Settings -> AI Engine for voice transcription.');
+  }
+
+  const fileInfo = await callTelegramApi(botToken, 'getFile', { file_id: fileId });
+  const fileUrl = `${TELEGRAM_API_BASE}/file/bot${botToken}/${fileInfo.file_path}`;
+
+  const audioRes = await fetch(fileUrl);
+  const audioBlob = await audioRes.blob();
+
+  const formData = new FormData();
+  formData.append('file', audioBlob, 'voice.ogg');
+  formData.append('model', 'whisper-large-v3-turbo');
+  formData.append('response_format', 'json');
+
+  const whisperRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: formData,
+  });
+
+  if (!whisperRes.ok) {
+    const errText = await whisperRes.text();
+    throw new Error(`Whisper failed: ${errText.slice(0, 150)}`);
+  }
+
+  const data = await whisperRes.json();
+  return data.text || '';
+}
+
+// AI Tools Declaration
 const AI_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'create_outreach_campaign',
+      description: 'Design and launch a multi-step outreach sequence campaign attached to a prospect list.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Name of the campaign' },
+          listName: { type: 'string', description: 'Name of the list of leads to enroll, e.g. "data analyst USA"' },
+          hasViewStep: { type: 'boolean', description: 'True if sequence should view profile first' },
+          inviteNote: { type: 'string', description: 'Personalized connection note with {{firstName}}' },
+          followupMessage: { type: 'string', description: 'Warm welcome message sent when connection is accepted' },
+        },
+        required: ['name', 'listName', 'inviteNote'],
+      },
+    },
+  },
   {
     type: 'function',
     function: {
@@ -154,10 +224,51 @@ const AI_TOOLS = [
   },
 ];
 
-// =========================================================================
-// Autonomous Tool Execution Engine
-// =========================================================================
 async function executeTool(name, args = {}) {
+  if (name === 'create_outreach_campaign') {
+    const allLists = await lists.getAll();
+    const searchName = String(args.listName || '').toLowerCase().trim();
+    const targetList = allLists.find((l) => l.name.toLowerCase().includes(searchName)) || allLists[0];
+
+    if (!targetList) {
+      throw new Error(`List "${args.listName}" nahi mili. Pehle leads search karke list me save karo.`);
+    }
+
+    const steps = [];
+    if (args.hasViewStep !== false) steps.push({ type: 'view' });
+
+    steps.push({
+      type: 'invite',
+      note: args.inviteNote || 'Hi {{firstName}}, saw your profile and would love to connect!',
+    });
+
+    if (args.followupMessage) {
+      steps.push({
+        type: 'message',
+        body: args.followupMessage,
+      });
+    }
+
+    const camp = await campaigns.create({
+      name: args.name || `${targetList.name} Outreach`,
+      listId: targetList.listId,
+      steps,
+      settings: { stopOnReply: true, autopilot: false },
+    });
+
+    const enrolledList = await campaigns.readEnrollments(camp.campaignId);
+
+    return {
+      campaignCreated: true,
+      campaignId: camp.campaignId,
+      name: camp.name,
+      enrolledCount: enrolledList.length,
+      stepsCount: steps.length,
+      listUsed: targetList.name,
+      steps: steps.map((s, i) => `Step ${i + 1}: ${s.type.toUpperCase()}${s.note ? ` ("${s.note.slice(0, 35)}...")` : ''}`),
+    };
+  }
+
   if (name === 'search_and_save_leads') {
     let kw = args.keywords || 'Data Analyst';
     if (args.openToWorkOnly && !kw.includes('Open to work')) kw += ' "Open to work"';
@@ -173,6 +284,7 @@ async function executeTool(name, args = {}) {
 
     if (args.listName && profiles.length > 0) {
       try {
+        lastSearchedList = args.listName;
         const listObj = await lists.ensureList(args.listName);
         await lists.add(listObj.listId, { profiles });
         listSaved = true;
@@ -204,7 +316,7 @@ async function executeTool(name, args = {}) {
     if (args.action === 'resume') {
       const paused = all.filter((c) => c.status === 'paused');
       for (const c of paused) await campaigns.setStatus(c.campaignId, 'active');
-      return { resumedCount: paused.length, message: `${paused.length} campaign(s) resumed.` };
+      return { resumedCount: paused.length, message: `${paused.length} campaign(s) resumed. Runner triggered!` };
     }
     return {
       total: all.length,
@@ -224,9 +336,6 @@ async function executeTool(name, args = {}) {
   throw new Error(`Unknown tool: ${name}`);
 }
 
-// =========================================================================
-// Dynamic AI Router (Reads Configured Provider & Model)
-// =========================================================================
 async function callDynamicAi(userText) {
   const cfg = await getConfig();
   const ai = cfg.ai || {};
@@ -235,17 +344,23 @@ async function callDynamicAi(userText) {
   if (provider === 'none' || (!ai.apiKey && provider !== 'ollama')) {
     return {
       type: 'text',
-      content: `⚠️ *AI Engine Not Configured:*\nOutFox Dashboard ➔ *Settings ➔ AI Engine* me jaakar apna Groq ya Gemini API Key connect karo taaki AI fully autonomous ban sake!\n\n_Filhal simple commands try karo:_\n• \`Campaign status\`\n• \`Pause campaign\`\n• \`Resume campaign\``,
+      content: `⚠️ *AI Engine Not Configured:*\nOutFox Dashboard ➔ *Settings ➔ AI Engine* me jaakar apna Groq ya Gemini API Key connect karo!\n\n_Quick Actions:_\n• \`Campaign status\`\n• \`Pause campaign\`\n• \`Resume campaign\``,
     };
   }
 
   const apiKey = ai.apiKey || '';
-  const model = ai.model || (provider === 'groq' ? 'llama-3.3-70b-versatile' : provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini');
+  const model =
+    ai.model ||
+    (provider === 'groq'
+      ? 'llama-3.3-70b-versatile'
+      : provider === 'gemini'
+        ? 'gemini-2.0-flash'
+        : 'gpt-4o-mini');
 
   const systemPrompt =
     'You are OutFox AI SDR, an autonomous assistant controlling LinkedIn outreach. ' +
     'Understand user requests in English, Hindi, or Hinglish. ' +
-    'When the user asks to search prospects, save leads to a list, send messages, or manage campaigns, call the matching function tool. ' +
+    'When the user asks to search prospects, save leads to a list, design/create campaigns, send messages, or manage campaigns, call the matching function tool. ' +
     'Always be helpful, warm, and accurate.';
 
   let url = '';
@@ -342,9 +457,6 @@ async function callDynamicAi(userText) {
   return { type: 'text', content: msg?.content || 'Haan bhai, batao kya karna hai?' };
 }
 
-// =========================================================================
-// Main User Command Processor
-// =========================================================================
 async function handleUserCommand(botToken, chatId, text) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return;
@@ -352,20 +464,31 @@ async function handleUserCommand(botToken, chatId, text) {
   if (trimmed === '/start' || trimmed === '/help') {
     const welcome =
       `🦊 *OutFox Mobile AI Copilot Ready!*\n\n` +
-      `Tu mujhse mobile par kisi bhi bhasha (Hindi/Hinglish/English) me baat kar sakta hai:\n\n` +
-      `📌 *Dynamic Search & List Saving:*\n` +
-      `• _"Search Indian Data Analysts in USA and name that list as Data Analyst USA"_\n` +
-      `• _"Austin me 5 Engineering Managers dhoondo"_\n\n` +
+      `Tu mujhse mobile par kisi bhi bhasha (Hindi/Hinglish/English) me text ya voice note bhej sakta hai:\n\n` +
+      `📌 *Search & Save:*\n` +
+      `• _"Search Indian Data Analysts in USA and name that list as Data Analyst USA"_\n\n` +
+      `📌 *Create Sequence Campaign:*\n` +
+      `• _"Design campaign for Data Analyst USA list view profile then send invite note"_\n\n` +
       `📌 *Direct Messaging:*\n` +
       `• _"Sahil ko follow-up message bhej do: Are you free for a call?"_\n\n` +
-      `📌 *Campaign Controls:*\n` +
-      `• _"Campaign status dikhao"_\n` +
-      `• _"Campaign pause kar do"_ ya _"Resume campaign"_`;
-    return sendTelegramMessage(botToken, chatId, welcome);
+      `📌 *Controls:*\n` +
+      `• _"Campaign status"_, _"Pause campaign"_, _"Resume campaign"_`;
+
+    const replyMarkup = {
+      inline_keyboard: [
+        [
+          { text: '📊 Campaign Status', callback_data: 'camp_status' },
+          { text: '⏸️ Pause All', callback_data: 'camp_pause' },
+        ],
+        [{ text: '▶️ Resume All', callback_data: 'camp_resume' }],
+      ],
+    };
+
+    return sendTelegramMessage(botToken, chatId, welcome, { reply_markup: replyMarkup });
   }
 
   try {
-    await sendTelegramMessage(botToken, chatId, `⚡ *AI analyzing intent with your configured model...*`);
+    await sendTelegramMessage(botToken, chatId, `⚡ *AI analyzing intent...*`);
 
     const aiResult = await callDynamicAi(trimmed);
 
@@ -374,8 +497,27 @@ async function handleUserCommand(botToken, chatId, text) {
       const execResult = await executeTool(aiResult.name, aiResult.args);
 
       let reply = `✅ *Action Completed Successfully!*\n\n`;
+      let replyMarkup = null;
 
-      if (aiResult.name === 'search_and_save_leads') {
+      if (aiResult.name === 'create_outreach_campaign') {
+        reply +=
+          `🚀 *Campaign Created & Enrolled!*\n\n` +
+          `• Name: *${execResult.name}*\n` +
+          `• Enrolled Leads: *${execResult.enrolledCount}* (from list _"${execResult.listUsed}"_)\n` +
+          `• Sequence Steps (${execResult.stepsCount}):\n` +
+          execResult.steps.map((s) => `  ✓ ${s}`).join('\n') +
+          '\n\n' +
+          `_Campaign dashboard me active ho chuki hai!_`;
+
+        replyMarkup = {
+          inline_keyboard: [
+            [
+              { text: '📊 Check Status', callback_data: 'camp_status' },
+              { text: '⏸️ Pause Campaign', callback_data: 'camp_pause' },
+            ],
+          ],
+        };
+      } else if (aiResult.name === 'search_and_save_leads') {
         reply += `🎯 *Found ${execResult.countFound} Prospects on LinkedIn!*\n`;
         if (execResult.listSaved) {
           reply += `📁 *Saved to List:* \`${execResult.listName}\`\n\n`;
@@ -384,6 +526,17 @@ async function handleUserCommand(botToken, chatId, text) {
         execResult.topProfiles.forEach((p, i) => {
           reply += `*${i + 1}. ${p.name}*\n💼 ${p.headline}\n📍 ${p.location}\n${p.url ? `🔗 [Profile Link](${p.url})\n` : ''}\n`;
         });
+
+        const targetList = execResult.listName || lastSearchedList;
+        replyMarkup = {
+          inline_keyboard: [
+            [{ text: `🚀 Launch Campaign for "${targetList}"`, callback_data: `quick_launch:${targetList}` }],
+            [
+              { text: '📊 Status', callback_data: 'camp_status' },
+              { text: '⏸️ Pause All', callback_data: 'camp_pause' },
+            ],
+          ],
+        };
       } else if (aiResult.name === 'manage_campaigns') {
         if (execResult.pausedCount !== undefined) {
           reply += `⏸️ *Paused:* ${execResult.pausedCount} active campaign(s).`;
@@ -392,13 +545,22 @@ async function handleUserCommand(botToken, chatId, text) {
         } else {
           reply += `📊 *Campaign Status:*\n• Active: *${execResult.active}*\n• Paused: *${execResult.paused}*\n• Total: *${execResult.total}*`;
         }
+
+        replyMarkup = {
+          inline_keyboard: [
+            [
+              { text: '⏸️ Pause All', callback_data: 'camp_pause' },
+              { text: '▶️ Resume All', callback_data: 'camp_resume' },
+            ],
+          ],
+        };
       } else if (aiResult.name === 'send_linkedin_message') {
         reply += `✉️ Message sent to *${execResult.recipient}*!`;
       } else {
         reply += JSON.stringify(execResult, null, 2);
       }
 
-      return sendTelegramMessage(botToken, chatId, reply);
+      return sendTelegramMessage(botToken, chatId, reply, replyMarkup ? { reply_markup: replyMarkup } : {});
     }
 
     return sendTelegramMessage(botToken, chatId, aiResult.content);
@@ -408,13 +570,46 @@ async function handleUserCommand(botToken, chatId, text) {
   }
 }
 
-// =========================================================================
-// Long Polling Engine (Service Worker Compatible)
-// =========================================================================
+async function handleCallback(botToken, chatId, callbackData) {
+  const data = String(callbackData || '');
+
+  if (data === 'camp_status') {
+    const all = await campaigns.getAll();
+    const active = all.filter((c) => c.status === 'active');
+    const paused = all.filter((c) => c.status === 'paused');
+    let msg = `📊 *Campaign Status:*\n• Active: *${active.length}* | Paused: *${paused.length}* | Total: *${all.length}*\n\n`;
+    active.forEach((c) => {
+      msg += `⚡ *${c.name}* (Enrolled: ${c.stats?.enrolled || 0})\n`;
+    });
+    return sendTelegramMessage(botToken, chatId, msg);
+  }
+
+  if (data === 'camp_pause') {
+    const active = (await campaigns.getAll()).filter((c) => c.status === 'active');
+    for (const c of active) await campaigns.setStatus(c.campaignId, 'paused');
+    return sendTelegramMessage(botToken, chatId, `⏸️ *Success:* ${active.length} active campaign(s) paused.`);
+  }
+
+  if (data === 'camp_resume') {
+    const paused = (await campaigns.getAll()).filter((c) => c.status === 'paused');
+    for (const c of paused) await campaigns.setStatus(c.campaignId, 'active');
+    return sendTelegramMessage(botToken, chatId, `▶️ *Success:* ${paused.length} campaign(s) resumed. Runner triggered!`);
+  }
+
+  if (data.startsWith('quick_launch:')) {
+    const listName = data.replace('quick_launch:', '').trim();
+    await sendTelegramMessage(botToken, chatId, `🚀 *Launching campaign for list "${listName}"...*`);
+    const prompt = `Design and launch an outreach campaign for list "${listName}". First view profile, then send connection request note: "Hi {{firstName}}, saw your profile and would love to connect!", and when accepted send warm welcome message: "Hey {{firstName}}, glad to connect! Are you currently open to roles?"`;
+    return handleUserCommand(botToken, chatId, prompt);
+  }
+}
+
 export function stopTelegramPoller() {
   isPolling = false;
   if (pollAbortController) {
-    try { pollAbortController.abort(); } catch {}
+    try {
+      pollAbortController.abort();
+    } catch {}
     pollAbortController = null;
   }
 }
@@ -429,7 +624,7 @@ export async function startTelegramPoller(token, chatId) {
   if (isPolling) return;
   isPolling = true;
 
-  console.log('[Telegram Poller] Starting dynamic background poll for chat ID:', chatId);
+  console.log('[Telegram Poller] Starting Phase 1 Voice + Buttons poll for chat ID:', chatId);
 
   (async () => {
     while (isPolling) {
@@ -442,11 +637,36 @@ export async function startTelegramPoller(token, chatId) {
         if (data.ok && Array.isArray(data.result)) {
           for (const update of data.result) {
             lastUpdateId = Math.max(lastUpdateId, update.update_id);
+
+            // 1. Handle Inline Action Buttons
+            if (update.callback_query) {
+              const cq = update.callback_query;
+              if (String(cq.message?.chat?.id) === String(chatId)) {
+                await answerCallbackQuery(token, cq.id, 'Executing...');
+                await handleCallback(token, chatId, cq.data).catch(console.error);
+              }
+              continue;
+            }
+
             const msg = update.message;
-            if (msg && msg.text && String(msg.chat.id) === String(chatId)) {
-              await handleUserCommand(token, chatId, msg.text).catch((err) => {
-                console.error('[Telegram Command Error]', err);
-              });
+            if (!msg || String(msg.chat.id) !== String(chatId)) continue;
+
+            // 2. Handle Voice Notes via Groq Whisper
+            if (msg.voice && msg.voice.file_id) {
+              await sendTelegramMessage(token, chatId, `🎙️ *Voice Note Received! Transcribing via Whisper...*`);
+              try {
+                const transcribed = await transcribeVoice(token, msg.voice.file_id);
+                await sendTelegramMessage(token, chatId, `🗣️ *You Said:* _"${transcribed}"_`);
+                await handleUserCommand(token, chatId, transcribed);
+              } catch (vErr) {
+                await sendTelegramMessage(token, chatId, `❌ Voice transcription error: ${vErr.message}`);
+              }
+              continue;
+            }
+
+            // 3. Handle Text Commands
+            if (msg.text) {
+              await handleUserCommand(token, chatId, msg.text).catch(console.error);
             }
           }
         }

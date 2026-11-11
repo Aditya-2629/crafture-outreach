@@ -36,6 +36,39 @@ const lastInboundReplies = new Map(); // publicId -> { body, sentiment, intent, 
 const pendingDrafts = new Map(); // draftId -> { publicId, text, at }
 const pendingBlueprints = new Map(); // blueprintId -> blueprint object
 
+// Multi-turn conversation history buffer
+export const chatHistory = []; // Array of { role: 'user' | 'assistant', content: string, at: number }
+const MAX_HISTORY_TURNS = 10;
+
+/**
+ * Add a message turn to the rolling context buffer.
+ */
+export function recordChatTurn(role, text) {
+  if (!text || typeof text !== 'string') return;
+  // Truncate individual message length to prevent token bloating
+  const clean = text.replace(/[*_`\[\]]/g, '').trim().slice(0, 600);
+  if (!clean) return;
+  chatHistory.push({ role, content: clean, at: Date.now() });
+
+  // Keep within rolling window
+  if (chatHistory.length > MAX_HISTORY_TURNS * 2) {
+    chatHistory.splice(0, chatHistory.length - MAX_HISTORY_TURNS * 2);
+  }
+}
+
+/**
+ * Retrieve sanitized recent history for LLM injection.
+ */
+export function getRecentChatTurns() {
+  const now = Date.now();
+  // Filter messages older than 2 hours to avoid stale context
+  const active = chatHistory.filter((m) => now - m.at < 7200000);
+  return active.map((m) => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user',
+    content: m.content,
+  }));
+}
+
 function cleanOldCaches() {
   const now = Date.now();
   if (recentAlertDedupe.size > 1000) {
@@ -52,6 +85,9 @@ function cleanOldCaches() {
     for (const [id, bp] of pendingBlueprints.entries()) {
       if (now - (bp.createdAt || 0) > 24 * 60 * 60 * 1000) pendingBlueprints.delete(id);
     }
+  }
+  while (chatHistory.length > 0 && now - chatHistory[0].at > 2 * 60 * 60 * 1000) {
+    chatHistory.shift();
   }
 }
 
@@ -245,6 +281,7 @@ export async function testTelegram({ botToken, chatId }) {
     `Booking Link: *${activeCand?.bookingLink || 'https://calendly.com'}*\n` +
     `Latency: *${Date.now() - start}ms*\n\n` +
     `🎯 *Active Superpowers:*\n` +
+    `• 🧠 *Conversation Memory:* 10-turn rolling context buffer\n` +
     `• 📋 *Blueprint Architect:* Pre-flight sequence approval cards\n` +
     `• ✏️ *Conversational Editor:* Edit note or follow-up anytime\n` +
     `• 🔄 *Candidate Switcher:* \`/switch <name>\` or \`/candidates\`\n` +
@@ -793,12 +830,47 @@ async function callDynamicAi(userText, options = {}) {
   let body = {};
   const useTools = !options.forceText;
 
+  const recentTurns = options.forceText ? [] : getRecentChatTurns();
+
+  // If recentTurns already ends with the current user message (recorded at start of command), avoid duplicating it
+  let historyTurns = [...recentTurns];
+  if (
+    historyTurns.length > 0 &&
+    historyTurns[historyTurns.length - 1].role === 'user' &&
+    historyTurns[historyTurns.length - 1].content.trim() === userText.replace(/[*_`\[\]]/g, '').trim().slice(0, 600)
+  ) {
+    historyTurns.pop();
+  }
+
+  const assembledMessages = [
+    { role: 'system', content: systemPrompt },
+    ...historyTurns,
+    { role: 'user', content: userText },
+  ];
+
+  // Anthropic messages format: system prompt is top-level; messages array must start with 'user' and alternate
+  let anthropicMessages = [...historyTurns, { role: 'user', content: userText }];
+  while (anthropicMessages.length > 0 && anthropicMessages[0].role !== 'user') {
+    anthropicMessages.shift();
+  }
+  if (anthropicMessages.length === 0) {
+    anthropicMessages = [{ role: 'user', content: userText }];
+  }
+  const sanitizedAnthropicMessages = [];
+  for (const m of anthropicMessages) {
+    if (sanitizedAnthropicMessages.length > 0 && sanitizedAnthropicMessages[sanitizedAnthropicMessages.length - 1].role === m.role) {
+      sanitizedAnthropicMessages[sanitizedAnthropicMessages.length - 1].content += '\n' + m.content;
+    } else {
+      sanitizedAnthropicMessages.push({ role: m.role, content: m.content });
+    }
+  }
+
   if (provider === 'groq') {
     url = `${ai.baseUrl || 'https://api.groq.com'}/openai/v1/chat/completions`;
     headers['Authorization'] = `Bearer ${apiKey}`;
     body = {
       model,
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+      messages: assembledMessages,
       ...(useTools ? { tools: AI_TOOLS, tool_choice: 'auto' } : {}),
     };
   } else if (provider === 'gemini') {
@@ -806,7 +878,7 @@ async function callDynamicAi(userText, options = {}) {
     headers['Authorization'] = `Bearer ${apiKey}`;
     body = {
       model: model.includes('gemini') ? model : 'gemini-2.0-flash',
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+      messages: assembledMessages,
       ...(useTools ? { tools: AI_TOOLS, tool_choice: 'auto' } : {}),
     };
   } else if (provider === 'openai' || provider === 'openai-compatible') {
@@ -814,7 +886,7 @@ async function callDynamicAi(userText, options = {}) {
     headers['Authorization'] = `Bearer ${apiKey}`;
     body = {
       model,
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+      messages: assembledMessages,
       ...(useTools ? { tools: AI_TOOLS, tool_choice: 'auto' } : {}),
     };
   } else if (provider === 'anthropic') {
@@ -826,7 +898,7 @@ async function callDynamicAi(userText, options = {}) {
       model: model || 'claude-3-5-sonnet-20241022',
       max_tokens: 1024,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userText }],
+      messages: sanitizedAnthropicMessages,
       ...(useTools
         ? {
             tools: AI_TOOLS.map((t) => ({
@@ -842,7 +914,7 @@ async function callDynamicAi(userText, options = {}) {
     body = {
       model: model || 'llama3.1',
       stream: false,
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+      messages: assembledMessages,
       ...(useTools ? { tools: AI_TOOLS } : {}),
     };
   } else {
@@ -999,11 +1071,25 @@ async function handleUserCommand(botToken, chatId, text) {
   if (!trimmed) return;
   cleanOldCaches();
 
+  if (trimmed === '/clear' || trimmed === '/reset') {
+    chatHistory.length = 0;
+    return sendTelegramMessage(
+      botToken,
+      chatId,
+      `🧹 *Conversation Memory Cleared!*\nStarting a fresh session with your live workspace context.`
+    );
+  }
+
+  // Record user turn in the rolling context buffer
+  recordChatTurn('user', trimmed);
+
   if (trimmed === '/start' || trimmed === '/help') {
     const activeCand = await getActiveCandidate().catch(() => null);
     const welcome =
       `🦊 *OutFox Mobile AI Copilot Ready!*\n\n` +
       `Active Persona: *${activeCand?.name || 'Aditya'}* (\`${activeCand?.slug || 'aditya'}\`)\n\n` +
+      `📌 *Conversation Memory:*\n` +
+      `• \`/clear\` or \`/reset\` — Wipe memory buffer & start fresh\n\n` +
       `📌 *Campaign Blueprints & Editing:*\n` +
       `• _"Design campaign for Data Analyst USA"_\n` +
       `• _"Change step 3 follow up to: Hey {{firstName}}..."_\n` +
@@ -1045,6 +1131,7 @@ async function handleUserCommand(botToken, chatId, text) {
         const msgStep = bp.steps.find((s) => s.type === 'message');
         if (msgStep) msgStep.body = editCmd.newContent;
         else bp.steps.push({ type: 'message', body: editCmd.newContent, delayDays: 1, desc: 'Follow-up message after acceptance' });
+        recordChatTurn('assistant', 'Updated Step 3 (Follow-Up Message) of campaign blueprint.');
         return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Step 3 (Follow-Up Message) Updated Successfully!*');
       }
 
@@ -1052,12 +1139,14 @@ async function handleUserCommand(botToken, chatId, text) {
         bp.inviteNote = editCmd.newContent;
         const inviteStep = bp.steps.find((s) => s.type === 'invite');
         if (inviteStep) inviteStep.note = editCmd.newContent;
+        recordChatTurn('assistant', 'Updated Step 2 (Connection Note) of campaign blueprint.');
         return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Step 2 (Connection Note) Updated Successfully!*');
       }
 
       if (editCmd.targetStep === 'name') {
         bp.campaignName = editCmd.newContent;
         bp.name = editCmd.newContent;
+        recordChatTurn('assistant', `Updated campaign name to "${editCmd.newContent}".`);
         return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Campaign Name Updated Successfully!*');
       }
     }
@@ -1112,6 +1201,13 @@ async function handleUserCommand(botToken, chatId, text) {
 
       if (aiResult.name === 'edit_campaign_blueprint') {
         if (execResult.ok && execResult.blueprint) {
+          const stepLabel =
+            execResult.stepToEdit === 'followup'
+              ? 'Step 3 (Follow-Up Message)'
+              : execResult.stepToEdit === 'invite'
+                ? 'Step 2 (Connection Note)'
+                : 'Campaign Name';
+          recordChatTurn('assistant', `Updated ${stepLabel} in campaign blueprint.`);
           const notice =
             execResult.stepToEdit === 'followup'
               ? '✏️ *Step 3 (Follow-Up Message) Updated Successfully!*'
@@ -1157,7 +1253,9 @@ async function handleUserCommand(botToken, chatId, text) {
         }
 
         if (execResult.type === 'blueprint_ready') {
-          return presentCampaignBlueprint(botToken, chatId, execResult.blueprint);
+          const bp = execResult.blueprint;
+          recordChatTurn('assistant', `Generated campaign blueprint for list "${bp.listName}" with ${(bp.steps || []).length} steps.`);
+          return presentCampaignBlueprint(botToken, chatId, bp.blueprintId || execResult.blueprintId, bp);
         }
       }
 
@@ -1165,6 +1263,7 @@ async function handleUserCommand(botToken, chatId, text) {
       let replyMarkup = null;
 
       if (aiResult.name === 'switch_candidate_workspace') {
+        recordChatTurn('assistant', `Switched active candidate persona to ${execResult.name} (${execResult.title}).`);
         reply +=
           `🔄 *Candidate Workspace Switched!*\n\n` +
           `• Name: *${execResult.name}* (\`${execResult.slug}\`)\n` +
@@ -1178,6 +1277,7 @@ async function handleUserCommand(botToken, chatId, text) {
           ],
         };
       } else if (aiResult.name === 'enrich_lead_email') {
+        recordChatTurn('assistant', execResult.email ? `Enriched lead ${execResult.publicId}: found email ${execResult.email}.` : `Could not find email for lead ${execResult.publicId}.`);
         if (execResult.email) {
           reply +=
             `📧 *Enrichment Successful!*\n\n` +
@@ -1190,6 +1290,8 @@ async function handleUserCommand(botToken, chatId, text) {
           reply += `⚠️ No email found for \`${execResult.publicId}\` across Apollo and Hunter.`;
         }
       } else if (aiResult.name === 'search_and_save_leads') {
+        const listNameUsed = execResult.listName || lastSearchedList;
+        recordChatTurn('assistant', `Found ${execResult.countFound} prospects on LinkedIn and saved to list "${listNameUsed}".`);
         reply += `🎯 *Found ${execResult.countFound} Prospects on LinkedIn!*\n`;
         if (execResult.listSaved) {
           reply += `📁 *Saved to List:* \`${execResult.listName}\`\n\n`;
@@ -1210,6 +1312,7 @@ async function handleUserCommand(botToken, chatId, text) {
           ],
         };
       } else if (aiResult.name === 'manage_campaigns') {
+        recordChatTurn('assistant', execResult.message || `Campaign status: ${execResult.active} active, ${execResult.paused} paused.`);
         if (execResult.pausedCount !== undefined) {
           reply += `⏸️ *Paused:* ${execResult.pausedCount} active campaign(s).`;
         } else if (execResult.resumedCount !== undefined) {
@@ -1227,6 +1330,7 @@ async function handleUserCommand(botToken, chatId, text) {
           ],
         };
       } else if (aiResult.name === 'send_linkedin_message') {
+        recordChatTurn('assistant', `Sent LinkedIn message to ${execResult.recipient}.`);
         reply += `✉️ Message sent to *${execResult.recipient}*!`;
       } else {
         reply += JSON.stringify(execResult, null, 2);
@@ -1235,6 +1339,7 @@ async function handleUserCommand(botToken, chatId, text) {
       return sendTelegramMessage(botToken, chatId, reply, replyMarkup ? { reply_markup: replyMarkup } : {});
     }
 
+    recordChatTurn('assistant', aiResult.content);
     return sendTelegramMessage(botToken, chatId, aiResult.content);
   } catch (err) {
     console.error('[Telegram Command Error]', err);
@@ -1265,6 +1370,7 @@ async function handleCallback(botToken, chatId, callbackData) {
 
       pendingBlueprints.delete(blueprintId);
       const enrolled = await campaigns.readEnrollments(camp.campaignId).catch(() => []);
+      recordChatTurn('assistant', `Campaign "${camp.name}" launched for list "${blueprint.listName}" with ${enrolled.length} enrolled leads.`);
 
       const launchMsg =
         `🚀 *Campaign Successfully Launched!*\n\n` +

@@ -20,7 +20,7 @@ import * as lists from './lists.js';
 import { onEvent } from './events.js';
 import { getLiveDashboardStats } from './stats.js';
 import { snapshotAll } from './quota.js';
-import { addToBlacklist } from '../lib/storage.js';
+import { addToBlacklist, get, set } from '../lib/storage.js';
 import { getActiveCandidate, setActiveCandidate, getAllCandidates } from './candidates.js';
 import { enrichLead } from './enrich.js';
 
@@ -36,40 +36,65 @@ const lastInboundReplies = new Map(); // publicId -> { body, sentiment, intent, 
 const pendingDrafts = new Map(); // draftId -> { publicId, text, at }
 const pendingBlueprints = new Map(); // blueprintId -> blueprint object
 
-// Multi-turn conversation history buffer
-export const chatHistory = []; // Array of { role: 'user' | 'assistant', content: string, at: number }
-const MAX_HISTORY_TURNS = 10;
+// Storage Keys for MV3 Service Worker Sleep Resilience
+const BLUEPRINTS_STORAGE_KEY = 'outfox_pending_blueprints';
+const CHAT_HISTORY_KEY = 'outfox_chat_history';
 
-/**
- * Add a message turn to the rolling context buffer.
- */
-export function recordChatTurn(role, text) {
-  if (!text || typeof text !== 'string') return;
-  // Truncate individual message length to prevent token bloating
-  const clean = text.replace(/[*_`\[\]]/g, '').trim().slice(0, 600);
-  if (!clean) return;
-  chatHistory.push({ role, content: clean, at: Date.now() });
-
-  // Keep within rolling window
-  if (chatHistory.length > MAX_HISTORY_TURNS * 2) {
-    chatHistory.splice(0, chatHistory.length - MAX_HISTORY_TURNS * 2);
-  }
+export async function getStoredBlueprints() {
+  const map = (await get(BLUEPRINTS_STORAGE_KEY, {})) || {};
+  return typeof map === 'object' && !Array.isArray(map) ? map : {};
 }
 
-/**
- * Retrieve sanitized recent history for LLM injection.
- */
-export function getRecentChatTurns() {
+export async function saveStoredBlueprint(blueprintId, blueprint) {
+  const map = await getStoredBlueprints();
+  map[blueprintId] = blueprint;
+  pendingBlueprints.set(blueprintId, blueprint);
+  await set(BLUEPRINTS_STORAGE_KEY, map);
+}
+
+export async function getLatestBlueprint() {
+  const map = await getStoredBlueprints();
+  const keys = Object.keys(map);
+  if (!keys.length) {
+    if (pendingBlueprints.size > 0) {
+      const arr = Array.from(pendingBlueprints.values());
+      return arr[arr.length - 1];
+    }
+    return null;
+  }
+  return map[keys[keys.length - 1]];
+}
+
+export async function removeStoredBlueprint(blueprintId) {
+  const map = await getStoredBlueprints();
+  delete map[blueprintId];
+  pendingBlueprints.delete(blueprintId);
+  await set(BLUEPRINTS_STORAGE_KEY, map);
+}
+
+// Persisted Multi-Turn Chat History Buffer
+export const chatHistory = []; // In-memory compatibility alias
+export async function recordChatTurn(role, text) {
+  if (!text || typeof text !== 'string') return;
+  const history = (await get(CHAT_HISTORY_KEY, [])) || [];
+  const clean = text.replace(/[*_`\[\]]/g, '').trim().slice(0, 500);
+  if (!clean) return;
+  history.push({ role, content: clean, at: Date.now() });
+  if (history.length > 16) history.splice(0, history.length - 16);
+  await set(CHAT_HISTORY_KEY, history);
+}
+
+export async function getRecentChatTurns() {
+  const history = (await get(CHAT_HISTORY_KEY, [])) || [];
   const now = Date.now();
-  // Filter messages older than 2 hours to avoid stale context
-  const active = chatHistory.filter((m) => now - m.at < 7200000);
+  const active = history.filter((m) => now - (m.at || 0) < 7200000); // 2 hours
   return active.map((m) => ({
     role: m.role === 'assistant' ? 'assistant' : 'user',
     content: m.content,
   }));
 }
 
-function cleanOldCaches() {
+async function cleanOldCaches() {
   const now = Date.now();
   if (recentAlertDedupe.size > 1000) {
     for (const [k, time] of recentAlertDedupe.entries()) {
@@ -81,14 +106,18 @@ function cleanOldCaches() {
       if (now - d.at > 24 * 60 * 60 * 1000) pendingDrafts.delete(id);
     }
   }
-  if (pendingBlueprints.size > 100) {
-    for (const [id, bp] of pendingBlueprints.entries()) {
-      if (now - (bp.createdAt || 0) > 24 * 60 * 60 * 1000) pendingBlueprints.delete(id);
+  try {
+    const map = await getStoredBlueprints();
+    let changed = false;
+    for (const [id, bp] of Object.entries(map)) {
+      if (now - (bp.createdAt || 0) > 24 * 60 * 60 * 1000) {
+        delete map[id];
+        pendingBlueprints.delete(id);
+        changed = true;
+      }
     }
-  }
-  while (chatHistory.length > 0 && now - chatHistory[0].at > 2 * 60 * 60 * 1000) {
-    chatHistory.shift();
-  }
+    if (changed) await set(BLUEPRINTS_STORAGE_KEY, map);
+  } catch (_) {}
 }
 
 export function maskToken(token) {
@@ -209,9 +238,25 @@ export function findBestMatchingList(allLists, inputName) {
 }
 
 // 💬 Multi-Line Natural Language Blueprint Editing Parser
-function parseBlueprintEditCommand(text) {
+export function parseBlueprintEditCommand(text) {
   const clean = String(text || '').trim();
   const lower = clean.toLowerCase();
+
+  // Guard: If the user is asking to create/design a campaign, DO NOT treat it as an edit!
+  if (
+    lower.includes('campaign') &&
+    (lower.includes('degsig') ||
+      lower.includes('design') ||
+      lower.includes('desig') ||
+      lower.includes('create') ||
+      lower.includes('make') ||
+      lower.includes('banao') ||
+      lower.includes('start') ||
+      lower.includes('launch') ||
+      lower.includes('sequence'))
+  ) {
+    return null;
+  }
 
   const isEdit =
     lower.includes('change') ||
@@ -224,35 +269,39 @@ function parseBlueprintEditCommand(text) {
 
   if (!isEdit) return null;
 
+  const lines = clean.split('\n');
+  const firstLine = lines[0].toLowerCase();
+  const colonIdx = firstLine.indexOf(':');
+  const cmdHeader = colonIdx !== -1 ? firstLine.slice(0, colonIdx) : firstLine;
+
   let targetStep = 'invite';
   if (
-    lower.includes('step 3') ||
-    lower.includes('3 step') ||
-    lower.includes('step3') ||
-    lower.includes('follow up') ||
-    lower.includes('followup') ||
-    lower.includes('message')
+    cmdHeader.includes('step 3') ||
+    cmdHeader.includes('3 step') ||
+    cmdHeader.includes('step3') ||
+    cmdHeader.includes('follow up') ||
+    cmdHeader.includes('followup') ||
+    cmdHeader.includes('message')
   ) {
     targetStep = 'followup';
   } else if (
-    lower.includes('step 1') ||
-    lower.includes('1 step') ||
-    lower.includes('view')
+    cmdHeader.includes('step 1') ||
+    cmdHeader.includes('1 step') ||
+    cmdHeader.includes('view')
   ) {
     targetStep = 'view';
-  } else if (lower.includes('name') || lower.includes('title')) {
+  } else if (cmdHeader.includes('campaign name') || cmdHeader.includes('name') || cmdHeader.includes('title')) {
     targetStep = 'name';
   }
 
   // Extract content across multiple lines or after prefix
-  const lines = clean.split('\n');
   let extractedContent = '';
   if (lines.length > 1 && /(change|update|edit|want to|set)/i.test(lines[0])) {
     extractedContent = lines.slice(1).join('\n').trim();
   } else {
     extractedContent = clean
       .replace(
-        /^(i\s+want\s+to\s+)?(change|update|edit|set)\s+(the\s+)?(3\s*step|step\s*3|2\s*step|step\s*2|follow\s*up|followup|invite|note|pitch|message|name)?\s*(to\s+this|to\s*:?|:)?\s*/i,
+        /^(?:i\s+want\s+to\s+)?(?:change|update|edit|set)\s+(?:the\s+)?(?:(?:step\s*\d|\d\s*step)\s*)?(?:campaign\s*name|follow\s*up|followup|invite\s*note|invite|note|pitch|message|name|title)?\s*(?:to\s+this|to\s*:?|:)?\s*/i,
         ''
       )
       .trim();
@@ -395,7 +444,7 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'design_campaign_blueprint',
-      description: 'Architect a multi-step sequence blueprint for user pre-flight approval.',
+      description: 'Architect a multi-step sequence blueprint for user pre-flight approval. Call this whenever the user wants to design, create, start, or launch a campaign sequence (including typos like degsig, desig, or hindi commands like sequence banao).',
       parameters: {
         type: 'object',
         properties: {
@@ -523,6 +572,51 @@ const AI_TOOLS = [
   },
 ];
 
+// 📋 Blueprint Synthesizer (Auto-recovery & standardized sequence generator)
+export function createOptimalBlueprint(blueprintId, targetList, candidate, args = {}) {
+  const steps = [];
+  if (args.hasViewStep !== false) {
+    steps.push({ type: 'view', desc: 'Soft-touch profile view' });
+  }
+
+  let inviteNote = args.inviteNote || candidate?.pitchTemplate || 'Hi {{firstName}}, saw your profile and would love to connect!';
+  inviteNote = inviteNote.replace(/\{\{\s*full_name\s*\}\}/gi, '{{firstName}}');
+  steps.push({
+    type: 'invite',
+    note: inviteNote,
+    desc: 'Personalized connection request note',
+  });
+
+  let followupBody =
+    args.followupMessage ||
+    (candidate?.followupTemplate
+      ? `${candidate.followupTemplate} (Grab a quick 10-min chat: ${candidate.bookingLink || 'https://calendly.com'})`
+      : 'Hey {{firstName}}, glad to connect! Are you currently open to roles?');
+  followupBody = followupBody.replace(/\{\{\s*full_name\s*\}\}/gi, '{{firstName}}');
+
+  if (followupBody) {
+    steps.push({
+      type: 'message',
+      body: followupBody,
+      delayDays: 1,
+      desc: 'Warm follow-up after connection is accepted',
+    });
+  }
+
+  return {
+    blueprintId,
+    campaignName: args.campaignName || args.name || `${targetList?.name || 'Leads'} (${candidate?.slug || 'Sequence'})`,
+    listId: targetList?.listId || 'unknown',
+    listName: targetList?.name || 'Leads',
+    leadCount: targetList?.count || targetList?.itemCount || 25,
+    candidate: candidate || null,
+    inviteNote,
+    followupMessage: followupBody,
+    steps,
+    createdAt: Date.now(),
+  };
+}
+
 // 📋 Visual Blueprint Pre-Flight Approval Card (Handles escaping & custom headers safely)
 async function presentCampaignBlueprint(botToken, chatId, blueprintOrId, maybeBp, maybeNotice) {
   let blueprint = blueprintOrId;
@@ -598,37 +692,41 @@ async function executeTool(name, args = {}) {
   }
 
   if (name === 'edit_campaign_blueprint') {
-    if (pendingBlueprints.size === 0) {
-      return { ok: false, error: 'No active campaign blueprint found to edit. Please create a blueprint first.' };
-    }
-    const entries = Array.from(pendingBlueprints.entries());
-    const [latestId, bp] = entries[entries.length - 1];
+    let bp = await getLatestBlueprint();
+    let bpId = bp?.blueprintId;
 
+    // Auto-Recovery: synthesize blueprint on the fly if storage was empty
+    if (!bp) {
+      const allLists = await lists.getAll().catch(() => []);
+      const activeCand = await getActiveCandidate().catch(() => null);
+      const targetList =
+        allLists.find((l) => l.name.toLowerCase().includes('data analyst')) ||
+        allLists[0] ||
+        { name: 'Data Analyst USA', listId: 'unknown', count: 25 };
+      bpId = `bp_${Date.now()}`;
+      bp = createOptimalBlueprint(bpId, targetList, activeCand, {});
+    }
+
+    const stepToEdit = args.stepToEdit || 'invite';
     let cleanText = String(args.newText || '').trim();
     cleanText = cleanText.replace(/\{\{\s*full_name\s*\}\}/gi, '{{firstName}}');
 
-    if (args.stepToEdit === 'followup') {
+    if (stepToEdit === 'followup') {
       bp.followupMessage = cleanText;
       const msgStep = bp.steps.find((s) => s.type === 'message');
       if (msgStep) msgStep.body = cleanText;
       else bp.steps.push({ type: 'message', body: cleanText, delayDays: 1, desc: 'Follow-up message after acceptance' });
-      return { ok: true, stepToEdit: 'followup', blueprintId: latestId, blueprint: bp };
-    }
-
-    if (args.stepToEdit === 'invite') {
+    } else if (stepToEdit === 'invite') {
       bp.inviteNote = cleanText;
       const inviteStep = bp.steps.find((s) => s.type === 'invite');
       if (inviteStep) inviteStep.note = cleanText;
-      return { ok: true, stepToEdit: 'invite', blueprintId: latestId, blueprint: bp };
-    }
-
-    if (args.stepToEdit === 'name') {
+    } else if (stepToEdit === 'name') {
       bp.campaignName = cleanText;
       bp.name = cleanText;
-      return { ok: true, stepToEdit: 'name', blueprintId: latestId, blueprint: bp };
     }
 
-    return { ok: false, error: `Unknown step: ${args.stepToEdit}` };
+    await saveStoredBlueprint(bpId, bp);
+    return { ok: true, stepToEdit, blueprintId: bpId, blueprint: bp };
   }
 
   if (name === 'design_campaign_blueprint' || name === 'create_outreach_campaign') {
@@ -650,42 +748,9 @@ async function executeTool(name, args = {}) {
     const confidence = matchObj.confidence;
 
     const blueprintId = 'bp_' + Math.random().toString(36).slice(2, 9);
-    const steps = [];
-    if (args.hasViewStep !== false) steps.push({ type: 'view', desc: 'Soft-touch profile view' });
+    const blueprint = createOptimalBlueprint(blueprintId, targetList, activeCand, args);
 
-    steps.push({
-      type: 'invite',
-      note: args.inviteNote || activeCand.pitchTemplate || 'Hi {{firstName}}, saw your profile and would love to connect!',
-      desc: 'Personalized connection request note',
-    });
-
-    const followupBody =
-      args.followupMessage ||
-      (activeCand.followupTemplate
-        ? `${activeCand.followupTemplate} (Grab a quick 10-min chat: ${activeCand.bookingLink})`
-        : 'Hey {{firstName}}, glad to connect! Are you currently open to roles?');
-
-    if (followupBody) {
-      steps.push({
-        type: 'message',
-        body: followupBody,
-        delayDays: 1,
-        desc: 'Warm follow-up after connection is accepted',
-      });
-    }
-
-    const blueprint = {
-      blueprintId,
-      campaignName: args.campaignName || args.name || `${targetList.name} (${activeCand?.slug || 'Sequence'})`,
-      listId: targetList.listId,
-      listName: targetList.name,
-      leadCount: targetList.count || targetList.itemCount || 0,
-      candidate: activeCand,
-      steps,
-      createdAt: Date.now(),
-    };
-
-    pendingBlueprints.set(blueprintId, blueprint);
+    await saveStoredBlueprint(blueprintId, blueprint);
 
     if (confidence >= 0.60 && confidence < 0.90) {
       return {
@@ -805,7 +870,7 @@ async function callDynamicAi(userText, options = {}) {
     `\n• Active Campaigns (${allCamps.length}):\n` +
     (allCamps.length ? allCamps.map((c) => `  - "${c.name}" (${c.status}, Enrolled: ${c.stats?.enrolled || 0})`).join('\n') : '  (None yet)') +
     `\n• Today's Quota Remaining: Invites: ${invRemaining}, Messages: ${msgRemaining}\n` +
-    `When user requests to launch, design, or create a campaign sequence, call design_campaign_blueprint. When modifying sequence steps or pitches, call edit_campaign_blueprint.`;
+    `When user requests to launch, design, create, or build a campaign sequence (including typos like "degsig campaign", "desig", or "banao sequence"), call design_campaign_blueprint. When modifying sequence steps or pitches, call edit_campaign_blueprint.`;
 
   const apiKey = ai.apiKey || '';
   const model =
@@ -830,7 +895,7 @@ async function callDynamicAi(userText, options = {}) {
   let body = {};
   const useTools = !options.forceText;
 
-  const recentTurns = options.forceText ? [] : getRecentChatTurns();
+  const recentTurns = options.forceText ? [] : (await getRecentChatTurns());
 
   // If recentTurns already ends with the current user message (recorded at start of command), avoid duplicating it
   let historyTurns = [...recentTurns];
@@ -1069,10 +1134,10 @@ async function renderDailyStats(botToken, chatId) {
 async function handleUserCommand(botToken, chatId, text) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return;
-  cleanOldCaches();
+  cleanOldCaches().catch(() => {});
 
   if (trimmed === '/clear' || trimmed === '/reset') {
-    chatHistory.length = 0;
+    await set(CHAT_HISTORY_KEY, []);
     return sendTelegramMessage(
       botToken,
       chatId,
@@ -1081,7 +1146,7 @@ async function handleUserCommand(botToken, chatId, text) {
   }
 
   // Record user turn in the rolling context buffer
-  recordChatTurn('user', trimmed);
+  await recordChatTurn('user', trimmed);
 
   if (trimmed === '/start' || trimmed === '/help') {
     const activeCand = await getActiveCandidate().catch(() => null);
@@ -1119,36 +1184,49 @@ async function handleUserCommand(botToken, chatId, text) {
     return sendTelegramMessage(botToken, chatId, welcome, { reply_markup: replyMarkup });
   }
 
-  // 1. Conversational Sequence Step Editing Interceptor (Step 2, Step 3, or Campaign Name)
-  if (pendingBlueprints.size > 0) {
-    const editCmd = parseBlueprintEditCommand(trimmed);
-    if (editCmd && editCmd.newContent) {
-      const entries = Array.from(pendingBlueprints.entries());
-      const [latestId, bp] = entries[entries.length - 1];
+  // 1. Conversational Sequence Step Editing Interceptor (with Auto-Recovery & Persistent Storage)
+  const editCmd = parseBlueprintEditCommand(trimmed);
+  if (editCmd && editCmd.newContent) {
+    let bp = await getLatestBlueprint();
+    let latestId = bp?.blueprintId;
 
-      if (editCmd.targetStep === 'followup') {
-        bp.followupMessage = editCmd.newContent;
-        const msgStep = bp.steps.find((s) => s.type === 'message');
-        if (msgStep) msgStep.body = editCmd.newContent;
-        else bp.steps.push({ type: 'message', body: editCmd.newContent, delayDays: 1, desc: 'Follow-up message after acceptance' });
-        recordChatTurn('assistant', 'Updated Step 3 (Follow-Up Message) of campaign blueprint.');
-        return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Step 3 (Follow-Up Message) Updated Successfully!*');
-      }
+    // Auto-Recovery: synthesize blueprint on the fly if storage was empty
+    if (!bp) {
+      const allLists = await lists.getAll().catch(() => []);
+      const activeCand = await getActiveCandidate().catch(() => null);
+      const targetList =
+        allLists.find((l) => l.name.toLowerCase().includes('data analyst')) ||
+        allLists[0] ||
+        { name: 'Data Analyst USA', listId: 'unknown', count: 25 };
+      latestId = `bp_${Date.now()}`;
+      bp = createOptimalBlueprint(latestId, targetList, activeCand, {});
+    }
 
-      if (editCmd.targetStep === 'invite') {
-        bp.inviteNote = editCmd.newContent;
-        const inviteStep = bp.steps.find((s) => s.type === 'invite');
-        if (inviteStep) inviteStep.note = editCmd.newContent;
-        recordChatTurn('assistant', 'Updated Step 2 (Connection Note) of campaign blueprint.');
-        return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Step 2 (Connection Note) Updated Successfully!*');
-      }
+    if (editCmd.targetStep === 'followup') {
+      bp.followupMessage = editCmd.newContent;
+      const msgStep = bp.steps.find((s) => s.type === 'message');
+      if (msgStep) msgStep.body = editCmd.newContent;
+      else bp.steps.push({ type: 'message', body: editCmd.newContent, delayDays: 1, desc: 'Follow-up message after acceptance' });
+      await saveStoredBlueprint(latestId, bp);
+      await recordChatTurn('assistant', 'Updated Step 3 (Follow-Up Message) of campaign blueprint.');
+      return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Step 3 (Follow-Up Message) Updated Successfully!*');
+    }
 
-      if (editCmd.targetStep === 'name') {
-        bp.campaignName = editCmd.newContent;
-        bp.name = editCmd.newContent;
-        recordChatTurn('assistant', `Updated campaign name to "${editCmd.newContent}".`);
-        return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Campaign Name Updated Successfully!*');
-      }
+    if (editCmd.targetStep === 'invite') {
+      bp.inviteNote = editCmd.newContent;
+      const inviteStep = bp.steps.find((s) => s.type === 'invite');
+      if (inviteStep) inviteStep.note = editCmd.newContent;
+      await saveStoredBlueprint(latestId, bp);
+      await recordChatTurn('assistant', 'Updated Step 2 (Connection Note) of campaign blueprint.');
+      return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Step 2 (Connection Note) Updated Successfully!*');
+    }
+
+    if (editCmd.targetStep === 'name') {
+      bp.campaignName = editCmd.newContent;
+      bp.name = editCmd.newContent;
+      await saveStoredBlueprint(latestId, bp);
+      await recordChatTurn('assistant', `Updated campaign name to "${editCmd.newContent}".`);
+      return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Campaign Name Updated Successfully!*');
     }
   }
 
@@ -1207,7 +1285,7 @@ async function handleUserCommand(botToken, chatId, text) {
               : execResult.stepToEdit === 'invite'
                 ? 'Step 2 (Connection Note)'
                 : 'Campaign Name';
-          recordChatTurn('assistant', `Updated ${stepLabel} in campaign blueprint.`);
+          await recordChatTurn('assistant', `Updated ${stepLabel} in campaign blueprint.`);
           const notice =
             execResult.stepToEdit === 'followup'
               ? '✏️ *Step 3 (Follow-Up Message) Updated Successfully!*'
@@ -1254,7 +1332,7 @@ async function handleUserCommand(botToken, chatId, text) {
 
         if (execResult.type === 'blueprint_ready') {
           const bp = execResult.blueprint;
-          recordChatTurn('assistant', `Generated campaign blueprint for list "${bp.listName}" with ${(bp.steps || []).length} steps.`);
+          await recordChatTurn('assistant', `Generated campaign blueprint for list "${bp.listName}" with ${(bp.steps || []).length} steps.`);
           return presentCampaignBlueprint(botToken, chatId, bp.blueprintId || execResult.blueprintId, bp);
         }
       }
@@ -1263,7 +1341,7 @@ async function handleUserCommand(botToken, chatId, text) {
       let replyMarkup = null;
 
       if (aiResult.name === 'switch_candidate_workspace') {
-        recordChatTurn('assistant', `Switched active candidate persona to ${execResult.name} (${execResult.title}).`);
+        await recordChatTurn('assistant', `Switched active candidate persona to ${execResult.name} (${execResult.title}).`);
         reply +=
           `🔄 *Candidate Workspace Switched!*\n\n` +
           `• Name: *${execResult.name}* (\`${execResult.slug}\`)\n` +
@@ -1277,7 +1355,7 @@ async function handleUserCommand(botToken, chatId, text) {
           ],
         };
       } else if (aiResult.name === 'enrich_lead_email') {
-        recordChatTurn('assistant', execResult.email ? `Enriched lead ${execResult.publicId}: found email ${execResult.email}.` : `Could not find email for lead ${execResult.publicId}.`);
+        await recordChatTurn('assistant', execResult.email ? `Enriched lead ${execResult.publicId}: found email ${execResult.email}.` : `Could not find email for lead ${execResult.publicId}.`);
         if (execResult.email) {
           reply +=
             `📧 *Enrichment Successful!*\n\n` +
@@ -1291,7 +1369,7 @@ async function handleUserCommand(botToken, chatId, text) {
         }
       } else if (aiResult.name === 'search_and_save_leads') {
         const listNameUsed = execResult.listName || lastSearchedList;
-        recordChatTurn('assistant', `Found ${execResult.countFound} prospects on LinkedIn and saved to list "${listNameUsed}".`);
+        await recordChatTurn('assistant', `Found ${execResult.countFound} prospects on LinkedIn and saved to list "${listNameUsed}".`);
         reply += `🎯 *Found ${execResult.countFound} Prospects on LinkedIn!*\n`;
         if (execResult.listSaved) {
           reply += `📁 *Saved to List:* \`${execResult.listName}\`\n\n`;
@@ -1312,7 +1390,7 @@ async function handleUserCommand(botToken, chatId, text) {
           ],
         };
       } else if (aiResult.name === 'manage_campaigns') {
-        recordChatTurn('assistant', execResult.message || `Campaign status: ${execResult.active} active, ${execResult.paused} paused.`);
+        await recordChatTurn('assistant', execResult.message || `Campaign status: ${execResult.active} active, ${execResult.paused} paused.`);
         if (execResult.pausedCount !== undefined) {
           reply += `⏸️ *Paused:* ${execResult.pausedCount} active campaign(s).`;
         } else if (execResult.resumedCount !== undefined) {
@@ -1330,7 +1408,7 @@ async function handleUserCommand(botToken, chatId, text) {
           ],
         };
       } else if (aiResult.name === 'send_linkedin_message') {
-        recordChatTurn('assistant', `Sent LinkedIn message to ${execResult.recipient}.`);
+        await recordChatTurn('assistant', `Sent LinkedIn message to ${execResult.recipient}.`);
         reply += `✉️ Message sent to *${execResult.recipient}*!`;
       } else {
         reply += JSON.stringify(execResult, null, 2);
@@ -1339,7 +1417,7 @@ async function handleUserCommand(botToken, chatId, text) {
       return sendTelegramMessage(botToken, chatId, reply, replyMarkup ? { reply_markup: replyMarkup } : {});
     }
 
-    recordChatTurn('assistant', aiResult.content);
+    await recordChatTurn('assistant', aiResult.content);
     return sendTelegramMessage(botToken, chatId, aiResult.content);
   } catch (err) {
     console.error('[Telegram Command Error]', err);
@@ -1354,7 +1432,8 @@ async function handleCallback(botToken, chatId, callbackData) {
   // 1. Blueprint Pre-Flight Approval: Approve & Launch
   if (data.startsWith('camp_approve:')) {
     const blueprintId = data.replace('camp_approve:', '').trim();
-    const blueprint = pendingBlueprints.get(blueprintId);
+    const blueprints = await getStoredBlueprints();
+    const blueprint = blueprints[blueprintId] || pendingBlueprints.get(blueprintId) || (await getLatestBlueprint());
     if (!blueprint) {
       return sendTelegramMessage(botToken, chatId, `⚠️ *Blueprint expired or already launched.*`);
     }
@@ -1368,9 +1447,9 @@ async function handleCallback(botToken, chatId, callbackData) {
         settings: { stopOnReply: true, autopilot: false },
       });
 
-      pendingBlueprints.delete(blueprintId);
+      await removeStoredBlueprint(blueprintId);
       const enrolled = await campaigns.readEnrollments(camp.campaignId).catch(() => []);
-      recordChatTurn('assistant', `Campaign "${camp.name}" launched for list "${blueprint.listName}" with ${enrolled.length} enrolled leads.`);
+      await recordChatTurn('assistant', `Campaign "${camp.name}" launched for list "${blueprint.listName}" with ${enrolled.length} enrolled leads.`);
 
       const launchMsg =
         `🚀 *Campaign Successfully Launched!*\n\n` +
@@ -1398,7 +1477,7 @@ async function handleCallback(botToken, chatId, callbackData) {
   // 2. Discard Blueprint
   if (data.startsWith('camp_discard:')) {
     const blueprintId = data.replace('camp_discard:', '').trim();
-    pendingBlueprints.delete(blueprintId);
+    await removeStoredBlueprint(blueprintId);
     return sendTelegramMessage(botToken, chatId, `❌ *Blueprint discarded.*`);
   }
 
@@ -1417,7 +1496,8 @@ async function handleCallback(botToken, chatId, callbackData) {
   // 4. View Disambiguated Blueprint
   if (data.startsWith('bp_view:')) {
     const blueprintId = data.replace('bp_view:', '').trim();
-    const bp = pendingBlueprints.get(blueprintId);
+    const blueprints = await getStoredBlueprints();
+    const bp = blueprints[blueprintId] || pendingBlueprints.get(blueprintId);
     if (bp) return presentCampaignBlueprint(botToken, chatId, bp);
     return sendTelegramMessage(botToken, chatId, `⚠️ *Blueprint expired.*`);
   }
@@ -1450,24 +1530,8 @@ async function handleCallback(botToken, chatId, callbackData) {
 
     const activeCand = await getActiveCandidate();
     const blueprintId = 'bp_' + Math.random().toString(36).slice(2, 9);
-    const steps = [
-      { type: 'view', desc: 'Soft-touch profile view' },
-      { type: 'invite', note: activeCand.pitchTemplate, desc: 'Personalized connection request note' },
-      { type: 'message', body: `${activeCand.followupTemplate} (Grab a quick chat: ${activeCand.bookingLink})`, delayDays: 1, desc: 'Warm follow-up after connection is accepted' },
-    ];
-
-    const blueprint = {
-      blueprintId,
-      campaignName: `${targetList.name} (${activeCand.slug})`,
-      listId: targetList.listId,
-      listName: targetList.name,
-      leadCount: targetList.count || targetList.itemCount || 0,
-      candidate: activeCand,
-      steps,
-      createdAt: Date.now(),
-    };
-
-    pendingBlueprints.set(blueprintId, blueprint);
+    const blueprint = createOptimalBlueprint(blueprintId, targetList, activeCand);
+    await saveStoredBlueprint(blueprintId, blueprint);
     return presentCampaignBlueprint(botToken, chatId, blueprint);
   }
 

@@ -24,7 +24,9 @@
     "https://api.groq.com/*",
     "https://generativelanguage.googleapis.com/*",
     "https://api.openai.com/*",
-    "https://api.anthropic.com/*"
+    "https://api.anthropic.com/*",
+    "https://api.hunter.io/*",
+    "https://api.apollo.io/*"
   ],
   "optional_host_permissions": [
     "https://www.googleapis.com/*",

@@ -1,6 +1,7 @@
 /**
- * OutFox — Telegram Autonomous AI SDR Engine (Phase 2 Upgrade).
- * Real-Time Inbound Alerts, 1-Tap Booking Closer, Safety Guard & Daily Pulse.
+ * OutFox — Telegram Autonomous AI SDR Engine (Phase 3 Upgrade).
+ * Includes: Multi-Candidate Persona Switcher, Apollo/Hunter Waterfall Enrichment,
+ * Groq Whisper Voice Transcriber, Real-Time Alerts, 1-Tap Booking Closer & Safety Guard.
  */
 
 import { ACTIONS, ERROR, EVENTS, EngineError } from '../lib/actions.js';
@@ -13,6 +14,8 @@ import { onEvent } from './events.js';
 import { getLiveDashboardStats } from './stats.js';
 import { snapshotAll } from './quota.js';
 import { addToBlacklist } from '../lib/storage.js';
+import { getActiveCandidate, setActiveCandidate, getAllCandidates } from './candidates.js';
+import { enrichLead } from './enrich.js';
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
 let isPolling = false;
@@ -93,28 +96,33 @@ export async function testTelegram({ botToken, chatId }) {
   }
   const start = Date.now();
   const me = await callTelegramApi(botToken, 'getMe');
-  const cfg = await getConfig();
-  const booking = cfg.telegram?.bookingLink || cfg.bookingLink || 'Not set';
+  const activeCand = await getActiveCandidate().catch(() => null);
 
   const testMsg =
     `🦊 *OutFox Mobile AI Copilot Connected!*\n\n` +
     `Bot: *${me.first_name || 'OutFox'}* (@${me.username || 'bot'})\n` +
-    `Booking Link: *${booking}*\n` +
+    `Active Candidate: *${activeCand?.name || 'Default'}* (\`${activeCand?.slug || 'aditya'}\`)\n` +
+    `Mode: *${activeCand?.mode === 'reverse_recruiting' ? 'Reverse Recruiting (Job Pitch)' : 'Agency Sourcing (Placements)'}*\n` +
+    `Booking Link: *${activeCand?.bookingLink || 'https://calendly.com'}*\n` +
     `Latency: *${Date.now() - start}ms*\n\n` +
-    `🎯 *Active Superpowers (Phase 1 & 2):*\n` +
-    `• 🔥 *Real-Time Alerts:* Inbound replies & accepted invites push directly to chat.\n` +
-    `• 📅 *1-Tap Booking Dispatch:* 1-click meeting scheduling.\n` +
-    `• ✨ *AI Reply Generator:* Contextual 2-sentence response drafts.\n` +
-    `• 🚨 *Checkpoint Safety Guard:* Auto-freezes campaigns if CAPTCHA appears.\n` +
-    `• 📊 *Outreach Pulse:* Daily quota & conversion scorecard.`;
+    `🎯 *Active Superpowers (Phase 1, 2 & 3):*\n` +
+    `• 🔄 *Candidate Switcher:* \`/switch <name>\` or \`/candidates\`\n` +
+    `• 📧 *Apollo & Hunter Enrichment:* \`/enrich <publicId>\`\n` +
+    `• 🔥 *Real-Time Alerts:* Inbound replies & acceptances\n` +
+    `• 📅 *1-Tap Closer:* Booking links & contextual AI responses\n` +
+    `• 🚨 *Safety Freeze Guard:* Automatic pause on checkpoints\n` +
+    `• 📊 *Outreach Pulse:* \`/pulse\` scorecard`;
 
   const replyMarkup = {
     inline_keyboard: [
       [
+        { text: '👥 Switch Persona', callback_data: 'show_candidates' },
         { text: '📊 Outreach Pulse', callback_data: 'daily_stats' },
-        { text: '⏸️ Pause All', callback_data: 'camp_pause' },
       ],
-      [{ text: '▶️ Resume All', callback_data: 'camp_resume' }],
+      [
+        { text: '⏸️ Pause All', callback_data: 'camp_pause' },
+        { text: '▶️ Resume All', callback_data: 'camp_resume' },
+      ],
     ],
   };
 
@@ -219,7 +227,7 @@ const AI_TOOLS = [
           inviteNote: { type: 'string', description: 'Personalized connection note with {{firstName}}' },
           followupMessage: { type: 'string', description: 'Warm welcome message sent when connection is accepted' },
         },
-        required: ['name', 'listName', 'inviteNote'],
+        required: ['name', 'listName'],
       },
     },
   },
@@ -270,9 +278,60 @@ const AI_TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'switch_candidate_workspace',
+      description: 'Switch active candidate persona workspace (e.g. aditya or agency) to alter targeting, pitch templates, and booking links.',
+      parameters: {
+        type: 'object',
+        properties: {
+          candidateNameOrSlug: { type: 'string', description: 'Name or slug of candidate to switch to, e.g. "aditya" or "agency"' },
+        },
+        required: ['candidateNameOrSlug'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'enrich_lead_email',
+      description: 'Enrich a LinkedIn profile with verified business email and phone number via Apollo/Hunter waterfall.',
+      parameters: {
+        type: 'object',
+        properties: {
+          publicId: { type: 'string', description: 'LinkedIn public ID or vanity slug of the lead' },
+        },
+        required: ['publicId'],
+      },
+    },
+  },
 ];
 
 async function executeTool(name, args = {}) {
+  if (name === 'switch_candidate_workspace') {
+    const switched = await setActiveCandidate(args.candidateNameOrSlug);
+    return {
+      switched: true,
+      name: switched.name,
+      slug: switched.slug,
+      title: switched.title,
+      mode: switched.mode,
+      bookingLink: switched.bookingLink,
+    };
+  }
+
+  if (name === 'enrich_lead_email') {
+    const res = await enrichLead(args.publicId);
+    return {
+      publicId: args.publicId,
+      email: res.enriched?.email || null,
+      phone: res.enriched?.phone || null,
+      source: res.enriched?.provider || 'none',
+      confidence: res.enriched?.confidence || 0,
+    };
+  }
+
   if (name === 'create_outreach_campaign') {
     const allLists = await lists.getAll();
     const searchName = String(args.listName || '').toLowerCase().trim();
@@ -282,23 +341,28 @@ async function executeTool(name, args = {}) {
       throw new Error(`List "${args.listName}" nahi mili. Pehle leads search karke list me save karo.`);
     }
 
+    const activeCand = await getActiveCandidate().catch(() => null);
+    const defaultInvite = activeCand?.pitchTemplate || 'Hi {{firstName}}, saw your profile and would love to connect!';
+    const defaultFollowup = activeCand?.followupTemplate || 'Hey {{firstName}}, glad to connect!';
+
     const steps = [];
     if (args.hasViewStep !== false) steps.push({ type: 'view' });
 
     steps.push({
       type: 'invite',
-      note: args.inviteNote || 'Hi {{firstName}}, saw your profile and would love to connect!',
+      note: args.inviteNote || defaultInvite,
     });
 
-    if (args.followupMessage) {
+    const followupBody = args.followupMessage || defaultFollowup;
+    if (followupBody) {
       steps.push({
         type: 'message',
-        body: args.followupMessage,
+        body: followupBody,
       });
     }
 
     const camp = await campaigns.create({
-      name: args.name || `${targetList.name} Outreach`,
+      name: args.name || `${targetList.name} (${activeCand?.slug || 'Outreach'})`,
       listId: targetList.listId,
       steps,
       settings: { stopOnReply: true, autopilot: false },
@@ -313,17 +377,21 @@ async function executeTool(name, args = {}) {
       enrolledCount: enrolledList.length,
       stepsCount: steps.length,
       listUsed: targetList.name,
+      candidate: activeCand?.name || 'Default',
       steps: steps.map((s, i) => `Step ${i + 1}: ${s.type.toUpperCase()}${s.note ? ` ("${s.note.slice(0, 35)}...")` : ''}`),
     };
   }
 
   if (name === 'search_and_save_leads') {
-    let kw = args.keywords || 'Data Analyst';
+    const activeCand = await getActiveCandidate().catch(() => null);
+    let kw = args.keywords || (activeCand?.targetRoles ? activeCand.targetRoles[0] : 'Data Analyst');
     if (args.openToWorkOnly && !kw.includes('Open to work')) kw += ' "Open to work"';
+
+    const loc = args.location || (activeCand?.targetLocations ? activeCand.targetLocations[0] : 'United States');
 
     const searchRes = await voyager.searchProfiles({
       keywords: kw,
-      location: args.location || 'United States',
+      location: loc,
       count: Math.min(Math.max(1, args.count || 10), 25),
     });
 
@@ -396,6 +464,11 @@ async function callDynamicAi(userText, options = {}) {
     };
   }
 
+  const activeCand = await getActiveCandidate().catch(() => null);
+  const candContext = activeCand
+    ? `\n\nCurrent Active Persona: ${activeCand.name} (${activeCand.title}, Mode: ${activeCand.mode}, Target Roles: ${activeCand.targetRoles.join(', ')}). All outreach pitches, searches, and booking links must reflect this candidate persona.`
+    : '';
+
   const apiKey = ai.apiKey || '';
   const model =
     ai.model ||
@@ -405,12 +478,12 @@ async function callDynamicAi(userText, options = {}) {
         ? 'gemini-2.0-flash'
         : 'gpt-4o-mini');
 
-  const systemPrompt = options.systemPrompt || (options.forceText
+  const systemPrompt = (options.systemPrompt || (options.forceText
     ? 'You are OutFox AI SDR, an expert LinkedIn outreach copywriter. Write concise, warm, professional responses without corporate fluff. Keep under 240 characters.'
     : 'You are OutFox AI SDR, an autonomous assistant controlling LinkedIn outreach. ' +
       'Understand user requests in English, Hindi, or Hinglish. ' +
-      'When the user asks to search prospects, save leads to a list, design/create campaigns, send messages, or manage campaigns, call the matching function tool. ' +
-      'Always be helpful, warm, and accurate.');
+      'When the user asks to search prospects, save leads to a list, design/create campaigns, send messages, switch candidates, or enrich leads, call the matching function tool. ' +
+      'Always be helpful, warm, and accurate.')) + candContext;
 
   let url = '';
   let headers = { 'Content-Type': 'application/json' };
@@ -510,12 +583,69 @@ async function callDynamicAi(userText, options = {}) {
   return { type: 'text', content: msg?.content || 'Understood.' };
 }
 
+// 👥 Send Candidate Personas List with 1-Tap Switch Buttons
+async function sendCandidatesList(botToken, chatId) {
+  const [all, active] = await Promise.all([
+    getAllCandidates(),
+    getActiveCandidate(),
+  ]);
+
+  let text = `👥 *OutFox Candidate Personas:*\n\n`;
+  all.forEach((c) => {
+    const isActive = c.slug === active?.slug;
+    const modeLabel = c.mode === 'reverse_recruiting' ? 'Job Pitch' : 'Agency Sourcing';
+    text += `${isActive ? '👉 *[ACTIVE]* ' : '• '}*${c.name}* (\`${c.slug}\`)\n`;
+    text += `  💼 ${c.title} • _${modeLabel}_\n`;
+    text += `  📍 ${c.targetLocations.join(', ')}\n`;
+    text += `  🔗 ${c.bookingLink}\n\n`;
+  });
+  text += `Tap below to switch workspace:`;
+
+  const keyboard = all.map((c) => [
+    { text: `${c.slug === active?.slug ? '✓ ' : ''}Switch to: ${c.name}`, callback_data: `switch_cand:${c.slug}` },
+  ]);
+
+  return sendTelegramMessage(botToken, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
+}
+
+// 📧 Handle Lead Enrichment via Apollo/Hunter Waterfall
+async function handleEnrichLead(botToken, chatId, publicId) {
+  await sendTelegramMessage(botToken, chatId, `🔍 *Enriching lead \`${publicId}\` via Apollo & Hunter waterfall...*`);
+  try {
+    const res = await enrichLead(publicId);
+    const enr = res.enriched || {};
+    let msg = `⚡ *Lead Enrichment Results for* \`${publicId}\`:\n\n`;
+
+    if (enr.email) {
+      msg += `📧 *Email:* \`${enr.email}\`\n`;
+      if (enr.phone) msg += `📱 *Phone:* \`${enr.phone}\`\n`;
+      msg += `🏷️ *Source:* ${enr.provider?.toUpperCase() || 'WATERFALL'}\n`;
+      msg += `🎯 *Confidence:* ${Math.round((enr.confidence || 0.8) * 100)}%\n\n`;
+      msg += `_Contact verified and saved to OutFox database!_`;
+    } else {
+      msg += `⚠️ No verified email found across Apollo & Hunter.\nReason: ${enr.reason || 'No match found'}`;
+    }
+
+    const replyMarkup = {
+      inline_keyboard: [
+        [{ text: '📅 Send 10-Min Booking Link', callback_data: `reply_cal:${publicId}` }],
+        [{ text: '✨ AI Draft Reply', callback_data: `reply_ai:${publicId}` }],
+      ],
+    };
+
+    return sendTelegramMessage(botToken, chatId, msg, { reply_markup: replyMarkup });
+  } catch (err) {
+    return sendTelegramMessage(botToken, chatId, `❌ Enrichment error: ${err.message}`);
+  }
+}
+
 // 📊 Outreach Pulse Scorecard Generator
 async function renderDailyStats(botToken, chatId) {
-  const [stats, quotas, allCamp] = await Promise.all([
+  const [stats, quotas, allCamp, activeCand] = await Promise.all([
     getLiveDashboardStats().catch(() => null),
     snapshotAll().catch(() => ({})),
     campaigns.getAll().catch(() => []),
+    getActiveCandidate().catch(() => null),
   ]);
 
   const activeCount = allCamp.filter((c) => c.status === 'active').length;
@@ -534,6 +664,8 @@ async function renderDailyStats(botToken, chatId) {
 
   const pulseMsg =
     `📊 *OUTFOX DAILY PULSE SCORECARD*\n\n` +
+    `👤 *Active Candidate:* *${activeCand?.name || 'Default'}* (\`${activeCand?.slug || 'aditya'}\`)\n` +
+    `⚙️ *Mode:* ${activeCand?.mode === 'reverse_recruiting' ? 'Reverse Recruiting' : 'Agency Sourcing'}\n\n` +
     `⚡ *Campaigns:*\n` +
     `• Active: *${activeCount}* | Paused: *${pausedCount}* | Total: *${allCamp.length}*\n\n` +
     `📈 *Daily Outreach Remaining:*\n` +
@@ -546,10 +678,13 @@ async function renderDailyStats(botToken, chatId) {
   const replyMarkup = {
     inline_keyboard: [
       [
+        { text: '👥 Switch Persona', callback_data: 'show_candidates' },
         { text: '📊 Campaign Status', callback_data: 'camp_status' },
-        { text: '⏸️ Pause All', callback_data: 'camp_pause' },
       ],
-      [{ text: '▶️ Resume All', callback_data: 'camp_resume' }],
+      [
+        { text: '⏸️ Pause All', callback_data: 'camp_pause' },
+        { text: '▶️ Resume All', callback_data: 'camp_resume' },
+      ],
     ],
   };
 
@@ -561,33 +696,73 @@ async function handleUserCommand(botToken, chatId, text) {
   if (!trimmed) return;
 
   if (trimmed === '/start' || trimmed === '/help') {
+    const activeCand = await getActiveCandidate().catch(() => null);
     const welcome =
       `🦊 *OutFox Mobile AI Copilot Ready!*\n\n` +
-      `Tu mujhse mobile par text ya voice notes bhej sakta hai:\n\n` +
-      `📌 *Search & Save:*\n` +
-      `• _"Search Indian Data Analysts in USA and name that list as Data Analyst USA"_\n\n` +
-      `📌 *Create Sequence Campaign:*\n` +
+      `Active Persona: *${activeCand?.name || 'Aditya'}* (\`${activeCand?.slug || 'aditya'}\`)\n\n` +
+      `📌 *Candidate Workspace Switcher:*\n` +
+      `• \`/switch aditya\` or \`/switch agency\`\n` +
+      `• \`/candidates\` — List all personas & 1-tap switch\n\n` +
+      `📌 *Email Waterfall Enrichment:*\n` +
+      `• \`/enrich <publicId>\` — Discover email via Apollo & Hunter\n\n` +
+      `📌 *Search & Sequence:*\n` +
+      `• _"Search Indian Data Analysts in USA and name that list as Data Analyst USA"_\n` +
       `• _"Design campaign for Data Analyst USA list view profile then send invite note"_\n\n` +
-      `📌 *Direct Messaging & Closer:*\n` +
-      `• _"Sahil ko follow-up message bhej do: Are you free for a call?"_\n\n` +
-      `📌 *Pulse & Controls:*\n` +
-      `• \`/pulse\` or \`Daily stats\` — Live scorecard & quota status\n` +
+      `📌 *Closer & Pulse:*\n` +
+      `• \`/pulse\` or \`Daily stats\` — Scorecard & remaining quotas\n` +
       `• \`Campaign status\`, \`Pause campaign\`, \`Resume campaign\``;
 
     const replyMarkup = {
       inline_keyboard: [
         [
+          { text: '👥 Personas', callback_data: 'show_candidates' },
           { text: '📊 Outreach Pulse', callback_data: 'daily_stats' },
-          { text: '⏸️ Pause All', callback_data: 'camp_pause' },
         ],
-        [{ text: '▶️ Resume All', callback_data: 'camp_resume' }],
+        [
+          { text: '⏸️ Pause All', callback_data: 'camp_pause' },
+          { text: '▶️ Resume All', callback_data: 'camp_resume' },
+        ],
       ],
     };
 
     return sendTelegramMessage(botToken, chatId, welcome, { reply_markup: replyMarkup });
   }
 
-  // Quick Daily Stats / Pulse Command
+  // 1. Candidate Switcher Commands
+  const switchMatch = trimmed.match(/^\/switch(?:\s+(.+))?$/i);
+  if (switchMatch) {
+    const target = (switchMatch[1] || '').trim();
+    if (!target) return sendCandidatesList(botToken, chatId);
+
+    try {
+      const switched = await setActiveCandidate(target);
+      const modeLabel = switched.mode === 'reverse_recruiting' ? '🎯 Reverse Recruiting (Job Pitch)' : '🏢 Agency Sourcing (Placements)';
+      const msg =
+        `🔄 *Active Candidate Switched!*\n\n` +
+        `👤 *Name:* *${switched.name}* (\`${switched.slug}\`)\n` +
+        `💼 *Title:* ${switched.title}\n` +
+        `⚙️ *Mode:* ${modeLabel}\n` +
+        `📍 *Target Locations:* ${switched.targetLocations.join(', ')}\n` +
+        `📅 *Booking Link:* ${switched.bookingLink}\n\n` +
+        `_All outreach pitches and sequences will now align with this candidate._`;
+      return sendTelegramMessage(botToken, chatId, msg);
+    } catch (err) {
+      return sendTelegramMessage(botToken, chatId, `❌ ${err.message}`);
+    }
+  }
+
+  if (/^\/?candidates$/i.test(trimmed)) {
+    return sendCandidatesList(botToken, chatId);
+  }
+
+  // 2. Email Waterfall Enrichment Command
+  const enrichMatch = trimmed.match(/^\/enrich\s+([a-zA-Z0-9\-_%]+)/i);
+  if (enrichMatch) {
+    const publicId = enrichMatch[1].trim();
+    return handleEnrichLead(botToken, chatId, publicId);
+  }
+
+  // 3. Quick Daily Stats / Pulse Command
   if (/^\/?(pulse|stats|scorecard|daily\s*stats|report)/i.test(trimmed)) {
     return renderDailyStats(botToken, chatId);
   }
@@ -604,10 +779,36 @@ async function handleUserCommand(botToken, chatId, text) {
       let reply = `✅ *Action Completed Successfully!*\n\n`;
       let replyMarkup = null;
 
-      if (aiResult.name === 'create_outreach_campaign') {
+      if (aiResult.name === 'switch_candidate_workspace') {
+        reply +=
+          `🔄 *Candidate Workspace Switched!*\n\n` +
+          `• Name: *${execResult.name}* (\`${execResult.slug}\`)\n` +
+          `• Title: ${execResult.title}\n` +
+          `• Mode: ${execResult.mode === 'reverse_recruiting' ? 'Reverse Recruiting' : 'Agency Sourcing'}\n` +
+          `• Booking Link: ${execResult.bookingLink}`;
+
+        replyMarkup = {
+          inline_keyboard: [
+            [{ text: '📊 Outreach Pulse', callback_data: 'daily_stats' }],
+          ],
+        };
+      } else if (aiResult.name === 'enrich_lead_email') {
+        if (execResult.email) {
+          reply +=
+            `📧 *Enrichment Successful!*\n\n` +
+            `• Lead: \`${execResult.publicId}\`\n` +
+            `• Email: \`${execResult.email}\`\n` +
+            (execResult.phone ? `• Phone: \`${execResult.phone}\`\n` : '') +
+            `• Source: ${execResult.source.toUpperCase()}\n` +
+            `• Confidence: ${Math.round((execResult.confidence || 0.8) * 100)}%`;
+        } else {
+          reply += `⚠️ No email found for \`${execResult.publicId}\` across Apollo and Hunter.`;
+        }
+      } else if (aiResult.name === 'create_outreach_campaign') {
         reply +=
           `🚀 *Campaign Created & Enrolled!*\n\n` +
           `• Name: *${execResult.name}*\n` +
+          `• Persona: *${execResult.candidate}*\n` +
           `• Enrolled Leads: *${execResult.enrolledCount}* (from list _"${execResult.listUsed}"_)\n` +
           `• Sequence Steps (${execResult.stepsCount}):\n` +
           execResult.steps.map((s) => `  ✓ ${s}`).join('\n') +
@@ -679,6 +880,29 @@ async function handleCallback(botToken, chatId, callbackData) {
   const data = String(callbackData || '');
   cleanOldCaches();
 
+  if (data === 'show_candidates') {
+    return sendCandidatesList(botToken, chatId);
+  }
+
+  if (data.startsWith('switch_cand:')) {
+    const slug = data.replace('switch_cand:', '').trim();
+    try {
+      const switched = await setActiveCandidate(slug);
+      return sendTelegramMessage(
+        botToken,
+        chatId,
+        `✅ *Switched to ${switched.name}!*\nTitle: ${switched.title}\nMode: ${switched.mode}\nBooking: ${switched.bookingLink}`
+      );
+    } catch (err) {
+      return sendTelegramMessage(botToken, chatId, `❌ ${err.message}`);
+    }
+  }
+
+  if (data.startsWith('enrich:')) {
+    const publicId = data.replace('enrich:', '').trim();
+    return handleEnrichLead(botToken, chatId, publicId);
+  }
+
   if (data === 'camp_status') {
     const all = await campaigns.getAll();
     const active = all.filter((c) => c.status === 'active');
@@ -716,8 +940,9 @@ async function handleCallback(botToken, chatId, callbackData) {
   // 📅 1-Tap Booking Dispatch
   if (data.startsWith('reply_cal:')) {
     const publicId = data.replace('reply_cal:', '').trim();
+    const activeCand = await getActiveCandidate().catch(() => null);
     const cfg = await getConfig();
-    const bookingLink = cfg.telegram?.bookingLink || cfg.bookingLink || 'https://calendly.com';
+    const bookingLink = activeCand?.bookingLink || cfg.telegram?.bookingLink || cfg.bookingLink || 'https://calendly.com';
     const body = `Thanks for getting back to me! Here is a direct link to grab a quick 10-15 min chat on my calendar: ${bookingLink} - looking forward to speaking!`;
 
     await sendTelegramMessage(botToken, chatId, `⏳ *Dispatching booking link to* \`${publicId}\`...`);
@@ -841,7 +1066,7 @@ export async function startTelegramPoller(token, chatId) {
   if (isPolling) return;
   isPolling = true;
 
-  console.log('[Telegram Poller] Starting Phase 2 Voice + Closer poll for chat ID:', chatId);
+  console.log('[Telegram Poller] Starting Phase 3 Persona + Waterfall poll for chat ID:', chatId);
 
   (async () => {
     while (isPolling) {
@@ -945,8 +1170,9 @@ onEvent(async (name, payload = {}) => {
           [{ text: '📅 Send 10-Min Booking Link', callback_data: `reply_cal:${publicId}` }],
           [
             { text: '✨ AI Draft Reply', callback_data: `reply_ai:${publicId}` },
-            { text: '🚫 Do Not Contact', callback_data: `blacklist:${publicId}` },
+            { text: '📧 Find Email (Apollo)', callback_data: `enrich:${publicId}` },
           ],
+          [{ text: '🚫 Do Not Contact', callback_data: `blacklist:${publicId}` }],
         ],
       };
 
@@ -975,6 +1201,7 @@ onEvent(async (name, payload = {}) => {
             { text: '📅 Send Booking Link', callback_data: `reply_cal:${publicId}` },
             { text: '✨ AI Draft Welcome', callback_data: `reply_ai:${publicId}` },
           ],
+          [{ text: '📧 Find Email (Apollo)', callback_data: `enrich:${publicId}` }],
         ],
       };
 

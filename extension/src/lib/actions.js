@@ -106,6 +106,12 @@ export const ACTIONS = Object.freeze({
   TELEGRAM_STATUS: 'telegram.status',
   TELEGRAM_SAVE: 'telegram.save',
   TELEGRAM_TEST: 'telegram.test',
+
+  CANDIDATES_GET: 'candidates.get',
+  CANDIDATE_SET_ACTIVE: 'candidates.setActive',
+  CANDIDATE_SAVE: 'candidates.save',
+  CANDIDATE_DELETE: 'candidates.delete',
+  ENRICH_LEAD: 'enrich.lead',
 });
 
 /* ================================================================== */
@@ -301,7 +307,7 @@ export const DEFAULT_CONFIG = {
 
 const ACCOUNT_PRESETS = ['free', 'premium', 'salesnav', 'recruiter'];
 const AI_PROVIDERS = ['none', 'groq', 'gemini', 'openai', 'anthropic', 'ollama', 'openai-compatible'];
-const ENRICHMENT_PROVIDERS = ['none', 'hunter'];
+const ENRICHMENT_PROVIDERS = ['none', 'hunter', 'apollo', 'waterfall'];
 
 /* ================================================================== */
 /*  Errors and envelopes                                              */
@@ -576,8 +582,14 @@ const PARAM_SPECS = {
   },
   [ACTIONS.TELEGRAM_SAVE]: {
     required: { botToken: 'string', chatId: 'string' },
-    optional: { enabled: 'boolean' },
+    optional: { enabled: 'boolean', bookingLink: 'string' },
   },
+
+  [ACTIONS.CANDIDATES_GET]: {},
+  [ACTIONS.CANDIDATE_SET_ACTIVE]: { required: { idOrSlug: 'string' } },
+  [ACTIONS.CANDIDATE_SAVE]: { required: { candidate: 'object' } },
+  [ACTIONS.CANDIDATE_DELETE]: { required: { id: 'string' } },
+  [ACTIONS.ENRICH_LEAD]: { required: { publicId: 'string' } },
 };
 
 function typeOf(value) {

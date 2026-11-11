@@ -1,0 +1,37 @@
+{
+  "name": "US Indian Analyst Outreach",
+  "description": "Targeted campaign for Indian job seekers in the USA looking for Data Analyst and Business Analyst roles (OPT/STEM OPT/B.Tech).",
+  "audience": "Indian job seekers with B.Tech / MS in the US on OPT/STEM OPT looking for Data or Business Analyst positions.",
+  "tags": ["recruiting", "analysts", "opt"],
+  "steps": [
+    {
+      "type": "invite",
+      "variants": [
+        "Hi {{firstName|there}}, saw you're exploring Data/Business Analyst roles in the US. Would love to connect and share some analyst openings our network is currently staffing for!",
+        "Hello {{firstName|there}}, saw you're seeking Data/Business Analyst opportunities in the US. Let's connect — happy to share live analyst openings we're staffing for."
+      ]
+    },
+    {
+      "type": "branch",
+      "branch": {
+        "on": "accepted",
+        "ms": 864000000,
+        "then": [
+          { "type": "wait", "waitMs": 86400000 },
+          {
+            "type": "message",
+            "variants": [
+              "Hey {{firstName|there}}, thanks for connecting! Glad to have you in my network. Are you on OPT/CPT or seeking immediate full-time roles? We've helped many Indian analysts land roles across US tech teams recently — happy to jump on a quick 10-min alignment call: [Calendly Link]",
+              "Thanks for connecting, {{firstName|there}}! Are you currently on OPT or seeking immediate full-time analyst roles? We've helped many Indian analysts secure US roles recently — happy to chat on a quick 10-min alignment call: [Calendly Link]"
+            ]
+          }
+        ],
+        "else": [
+          { "type": "wait", "waitMs": 864000000 },
+          { "type": "follow" }
+        ]
+      }
+    }
+  ],
+  "settings": { "stopOnReply": true, "autopilot": false }
+}

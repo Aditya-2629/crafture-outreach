@@ -147,6 +147,12 @@
       "audience": "People whose work makes a talk obvious: they have shipped the thing your audience wants to hear about."
     },
     {
+      "file": "us-indian-analyst-outreach.json",
+      "name": "US Indian Analyst Outreach",
+      "description": "Targeted campaign for Indian job seekers in the USA looking for Data Analyst and Business Analyst roles (OPT/STEM OPT/B.Tech).",
+      "audience": "Indian job seekers with B.Tech / MS in the US on OPT/STEM OPT looking for Data or Business Analyst positions."
+    },
+    {
       "file": "warm-connect.json",
       "name": "Warm connect",
       "description": "The default. Visit, follow, then invite with a short note two days later, so the invite lands on someone who has already seen your name. Two messages after acceptance, spaced wide.",

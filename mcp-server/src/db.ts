@@ -6,6 +6,7 @@
  * `linkedin_query_sql` instead of re-scraping LinkedIn. The file lives at
  * `~/.linkedin-toolkit/toolkit.db` unless the config overrides it.
  */
+// @ts-ignore
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -652,7 +653,7 @@ export class Db {
         }
         rows.push(row);
       }
-      const columns = statement.columns().map((c) => c.name);
+      const columns = statement.columns().map((c: any) => c.name);
       return { columns, rows, rowCount: rows.length, truncated };
     } finally {
       if (inMemory) readonlyDb.pragma('query_only = OFF');

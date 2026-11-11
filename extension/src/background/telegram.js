@@ -3,6 +3,7 @@ import { getConfig, setConfig } from '../lib/config.js';
 import { register } from './engine.js';
 import * as voyager from './voyager.js';
 import * as campaigns from './campaigns.js';
+import * as lists from './lists.js';
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
 let isPolling = false;
@@ -129,22 +130,74 @@ async function handleUserCommand(botToken, chatId, text) {
     return sendTelegramMessage(botToken, chatId, `▶️ *Success:* ${paused.length} campaign(s) resumed.`);
   }
 
-  // Search Leads on LinkedIn
-  if (/search|dhoond|find|prospect/i.test(trimmed)) {
-    await sendTelegramMessage(botToken, chatId, `🔍 *Searching LinkedIn live...*`);
+  // Natural Language Search & Smart List Creation Action
+  if (/search|dhoond|find|look for|prospect/i.test(trimmed)) {
+    await sendTelegramMessage(botToken, chatId, `🔍 *LinkedIn par search chal raha hai...*`);
     try {
-      const q = trimmed.replace(/^(search|find|dhoondo)\s+/i, '');
-      const res = await voyager.searchPeople({ keywords: q, count: 5 });
-      const results = res?.elements || [];
-      if (!results.length) return sendTelegramMessage(botToken, chatId, `No leads found for: "${q}"`);
-      
-      let reply = `🎯 *Top Leads Found:*\n\n`;
-      results.forEach((p, i) => {
-        reply += `*${i + 1}. ${p.name || p.fullName}*\n💼 ${p.headline || 'Professional'}\n📍 ${p.location || 'USA'}\n🔗 [Profile](https://linkedin.com/in/${p.publicId})\n\n`;
+      // 1. Extract count if specified (e.g. "find 100 prospect" -> clamp to 25 per single batch)
+      const countMatch = trimmed.match(/(\d+)\s*(prospect|lead|candidate|people)/i);
+      const wantedCount = countMatch ? Math.min(Math.max(1, parseInt(countMatch[1], 10)), 25) : 10;
+
+      // 2. Extract list name if requested (e.g. "name that list as data analyst USA")
+      const listMatch = trimmed.match(/(?:name that list as|list name|list as|add to list|save to list)\s+["']?([^"',\n]+)["']?/i);
+      const targetListName = listMatch ? listMatch[1].trim() : null;
+
+      // 3. Clean search keywords
+      let query = trimmed
+        .replace(/^(search|find|dhoondo|dhoond|bhai)\s+/i, '')
+        .replace(/(and find \d+.*|and save.*|and name that list.*|name that list as.*)$/i, '')
+        .replace(/(\s*karo|\s*do|\s*please)$/i, '')
+        .trim();
+
+      // Optimize keywords for job seekers if query mentions 'looking for job'
+      let searchKeywords = query;
+      if (/looking for job|job dhund|open to work/i.test(trimmed)) {
+        searchKeywords = query.replace(/(who are )?looking for job|job dhund rahe/gi, '"Open to work"');
+      }
+
+      // 4. Call the correct Voyager search function (searchProfiles, NOT searchPeople)
+      const searchRes = await voyager.searchProfiles({
+        keywords: searchKeywords,
+        location: /usa|us|united states/i.test(trimmed) ? 'United States' : undefined,
+        count: wantedCount,
       });
+
+      const profiles = searchRes?.profiles || searchRes?.elements || [];
+      if (!profiles.length) {
+        return sendTelegramMessage(botToken, chatId, `Koi matching profiles nahi mili query: *"${searchKeywords}"* ke liye.`);
+      }
+
+      // 5. Automatically create and save to List if requested
+      let listStatusLine = '';
+      if (targetListName) {
+        try {
+          const listObj = await lists.ensureList(targetListName);
+          await lists.add(listObj.listId, { profiles });
+          listStatusLine = `📁 *Saved ${profiles.length} prospects to List:* "*${targetListName}*"\n\n`;
+        } catch (lErr) {
+          console.error('[Telegram List Save Error]', lErr);
+        }
+      }
+
+      // 6. Format Top 5 candidate cards for Telegram
+      let reply = `🎯 *Found ${profiles.length} Candidates on LinkedIn:*\n\n${listStatusLine}`;
+      const showCount = Math.min(profiles.length, 5);
+      for (let i = 0; i < showCount; i++) {
+        const p = profiles[i];
+        const name = p.fullName || `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'LinkedIn Member';
+        const headline = p.headline || p.title || 'Professional';
+        const loc = p.location || 'USA';
+        const link = p.publicId ? `https://linkedin.com/in/${p.publicId}` : '';
+        reply += `*${i + 1}. ${name}*\n💼 ${headline}\n📍 ${loc}\n${link ? `🔗 [Profile Link](${link})\n` : ''}\n`;
+      }
+
+      if (profiles.length > 5) {
+        reply += `_...aur ${profiles.length - 5} aur profiles list me saved hain._`;
+      }
+
       return sendTelegramMessage(botToken, chatId, reply);
-    } catch (e) {
-      return sendTelegramMessage(botToken, chatId, `❌ Search error: ${e.message}`);
+    } catch (err) {
+      return sendTelegramMessage(botToken, chatId, `❌ Search failed: ${err.message}`);
     }
   }
 
@@ -201,3 +254,4 @@ getConfig().then((cfg) => {
 register(ACTIONS.TELEGRAM_STATUS, () => getTelegramStatus());
 register(ACTIONS.TELEGRAM_TEST, (params) => testTelegram(params));
 register(ACTIONS.TELEGRAM_SAVE, (params) => saveTelegram(params));
+

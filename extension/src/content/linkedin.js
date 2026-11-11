@@ -461,13 +461,18 @@
     while (collected.length < targetCount) {
       if (isCancelled && isCancelled()) break;
 
-      // Smooth scroll slightly to trigger LinkedIn's lazy rendering of cards on page
-      window.scrollBy({ top: 500, behavior: 'smooth' });
-      await new Promise((r) => setTimeout(r, 400));
+      // 1. Triple-stage full page scroll to force LinkedIn's lazy rendering of cards & pagination bar
+      window.scrollTo({ top: document.body.scrollHeight * 0.4, behavior: 'smooth' });
+      await new Promise((r) => setTimeout(r, 450));
+      window.scrollTo({ top: document.body.scrollHeight * 0.8, behavior: 'smooth' });
+      await new Promise((r) => setTimeout(r, 450));
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      await new Promise((r) => setTimeout(r, 650));
 
+      // 2. Extract all search result cards on current page
       let cards = Array.from(
         document.querySelectorAll(
-          '.reusable-search__result-container, .entity-result, li.reusable-search__result-container'
+          '.reusable-search__result-container, .entity-result, li.reusable-search__result-container, div[data-chameleon-result-urn]'
         )
       );
       if (cards.length === 0) {
@@ -493,16 +498,35 @@
           collected.length,
           targetCount,
           pageCount,
-          `Scraped Page ${pageCount}... (${collected.length} / ${targetCount} leads)`
+          `Scraped Page ${pageCount} (${collected.length} / ${targetCount} leads)`
         );
       }
 
       if (collected.length >= targetCount) break;
       if (isCancelled && isCancelled()) break;
 
-      const nextBtn = document.querySelector(
-        'button[aria-label="Next"], .artdeco-pagination__button--next, a[aria-label="Next"]'
+      // 3. Locate Next button with fallback selectors
+      let nextBtn = document.querySelector(
+        'button[aria-label="Next"], button[aria-label*="Next"], .artdeco-pagination__button--next, a[aria-label="Next"], a[aria-label*="Next"], button.artdeco-pagination__button--next'
       );
+
+      // Text search fallback if aria-label is missing or dynamic
+      if (!nextBtn) {
+        const allButtons = Array.from(document.querySelectorAll('.artdeco-pagination button, .artdeco-pagination a, button'));
+        nextBtn = allButtons.find((b) => {
+          const txt = (b.textContent || '').trim().toLowerCase();
+          const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+          return (txt.startsWith('next') || aria.includes('next')) && !b.disabled;
+        });
+      }
+
+      // Numbered page button fallback (e.g. Page 2, Page 3)
+      if (!nextBtn) {
+        const nextPageNum = pageCount + 1;
+        nextBtn = document.querySelector(
+          `button[aria-label="Page ${nextPageNum}"], button[aria-label*="${nextPageNum}"], li[data-test-pagination-page-btn="${nextPageNum}"] button`
+        );
+      }
 
       if (
         !nextBtn ||
@@ -510,7 +534,7 @@
         nextBtn.getAttribute('aria-disabled') === 'true' ||
         nextBtn.classList.contains('artdeco-button--disabled')
       ) {
-        logDebug('info', 'Importer', `Reached end of search results at page ${pageCount}.`);
+        logDebug('info', 'Importer', `Reached end of search results or pagination completed at page ${pageCount}.`);
         break;
       }
 
@@ -523,11 +547,15 @@
         );
       }
 
+      // 4. Scroll next button into center view and trigger click
+      nextBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await new Promise((r) => setTimeout(r, 350));
       nextBtn.click();
       pageCount += 1;
 
-      // Human pacing delay: 2.6s to 3.4s
-      const delay = 2600 + Math.random() * 800;
+      // 5. Scroll back up and wait for next page's fresh cards to mount
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const delay = 2800 + Math.random() * 800;
       await new Promise((r) => setTimeout(r, delay));
     }
 

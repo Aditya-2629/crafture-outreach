@@ -14,19 +14,29 @@ let selectedQueueIds = new Set();
 let activeCampaignFilter = 'all';
 let activeTypeFilters = new Set(['Invitation', 'Message', 'Visit', 'Follow', 'Email']);
 
-let activeRefreshTimer = null;
-let activeStorageListener = null;
+let queueRefreshTimer = null;
 let isRefreshing = false;
+let lastRenderedSnapshot = '';
 
 function cleanupTimers() {
-  if (activeRefreshTimer) {
-    clearInterval(activeRefreshTimer);
-    activeRefreshTimer = null;
+  if (queueRefreshTimer) {
+    clearInterval(queueRefreshTimer);
+    queueRefreshTimer = null;
   }
-  if (activeStorageListener && typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
-    chrome.storage.onChanged.removeListener(activeStorageListener);
-    activeStorageListener = null;
+}
+
+function isUserInteracting(container) {
+  if (!container || !container.isConnected) return false;
+  const activeEl = document.activeElement;
+  if (activeEl && container.contains(activeEl)) {
+    const tag = activeEl.tagName ? activeEl.tagName.toUpperCase() : '';
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+      return true;
+    }
   }
+  const openMenu = container.querySelector('#action-type-menu:not(.hidden)');
+  if (openMenu) return true;
+  return false;
 }
 
 function escapeHtml(str) {
@@ -360,7 +370,18 @@ function ensureQueueStyles() {
   document.head.appendChild(style);
 }
 
-async function fetchAndPaint(container, ctx = {}, isInitial = false) {
+export async function refreshQueueSilently(container, ctx = {}, options = {}) {
+  if (!container || !container.isConnected || !document.contains(container)) {
+    cleanupTimers();
+    return;
+  }
+  if (!options.force && isUserInteracting(container)) {
+    return;
+  }
+  await performQueueFetchAndPaint(container, ctx, { isInitial: false, force: Boolean(options.force) });
+}
+
+async function performQueueFetchAndPaint(container, ctx = {}, { isInitial = false, force = false } = {}) {
   if (!container || !container.isConnected) {
     cleanupTimers();
     return;
@@ -394,6 +415,11 @@ async function fetchAndPaint(container, ctx = {}, isInitial = false) {
         }
       }),
     ]);
+
+    if (!container.isConnected || !document.contains(container)) {
+      cleanupTimers();
+      return;
+    }
 
     const quotas = statusRes?.quotas || {};
     const inviteQuota = quotas.invite || {};
@@ -492,6 +518,42 @@ async function fetchAndPaint(container, ctx = {}, isInitial = false) {
     const nextRunText = getNextScheduledRun(queuedItems, alarmRes?.scheduledTime, now);
     const lastActionText = formatLastAction(allStorage);
 
+    // Build data snapshot to skip DOM manipulation if nothing changed
+    const currentSnapshot = JSON.stringify({
+      engineText: engineState.text,
+      engineClass: engineState.pillClass,
+      nextRunText,
+      lastActionText,
+      quotas: [
+        inviteUsed,
+        inviteDailyCap,
+        inviteWeeklyUsed,
+        messageUsed,
+        messageDailyCap,
+        visitUsed,
+        visitDailyCap,
+        emailUsed,
+        emailDailyCap,
+        isWeeklyInviteQuotaReached,
+      ],
+      queued: queuedItems.map(
+        (q) =>
+          `${q.id}:${q.actionType}:${q.isDueNow}:${q.bucketCooldownUntil}:${q.enrollment.status}:${q.enrollment.retryCount}`
+      ),
+      activeCampaignFilter,
+      activeTypeFilters: Array.from(activeTypeFilters).sort(),
+      selectedCount: selectedQueueIds.size,
+    });
+
+    if (!isInitial && !force && currentSnapshot === lastRenderedSnapshot) {
+      return;
+    }
+    lastRenderedSnapshot = currentSnapshot;
+
+    // Preserve scroll position
+    const prevScrollTop = container.scrollTop;
+    const prevScrollY = window.scrollY;
+
     paint({
       container,
       ctx,
@@ -520,6 +582,15 @@ async function fetchAndPaint(container, ctx = {}, isInitial = false) {
       lastActionText,
       now,
     });
+
+    if (container && typeof prevScrollTop === 'number') {
+      container.scrollTop = prevScrollTop;
+    }
+    if (typeof prevScrollY === 'number' && typeof window.scrollTo === 'function') {
+      try {
+        window.scrollTo(0, prevScrollY);
+      } catch {}
+    }
   } catch (err) {
     console.error('[QueueView Error]', err);
   } finally {
@@ -781,33 +852,57 @@ function paint(state) {
 function wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allStorage, ctx) {
   const resetQuotaBtn = container.querySelector('#btn-queue-reset-quota');
   if (resetQuotaBtn) {
-    resetQuotaBtn.addEventListener('click', async () => {
+    resetQuotaBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      resetQuotaBtn.disabled = true;
+      resetQuotaBtn.style.opacity = '0.6';
+      resetQuotaBtn.style.cursor = 'not-allowed';
+
       try {
         await call(ACTIONS.QUOTA_RESET, {});
-        ctx.showToast?.("Today's quota counters reset!", 'success');
-        fetchAndPaint(container, ctx, false);
+        ctx.showToast?.('Quotas reset', 'success');
       } catch {
         ctx.showToast?.('Failed to reset quotas', 'error');
+      } finally {
+        await refreshQueueSilently(container, ctx, { force: true });
+        setTimeout(() => {
+          if (resetQuotaBtn) {
+            resetQuotaBtn.disabled = false;
+            resetQuotaBtn.style.opacity = '1';
+            resetQuotaBtn.style.cursor = 'pointer';
+          }
+        }, 600);
       }
     });
   }
 
   const updateBtn = container.querySelector('#btn-update-activity');
   if (updateBtn) {
-    updateBtn.addEventListener('click', async () => {
+    updateBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       const icon = updateBtn.querySelector('.spin-icon-update');
       if (icon) icon.classList.add('is-spinning');
       updateBtn.disabled = true;
+      updateBtn.style.opacity = '0.6';
+      updateBtn.style.cursor = 'not-allowed';
 
       try {
         await call(ACTIONS.CAMPAIGN_TICK, {});
-        ctx.showToast?.('Activity updated. Engine refreshed queue & quotas.', 'success');
+        ctx.showToast?.('Activity synced', 'success');
       } catch {
-        ctx.showToast?.('Activity refreshed.', 'info');
+        ctx.showToast?.('Activity synced', 'info');
       } finally {
+        if (icon) icon.classList.remove('is-spinning');
+        await refreshQueueSilently(container, ctx, { force: true });
         setTimeout(() => {
-          fetchAndPaint(container, ctx, false);
-        }, 400);
+          if (updateBtn) {
+            updateBtn.disabled = false;
+            updateBtn.style.opacity = '1';
+            updateBtn.style.cursor = 'pointer';
+          }
+        }, 600);
       }
     });
   }
@@ -826,7 +921,7 @@ function wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allSt
     chk.addEventListener('change', () => {
       if (chk.checked) activeTypeFilters.add(chk.value);
       else activeTypeFilters.delete(chk.value);
-      fetchAndPaint(container, ctx, false);
+      refreshQueueSilently(container, ctx, { force: true });
     });
   });
 
@@ -859,7 +954,7 @@ function wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allSt
   if (campSelect) {
     campSelect.addEventListener('change', (e) => {
       activeCampaignFilter = e.target.value;
-      fetchAndPaint(container, ctx, false);
+      refreshQueueSilently(container, ctx, { force: true });
     });
   }
 
@@ -868,7 +963,7 @@ function wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allSt
     selectAll.addEventListener('change', (e) => {
       if (e.target.checked) filteredQueue.forEach((i) => selectedQueueIds.add(i.id));
       else selectedQueueIds.clear();
-      fetchAndPaint(container, ctx, false);
+      refreshQueueSilently(container, ctx, { force: true });
     });
   }
 
@@ -877,7 +972,7 @@ function wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allSt
       const id = chk.dataset.id;
       if (e.target.checked) selectedQueueIds.add(id);
       else selectedQueueIds.delete(id);
-      fetchAndPaint(container, ctx, false);
+      refreshQueueSilently(container, ctx, { force: true });
     });
   });
 
@@ -908,7 +1003,7 @@ function wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allSt
 
         ctx.showToast?.(`Removed ${selectedQueueIds.size} actions from queue.`, 'success');
         selectedQueueIds.clear();
-        fetchAndPaint(container, ctx, false);
+        await refreshQueueSilently(container, ctx, { force: true });
       }
     });
   }
@@ -917,35 +1012,26 @@ function wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allSt
 export async function renderQueueView(container, ctx = {}) {
   if (!container) return;
   cleanupTimers();
+
+  // Register cleanup with dashboard.js view lifecycle
+  ctx.registerCleanup?.(() => {
+    cleanupTimers();
+  });
+
+  // Provide silent live update handler to dashboard.js storage listener
+  ctx.onLiveUpdate = () => refreshQueueSilently(container, ctx);
+
   ensureQueueStyles();
+  lastRenderedSnapshot = '';
 
-  await fetchAndPaint(container, ctx, true);
+  await performQueueFetchAndPaint(container, ctx, { isInitial: true, force: true });
 
-  // 1. Auto-refresh every 5 seconds with zero memory leaks
-  activeRefreshTimer = setInterval(async () => {
+  // Single periodic 5s auto-refresh
+  queueRefreshTimer = setInterval(() => {
     if (!container || !container.isConnected || !document.contains(container)) {
       cleanupTimers();
       return;
     }
-    await fetchAndPaint(container, ctx, false);
+    refreshQueueSilently(container, ctx);
   }, 5000);
-
-  // 2. Storage change subscription for instantaneous updates
-  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
-    activeStorageListener = (changes, areaName) => {
-      if (areaName !== 'local') return;
-      if (!container || !container.isConnected || !document.contains(container)) {
-        cleanupTimers();
-        return;
-      }
-      const relevantKeys = ['campaigns', 'outfox_bucket_cooldowns', 'outfox_tick_lock', 'actions', 'quota'];
-      const hasRelevant = Object.keys(changes).some(
-        (k) => relevantKeys.includes(k) || k.startsWith('enrollments:')
-      );
-      if (hasRelevant) {
-        fetchAndPaint(container, ctx, false);
-      }
-    };
-    chrome.storage.onChanged.addListener(activeStorageListener);
-  }
 }

@@ -213,4 +213,62 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
     closeBtn.click();
     expect(document.querySelector('#waalaxy-timeline-modal-backdrop')).toBeNull();
   });
+
+  it('handles Reset Quotas and Update activity buttons with toasts and button disabling', async () => {
+    let quotaResetCalls = 0;
+    let campaignTickCalls = 0;
+
+    stubEngine({
+      [ACTIONS.STATUS_GET]: () => ({ quotas: {} }),
+      [ACTIONS.CONFIG_GET]: () => ({}),
+      [ACTIONS.QUOTA_RESET]: () => {
+        quotaResetCalls++;
+        return { ok: true };
+      },
+      [ACTIONS.CAMPAIGN_TICK]: () => {
+        campaignTickCalls++;
+        return { ok: true };
+      },
+    });
+
+    await chrome.storage.local.set({
+      campaigns: [],
+      outfox_bucket_cooldowns: {},
+    });
+
+    let cleanupFn = null;
+    const testCtx = {
+      showToast: (msg, type) => toasts.push({ msg, type }),
+      registerCleanup: (fn) => {
+        cleanupFn = fn;
+      },
+    };
+
+    await renderQueueView(container, testCtx);
+    await flush();
+
+    // 1. Reset Quotas button
+    const resetBtn = container.querySelector('#btn-queue-reset-quota');
+    expect(resetBtn).not.toBeNull();
+    resetBtn.click();
+    expect(resetBtn.disabled).toBe(true);
+    await flush();
+
+    expect(quotaResetCalls).toBe(1);
+    expect(toasts.some((t) => t.msg === 'Quotas reset')).toBe(true);
+
+    // 2. Update activity button
+    const updateBtn = container.querySelector('#btn-update-activity');
+    expect(updateBtn).not.toBeNull();
+    updateBtn.click();
+    expect(updateBtn.disabled).toBe(true);
+    await flush();
+
+    expect(campaignTickCalls).toBe(1);
+    expect(toasts.some((t) => t.msg === 'Activity synced')).toBe(true);
+
+    // 3. Cleanup registration works
+    expect(typeof cleanupFn).toBe('function');
+    cleanupFn();
+  });
 });

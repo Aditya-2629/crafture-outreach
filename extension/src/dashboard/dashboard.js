@@ -14,6 +14,8 @@ import { renderInboxView } from './inbox-view.js';
 import { renderSettingsView } from './settings-view.js';
 
 let currentViewId = 'home';
+let activeViewCleanup = null;
+let currentViewContext = null;
 
 /**
  * Display a floating modern Waalaxy toast notification
@@ -54,10 +56,28 @@ export async function switchView(viewId, options = {}) {
   const appRoot = document.getElementById('app-root');
   if (!appRoot) return;
 
+  // 0. Always invoke activeViewCleanup from previous view to destroy intervals and listeners
+  if (typeof activeViewCleanup === 'function') {
+    try {
+      activeViewCleanup();
+    } catch (err) {
+      console.warn('[Dashboard] activeViewCleanup error:', err);
+    }
+    activeViewCleanup = null;
+  }
+
   currentViewId = viewId;
   const crumb = document.getElementById('topbar-crumb-title');
   if (crumb) {
-    const titles = { home: 'Home', prospects: 'Prospects', campaigns: 'Campaigns', queue: 'Queue', templates: 'Message Templates', inbox: 'Inbox', settings: 'Settings' };
+    const titles = {
+      home: 'Home',
+      prospects: 'Prospects',
+      campaigns: 'Campaigns',
+      queue: 'Queue',
+      templates: 'Message Templates',
+      inbox: 'Inbox',
+      settings: 'Settings',
+    };
     crumb.textContent = titles[viewId] || 'Overview';
   }
 
@@ -88,8 +108,13 @@ export async function switchView(viewId, options = {}) {
   const ctx = {
     switchView,
     showToast,
+    registerCleanup: (fn) => {
+      activeViewCleanup = fn;
+    },
+    onLiveUpdate: null,
     ...options,
   };
+  currentViewContext = ctx;
 
   // 3. Render appropriate view
   switch (viewId) {
@@ -255,7 +280,7 @@ async function initDashboard() {
     });
   }
 
-  // 8. Reactive debounced (500ms) storage change listener for seamless dashboard updates
+  // 8. Reactive debounced (800ms) storage change listener for seamless dashboard updates
   if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
     let storageDebounceTimer = null;
     chrome.storage.onChanged.addListener((changes, area) => {
@@ -271,13 +296,20 @@ async function initDashboard() {
         // Dispatch custom event for views with active internal state (e.g. queue, campaigns)
         window.dispatchEvent(new CustomEvent('outfox:storage-change', { detail: { changes } }));
 
-        // For views that are stateless or static (e.g. home overview), refresh them seamlessly
-        const appRoot = document.getElementById('app-root');
-        if (!appRoot) return;
-        if (currentViewId === 'home') {
-          await renderHomeView(appRoot, { switchView, showToast });
+        // ONLY trigger silent refresh callback on the currently active view — NEVER call switchView() or show spinner
+        if (currentViewContext && typeof currentViewContext.onLiveUpdate === 'function') {
+          try {
+            await currentViewContext.onLiveUpdate();
+          } catch (err) {
+            console.warn('[Dashboard] onLiveUpdate error:', err);
+          }
+        } else if (currentViewId === 'home') {
+          const appRoot = document.getElementById('app-root');
+          if (appRoot && currentViewId === 'home') {
+            await renderHomeView(appRoot, currentViewContext || { switchView, showToast });
+          }
         }
-      }, 500);
+      }, 800);
     });
   }
 }

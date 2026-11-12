@@ -1434,29 +1434,38 @@ export async function endorseSkill({ publicId, skillUrn }) {
  * Fetch real LinkedIn network summary (Connections count & Pending count)
  */
 export async function getNetworkStats() {
+  let pendingCount = 0;
+  let connectionsCount = 0;
+
+  // 1. Fetch pending sent invitations total (isolated try/catch)
   try {
-    // 1. Fetch pending sent invitations total
     const pendingRes = await voyagerFetch(
-      '/voyager/api/relationships/invitations?start=0&count=1&invitationType=SENT'
+      '/voyager/api/relationships/sentInvitationViewsV2?count=1&invitationType=CONNECTION&q=invitationType&start=0'
     );
-    const pendingCount =
+    pendingCount =
       pendingRes?.data?.data?.paging?.total ||
       pendingRes?.data?.paging?.total ||
       pendingRes?.paging?.total ||
+      pendingRes?.data?.['*elements']?.length ||
+      pendingRes?.data?.elements?.length ||
       0;
+  } catch {
+    /* gracefully return 0 without logging error if unavailable */
+  }
 
-    // 2. Fetch connections summary
+  // 2. Fetch connections summary (isolated try/catch so failure never zeroes out connections)
+  try {
     const connRes = await voyagerFetch('/voyager/api/relationships/connectionsSummary');
-    const connectionsCount =
+    connectionsCount =
       connRes?.data?.numConnections ||
       connRes?.numConnections ||
+      connRes?.data?.data?.numConnections ||
       0;
-
-    return { pendingCount, connectionsCount };
   } catch (err) {
-    console.warn('[Voyager] Failed to fetch network stats:', err.message);
-    return { pendingCount: 0, connectionsCount: 0 };
+    console.warn('[Voyager] Failed to fetch connections summary:', err?.message || err);
   }
+
+  return { pendingCount, connectionsCount };
 }
 
 /**

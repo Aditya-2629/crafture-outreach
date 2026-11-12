@@ -1161,4 +1161,22 @@ describe('endpoint self-check', () => {
       ['search', 1],
     ]);
   });
+
+  describe('getNetworkStats', () => {
+    it('fetches both counts successfully when endpoints respond', async () => {
+      net.route('sentInvitationViewsV2', { data: { paging: { total: 42 } } });
+      net.route('connectionsSummary', { data: { numConnections: 1250 } });
+
+      const stats = await v.getNetworkStats();
+      expect(stats).toEqual({ pendingCount: 42, connectionsCount: 1250 });
+    });
+
+    it('keeps connectionsCount live even if pending invites endpoint returns 400', async () => {
+      net.route('sentInvitationViewsV2', status(400, { message: 'Invalid query' }));
+      net.route('connectionsSummary', { numConnections: 890 });
+
+      const stats = await v.getNetworkStats();
+      expect(stats).toEqual({ pendingCount: 0, connectionsCount: 890 });
+    });
+  });
 });

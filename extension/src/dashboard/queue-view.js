@@ -424,7 +424,10 @@ async function performQueueFetchAndPaint(container, ctx = {}, { isInitial = fals
       new Promise((r) => {
         try {
           if (typeof chrome !== 'undefined' && chrome.alarms?.get) {
-            chrome.alarms.get('campaignTick', r);
+            chrome.alarms.get('outfox-campaign-tick', (a1) => {
+              if (a1 && a1.scheduledTime) return r(a1);
+              chrome.alarms.get('campaignTick', r);
+            });
           } else {
             r(null);
           }

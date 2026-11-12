@@ -45,7 +45,7 @@ const STOP_THE_TICK = new Set([
 ]);
 
 /** Max actions executed per tick to prevent burst firing (Waalaxy-style distributed drip) */
-export const DEFAULT_MAX_ACTIONS_PER_TICK = 3;
+export const DEFAULT_MAX_ACTIONS_PER_TICK = 1;
 let maxActionsPerTick = DEFAULT_MAX_ACTIONS_PER_TICK;
 
 export function setMaxActionsPerTick(n) {
@@ -56,14 +56,15 @@ export function getMaxActionsPerTick() {
   return maxActionsPerTick;
 }
 
-/** Schedule next tick alarm with 2-4 minutes randomized jitter */
+export const CAMPAIGN_TICK_ALARM_NAME = 'outfox-campaign-tick';
+
+/** Schedule next tick alarm with human spacing */
 export function scheduleNextTickAlarm(minutes = null) {
   try {
     if (typeof chrome !== 'undefined' && chrome.alarms?.create) {
-      const delay = minutes ?? (2 + Math.random() * 2); // 2–4 minutes
-      chrome.alarms.create('campaignTick', {
+      const delay = minutes ?? (1 + Math.random() * 1.5);
+      chrome.alarms.create(CAMPAIGN_TICK_ALARM_NAME, {
         delayInMinutes: delay,
-        periodInMinutes: 2,
       });
     }
   } catch {
@@ -80,7 +81,7 @@ export function addTickHook(fn) {
 
 /** Global execution lock preventing concurrent tick execution across tabs/alarms */
 export const TICK_LOCK_KEY = K.TICK_LOCK || 'outfox_tick_lock';
-export const TICK_LOCK_TTL_MS = 5 * 60 * 1000; // 5-minute TTL
+export const TICK_LOCK_TTL_MS = 60 * 1000; // 60-second TTL
 
 let isTickRunning = false;
 
@@ -703,12 +704,31 @@ export function fitInviteNote(note, limit = INVITE_NOTE_MAX) {
   };
 }
 
-async function resolveAiOpener(profile) {
+export function hasLeadingGreeting(templateText = '') {
+  if (!templateText || typeof templateText !== 'string') return false;
+  return /^\s*(?:hi|hey|hello|dear)\b/i.test(templateText);
+}
+
+export function stripLeadingGreeting(text, templateText = '') {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text.trim().replace(/^["'`]+|["'`]+$/g, '').trim();
+  if (hasLeadingGreeting(templateText)) {
+    cleaned = cleaned.replace(/^(?:hi|hey|hello|dear)\b[^,.\n!?:;–—-]*[,\s!.:;–—-]+/i, '').trim();
+    cleaned = cleaned.replace(/^[,\s!.:;–—-]+/, '').trim();
+    if (cleaned) {
+      cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    }
+  }
+  return cleaned;
+}
+
+export async function resolveAiOpener(profile, templateText = '') {
   try {
     const res = await handle(ACTIONS.AI_COMPLETE, { task: 'opener', input: { profile } }, 'campaign');
     if (res && res.ok && res.data && res.data.output) {
       const text = typeof res.data.output === 'string' ? res.data.output : String(res.data.output);
-      return fitInviteNote(text, 180).note;
+      const cleaned = stripLeadingGreeting(text, templateText);
+      return fitInviteNote(cleaned, 180).note;
     }
   } catch {
     /* fallback to empty string on missing key, network error, etc. */
@@ -737,7 +757,7 @@ async function stepParams(campaign, step, enrollment, routed = null) {
     const rawBody = step.inmailBody || step.body || step.note || variant || '';
     let bodyText = variant || rawBody;
     if (bodyText.includes('{{ai_opener') || step.useAi === true) {
-      const opener = await resolveAiOpener(profile);
+      const opener = await resolveAiOpener(profile, bodyText);
       bodyText = bodyText.replace(
         /\{\{\s*ai_opener\s*(?:\|([^}]*))?\}\}/g,
         (_m, fallback) => opener || (fallback ? fallback.trim() : ''),
@@ -753,7 +773,7 @@ async function stepParams(campaign, step, enrollment, routed = null) {
   if (step.type === 'invite') {
     let noteText = variant || step.note || '';
     if (noteText.includes('{{ai_opener') || step.useAi === true) {
-      const opener = await resolveAiOpener(profile);
+      const opener = await resolveAiOpener(profile, noteText);
       noteText = noteText.replace(
         /\{\{\s*ai_opener\s*(?:\|([^}]*))?\}\}/g,
         (_m, fallback) => opener || (fallback ? fallback.trim() : ''),
@@ -773,7 +793,18 @@ async function stepParams(campaign, step, enrollment, routed = null) {
       });
     }
   }
-  if (step.type === 'message') params.body = renderTemplate(variant || step.body, profile);
+  if (step.type === 'message') {
+    let msgBody = variant || step.body || '';
+    if (msgBody.includes('{{ai_opener') || step.useAi === true) {
+      const opener = await resolveAiOpener(profile, msgBody);
+      msgBody = msgBody.replace(
+        /\{\{\s*ai_opener\s*(?:\|([^}]*))?\}\}/g,
+        (_m, fallback) => opener || (fallback ? fallback.trim() : ''),
+      );
+      if (step.useAi && !msgBody.trim()) msgBody = opener;
+    }
+    params.body = renderTemplate(msgBody, profile);
+  }
   if (step.type === 'inmail') {
     params.body = renderTemplate(variant || step.body, profile);
     params.subject = renderTemplate(step.subject, profile);
@@ -781,7 +812,7 @@ async function stepParams(campaign, step, enrollment, routed = null) {
   if (step.type === 'email') {
     let rawBody = variant || step.body || '';
     if (rawBody.includes('{{ai_opener') || step.useAi === true) {
-      const opener = await resolveAiOpener(profile);
+      const opener = await resolveAiOpener(profile, rawBody);
       rawBody = rawBody.replace(
         /\{\{\s*ai_opener\s*(?:\|([^}]*))?\}\}/g,
         (_m, fallback) => opener || (fallback ? fallback.trim() : ''),
@@ -828,6 +859,7 @@ export async function tick() {
     return { executed: 0, queued: 0 };
   }
 
+  let hasMoreDueEnrollments = false;
   try {
     logDebug('info', 'Runner', 'Sequence tick started. Checking active campaigns...');
 
@@ -1358,13 +1390,6 @@ export async function tick() {
           });
 
           advance(campaign, enrollment, step);
-
-          // Between actions inside a tick, enforce human-like randomized jitter (35s–75s)
-          if (executed < maxActionsPerTick) {
-            const actionJitterMs = Math.floor(Math.random() * (75000 - 35000 + 1)) + 35000;
-            logDebug('info', 'Pacing', `[Human Pacing] Waiting ${(actionJitterMs / 1000).toFixed(1)}s randomized human jitter between actions...`);
-            await sleep(actionJitterMs);
-          }
         }
 
         await emit(EVENTS.CAMPAIGN_STEP_DONE, {
@@ -1416,6 +1441,33 @@ export async function tick() {
     logDebug('info', 'Runner', `Reached tick batch limit (${executed} actions). Yielding until next tick alarm for distributed human pacing.`);
   }
 
+  // Check if more due enrollments remain across active campaigns for alarm-based pacing
+  hasMoreDueEnrollments = false;
+  if (executed >= maxActionsPerTick && !halted) {
+    try {
+      const activeCamps = campaigns.filter((c) => c.status === 'active');
+      for (const c of activeCamps) {
+        const ens = await readEnrollments(c.campaignId);
+        const dueExists = ens.some((e) => {
+          if (e.status !== 'active' || (e.nextAt || 0) > now) return false;
+          const steps = stepsAt(c, e.path);
+          const s = steps[e.stepIndex];
+          if (s && !['wait', 'branch'].includes(s.type)) {
+            const norm = normalizeBucket(s.type);
+            if (haltedBuckets.has(norm) || (bucketCooldowns[norm] || 0) > now) return false;
+          }
+          return true;
+        });
+        if (dueExists) {
+          hasMoreDueEnrollments = true;
+          break;
+        }
+      }
+    } catch {
+      /* ignore check errors */
+    }
+  }
+
   // Clean Tick Logs: Quiet notice if all due enrollments are paused on resting buckets
   if (executed === 0 && queued === 0 && restingBucketSkippedCount > 0 && restingBucketSkippedCount >= totalDueEnrollments) {
     logDebug('info', 'Runner', 'All due steps paused until quota/cooldown window resumes.');
@@ -1432,7 +1484,13 @@ export async function tick() {
     return { executed, queued };
   } finally {
     await releaseTickLock();
-    scheduleNextTickAlarm();
+    if (hasMoreDueEnrollments) {
+      const humanSpacing = 1 + Math.random() * 1.5; // 1 to 2.5 minutes randomized human spacing
+      logDebug('info', 'Runner', `[Human Spacing] Next due action scheduled via alarm in ${humanSpacing.toFixed(1)}m`);
+      scheduleNextTickAlarm(humanSpacing);
+    } else {
+      scheduleNextTickAlarm(2);
+    }
   }
 }
 

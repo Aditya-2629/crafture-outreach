@@ -47,6 +47,7 @@ import { ensureConnected, onAlarm, startKeepalive } from './bridge.js';
 /* ================================================================== */
 
 export const CAMPAIGN_TICK_ALARM = 'campaignTick';
+export const OUTFOX_CAMPAIGN_TICK_ALARM = 'outfox-campaign-tick';
 
 /**
  * The approval queue's own tick.
@@ -174,7 +175,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     return;
   }
 
-  if (alarm.name !== CAMPAIGN_TICK_ALARM) return;
+  if (alarm.name !== CAMPAIGN_TICK_ALARM && alarm.name !== OUTFOX_CAMPAIGN_TICK_ALARM) return;
   reconnectBridge();
   handle(ACTIONS.CAMPAIGN_TICK, {}, 'system')
     .then((res) => {

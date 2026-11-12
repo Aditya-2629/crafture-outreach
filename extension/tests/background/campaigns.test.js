@@ -427,7 +427,7 @@ describe('variants', () => {
     await storage.putProfile({ publicId: 'carlachen', firstName: 'Carla' });
 
     for (let i = 0; i < 3; i += 1) net.push(inviteCreated); // three invites
-    await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+    for (let i = 0; i < 3; i += 1) await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
 
     const notes = net.calls.filter((x) => x.json && x.json.customMessage).map((x) => x.json.customMessage);
     expect(notes).toEqual(['A Ada', 'B Bob', 'A Carla']);
@@ -447,7 +447,7 @@ describe('variants without a note or body', () => {
     await storage.putProfile({ publicId: 'bobbright', firstName: 'Bob' });
 
     for (let i = 0; i < 2; i += 1) net.push(inviteCreated); // two invites
-    await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+    for (let i = 0; i < 2; i += 1) await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
 
     const notes = net.calls.filter((x) => x.json && x.json.customMessage).map((x) => x.json.customMessage);
     expect(notes).toEqual(['Only A Ada', 'Only B Bob']);
@@ -868,9 +868,11 @@ describe('v1 migration', () => {
     await chrome.storage.local.remove('outfox_bucket_cooldowns');
   });
 
-  it('acquires and releases crash-proof persistent tick lock with 5-minute TTL', async () => {
-    // Verify tick lock key
+  it('acquires and releases crash-proof persistent tick lock with 60s TTL', async () => {
+    // Verify tick lock key and TTL
     expect(campaigns.TICK_LOCK_KEY).toBe('outfox_tick_lock');
+    expect(campaigns.TICK_LOCK_TTL_MS).toBe(60 * 1000);
+    expect(campaigns.DEFAULT_MAX_ACTIONS_PER_TICK).toBe(1);
 
     // Acquire lock
     const locked = await campaigns.acquireTickLock();
@@ -891,6 +893,46 @@ describe('v1 migration', () => {
     // Can acquire again
     expect(await campaigns.acquireTickLock()).toBe(true);
     await campaigns.releaseTickLock();
+  });
+
+  it('strips duplicate greetings from AI opener when template starts with greeting', async () => {
+    expect(campaigns.hasLeadingGreeting('Hi {{firstName}} — {{ai_opener}}')).toBe(true);
+    expect(campaigns.hasLeadingGreeting('Hey {{first_name}},\n\n{{ai_opener}}')).toBe(true);
+    expect(campaigns.hasLeadingGreeting('Hello {{name}} - {{ai_opener}}')).toBe(true);
+    expect(campaigns.hasLeadingGreeting('Dear {{fullName}}: {{ai_opener}}')).toBe(true);
+    expect(campaigns.hasLeadingGreeting('I noticed your work on {{ai_opener}}')).toBe(false);
+
+    expect(
+      campaigns.stripLeadingGreeting('Hi Aditya, I saw your post', 'Hi {{firstName}} — {{ai_opener}}'),
+    ).toBe('I saw your post');
+
+    expect(
+      campaigns.stripLeadingGreeting('Hey Aditya — loved your thoughts', 'Hey {{firstName}}, {{ai_opener}}'),
+    ).toBe('Loved your thoughts');
+
+    expect(
+      campaigns.stripLeadingGreeting('Hello John! I wanted to connect', 'Hello {{firstName}}'),
+    ).toBe('I wanted to connect');
+
+    expect(
+      campaigns.stripLeadingGreeting('Hi there, great to connect', 'Hi {{firstName}}'),
+    ).toBe('Great to connect');
+
+    expect(
+      campaigns.stripLeadingGreeting('"Hi Aditya, great to connect"', 'Hi {{firstName}}'),
+    ).toBe('Great to connect');
+
+    expect(
+      campaigns.stripLeadingGreeting('Hi Aditya. I saw your post', 'Hi {{firstName}}'),
+    ).toBe('I saw your post');
+
+    expect(
+      campaigns.stripLeadingGreeting('I noticed your work at Google', 'Hi {{firstName}}'),
+    ).toBe('I noticed your work at Google');
+
+    expect(
+      campaigns.stripLeadingGreeting('Hi Aditya, I saw your post', 'Just saw your profile: {{ai_opener}}'),
+    ).toBe('Hi Aditya, I saw your post');
   });
 
   it('records chronological history on enrollment and exposes it via getCampaignLiveStatus', async () => {

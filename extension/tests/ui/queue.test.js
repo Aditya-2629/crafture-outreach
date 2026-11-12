@@ -271,4 +271,45 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
     expect(typeof cleanupFn).toBe('function');
     cleanupFn();
   });
+
+  it('strictly aborts and cleans up when navigating away from queue (isStale or hash changed)', async () => {
+    stubEngine({
+      [ACTIONS.STATUS_GET]: () => ({ quotas: {} }),
+      [ACTIONS.CONFIG_GET]: () => ({}),
+    });
+
+    let isStaleState = false;
+    let isActiveState = true;
+    let cleanupFn = null;
+
+    const testCtx = {
+      showToast: () => {},
+      isStale: () => isStaleState,
+      isActiveView: () => isActiveState,
+      registerCleanup: (fn) => {
+        cleanupFn = fn;
+      },
+    };
+
+    window.location.hash = '#queue';
+    await renderQueueView(container, testCtx);
+    await flush();
+
+    expect(container.querySelector('.waalaxy-queue-layout')).not.toBeNull();
+
+    // Now simulate user navigated away: mark stale and set container content to Home
+    isStaleState = true;
+    isActiveState = false;
+    window.location.hash = '#home';
+    cleanupFn?.();
+    container.innerHTML = '<div id="home-view-marker">Home View Active</div>';
+
+    // Trigger silent refresh or onLiveUpdate
+    await testCtx.onLiveUpdate?.();
+    await flush();
+
+    // Verify container was NOT overwritten by Queue!
+    expect(container.querySelector('#home-view-marker')).not.toBeNull();
+    expect(container.querySelector('.waalaxy-queue-layout')).toBeNull();
+  });
 });

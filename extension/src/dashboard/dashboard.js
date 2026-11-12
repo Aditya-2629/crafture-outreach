@@ -15,6 +15,7 @@ import { renderSettingsView } from './settings-view.js';
 
 let currentViewId = 'home';
 let activeViewCleanup = null;
+let currentRenderToken = 0;
 let currentViewContext = null;
 
 /**
@@ -56,7 +57,10 @@ export async function switchView(viewId, options = {}) {
   const appRoot = document.getElementById('app-root');
   if (!appRoot) return;
 
-  // 0. Always invoke activeViewCleanup from previous view to destroy intervals and listeners
+  // 0. Increment render token to immediately invalidate any in-flight rendering from prior views
+  const token = ++currentRenderToken;
+
+  // 1. Always invoke activeViewCleanup from previous view to destroy intervals and listeners
   if (typeof activeViewCleanup === 'function') {
     try {
       activeViewCleanup();
@@ -81,7 +85,7 @@ export async function switchView(viewId, options = {}) {
     crumb.textContent = titles[viewId] || 'Overview';
   }
 
-  // 1. Update navigation items active state (.is-active)
+  // 2. Update navigation items active state (.is-active)
   const navItems = document.querySelectorAll('.sidebar-nav .nav-item');
   navItems.forEach((btn) => {
     const isTarget = btn.dataset.view === viewId || (btn.dataset.view === 'campaigns' && (viewId === 'queue' || viewId === 'templates'));
@@ -98,7 +102,7 @@ export async function switchView(viewId, options = {}) {
   const campGrp = document.getElementById('nav-group-campaigns');
   if (campGrp) campGrp.classList.toggle('is-open', viewId === 'campaigns' || viewId === 'queue' || viewId === 'templates');
 
-  // 2. Keep hash synced for browser back/forward and bookmarks
+  // 3. Keep hash synced for browser back/forward and bookmarks
   try {
     if (window.location.hash.replace('#', '') !== viewId) {
       window.location.hash = viewId;
@@ -108,8 +112,13 @@ export async function switchView(viewId, options = {}) {
   const ctx = {
     switchView,
     showToast,
+    token,
+    isStale: () => token !== currentRenderToken,
+    isActiveView: () => currentViewId === viewId && token === currentRenderToken,
     registerCleanup: (fn) => {
-      activeViewCleanup = fn;
+      if (token === currentRenderToken) {
+        activeViewCleanup = fn;
+      }
     },
     onLiveUpdate: null,
     ...options,

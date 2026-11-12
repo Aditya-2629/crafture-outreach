@@ -14,15 +14,33 @@ let selectedQueueIds = new Set();
 let activeCampaignFilter = 'all';
 let activeTypeFilters = new Set(['Invitation', 'Message', 'Visit', 'Follow', 'Email']);
 
-let queueRefreshTimer = null;
+let queueTimer = null;
+let queueStorageListener = null;
 let isRefreshing = false;
 let lastRenderedSnapshot = '';
 
 function cleanupTimers() {
-  if (queueRefreshTimer) {
-    clearInterval(queueRefreshTimer);
-    queueRefreshTimer = null;
+  if (queueTimer) {
+    clearInterval(queueTimer);
+    queueTimer = null;
   }
+  if (queueStorageListener && typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    try {
+      chrome.storage.onChanged.removeListener(queueStorageListener);
+    } catch {}
+    queueStorageListener = null;
+  }
+}
+
+function shouldAbortQueueRender(container, ctx) {
+  if (ctx?.isStale?.()) return true;
+  if (ctx?.isActiveView && !ctx.isActiveView()) return true;
+  if (!container || !container.isConnected || !document.contains(container)) return true;
+  const rawHash = (typeof window !== 'undefined' && window.location?.hash)
+    ? window.location.hash.replace('#', '').trim()
+    : '';
+  if (rawHash && rawHash !== 'queue') return true;
+  return false;
 }
 
 function isUserInteracting(container) {
@@ -371,7 +389,7 @@ function ensureQueueStyles() {
 }
 
 export async function refreshQueueSilently(container, ctx = {}, options = {}) {
-  if (!container || !container.isConnected || !document.contains(container)) {
+  if (shouldAbortQueueRender(container, ctx)) {
     cleanupTimers();
     return;
   }
@@ -382,7 +400,7 @@ export async function refreshQueueSilently(container, ctx = {}, options = {}) {
 }
 
 async function performQueueFetchAndPaint(container, ctx = {}, { isInitial = false, force = false } = {}) {
-  if (!container || !container.isConnected) {
+  if (shouldAbortQueueRender(container, ctx)) {
     cleanupTimers();
     return;
   }
@@ -416,7 +434,8 @@ async function performQueueFetchAndPaint(container, ctx = {}, { isInitial = fals
       }),
     ]);
 
-    if (!container.isConnected || !document.contains(container)) {
+    // Check immediately after await: did user navigate away?
+    if (shouldAbortQueueRender(container, ctx)) {
       cleanupTimers();
       return;
     }
@@ -549,6 +568,12 @@ async function performQueueFetchAndPaint(container, ctx = {}, { isInitial = fals
       return;
     }
     lastRenderedSnapshot = currentSnapshot;
+
+    // Check immediately before DOM paint: did user navigate away?
+    if (shouldAbortQueueRender(container, ctx)) {
+      cleanupTimers();
+      return;
+    }
 
     // Preserve scroll position
     const prevScrollTop = container.scrollTop;
@@ -1011,14 +1036,16 @@ function wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allSt
 
 export async function renderQueueView(container, ctx = {}) {
   if (!container) return;
+
+  // 1. Immediately clear existing timer and listener from prior renders
   cleanupTimers();
 
-  // Register cleanup with dashboard.js view lifecycle
+  // 2. Register cleanup with dashboard.js view lifecycle
   ctx.registerCleanup?.(() => {
     cleanupTimers();
   });
 
-  // Provide silent live update handler to dashboard.js storage listener
+  // 3. Provide silent live update handler to dashboard.js storage listener
   ctx.onLiveUpdate = () => refreshQueueSilently(container, ctx);
 
   ensureQueueStyles();
@@ -1026,12 +1053,37 @@ export async function renderQueueView(container, ctx = {}) {
 
   await performQueueFetchAndPaint(container, ctx, { isInitial: true, force: true });
 
-  // Single periodic 5s auto-refresh
-  queueRefreshTimer = setInterval(() => {
-    if (!container || !container.isConnected || !document.contains(container)) {
+  // 4. If user navigated away during initial fetch, stop right here
+  if (shouldAbortQueueRender(container, ctx)) {
+    cleanupTimers();
+    return;
+  }
+
+  // 5. Single periodic 5s auto-refresh
+  queueTimer = setInterval(() => {
+    if (shouldAbortQueueRender(container, ctx)) {
       cleanupTimers();
       return;
     }
     refreshQueueSilently(container, ctx);
   }, 5000);
+
+  // 6. Direct storage listener for Queue
+  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    queueStorageListener = (changes, areaName) => {
+      if (areaName !== 'local') return;
+      if (shouldAbortQueueRender(container, ctx)) {
+        cleanupTimers();
+        return;
+      }
+      const relevantKeys = ['campaigns', 'outfox_bucket_cooldowns', 'outfox_tick_lock', 'actions', 'quota'];
+      const hasRelevant = Object.keys(changes).some(
+        (k) => relevantKeys.includes(k) || k.startsWith('enrollments:')
+      );
+      if (hasRelevant) {
+        refreshQueueSilently(container, ctx);
+      }
+    };
+    chrome.storage.onChanged.addListener(queueStorageListener);
+  }
 }

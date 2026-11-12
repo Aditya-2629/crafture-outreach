@@ -109,7 +109,7 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
     expect(banner.textContent).toContain('Sent Visit to anita-bhatia');
 
     // 5. Verify Auto-refresh indicator
-    expect(banner.textContent).toContain('Auto-refresh: ON (5s)');
+    expect(banner.textContent).toContain('Auto-refresh: 5m');
 
     // 6. Verify Per-Row Status Pills in table
     const tableText = container.querySelector('.queue-table').textContent;

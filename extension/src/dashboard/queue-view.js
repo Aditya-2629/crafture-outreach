@@ -15,7 +15,6 @@ let activeCampaignFilter = 'all';
 let activeTypeFilters = new Set(['Invitation', 'Message', 'Visit', 'Follow', 'Email']);
 
 let queueTimer = null;
-let queueStorageListener = null;
 let isRefreshing = false;
 let lastRenderedSnapshot = '';
 
@@ -23,12 +22,6 @@ function cleanupTimers() {
   if (queueTimer) {
     clearInterval(queueTimer);
     queueTimer = null;
-  }
-  if (queueStorageListener && typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
-    try {
-      chrome.storage.onChanged.removeListener(queueStorageListener);
-    } catch {}
-    queueStorageListener = null;
   }
 }
 
@@ -675,7 +668,7 @@ function paint(state) {
 
           <div class="banner-refresh-indicator">
             <span class="pulse-dot orange animated"></span>
-            Auto-refresh: ON (5s)
+            Auto-refresh: 5m
           </div>
         </div>
 
@@ -1062,31 +1055,12 @@ export async function renderQueueView(container, ctx = {}) {
     return;
   }
 
-  // 5. Single periodic 5s auto-refresh
+  // 5. Periodic 5-minute background refresh
   queueTimer = setInterval(() => {
     if (shouldAbortQueueRender(container, ctx)) {
       cleanupTimers();
       return;
     }
     refreshQueueSilently(container, ctx);
-  }, 5000);
-
-  // 6. Direct storage listener for Queue
-  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
-    queueStorageListener = (changes, areaName) => {
-      if (areaName !== 'local') return;
-      if (shouldAbortQueueRender(container, ctx)) {
-        cleanupTimers();
-        return;
-      }
-      const relevantKeys = ['campaigns', 'outfox_bucket_cooldowns', 'outfox_tick_lock', 'actions', 'quota'];
-      const hasRelevant = Object.keys(changes).some(
-        (k) => relevantKeys.includes(k) || k.startsWith('enrollments:')
-      );
-      if (hasRelevant) {
-        refreshQueueSilently(container, ctx);
-      }
-    };
-    chrome.storage.onChanged.addListener(queueStorageListener);
-  }
+  }, 5 * 60 * 1000);
 }

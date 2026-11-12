@@ -111,10 +111,24 @@ export async function renderHomeView(container, ctx = {}) {
     <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
   `;
 
-  const [stats, storage] = await Promise.all([
-    call(ACTIONS.DASHBOARD_LIVE_STATS || 'dashboard.live_stats', {}).catch(() => null) || {},
-    new Promise((r) => chrome.storage.local.get(null, r)),
+  // 4-second timeout guard to prevent infinite spinner if network/stats call hangs
+  const [statsRes, storageRes] = await Promise.all([
+    Promise.race([
+      call(ACTIONS.DASHBOARD_LIVE_STATS || 'dashboard.live_stats', {}).catch(() => ({})),
+      new Promise((resolve) => setTimeout(() => resolve({}), 4000)),
+    ]),
+    Promise.race([
+      new Promise((r) => chrome.storage.local.get(null, r)),
+      new Promise((resolve) => setTimeout(() => resolve({}), 4000)),
+    ]),
   ]);
+
+  // If user navigated away during load, abort cleanly
+  if (ctx?.isStale?.() || (ctx?.isActiveView && !ctx.isActiveView())) return;
+  if (!container || !container.isConnected) return;
+
+  const stats = statsRes || {};
+  const storage = storageRes || {};
 
   const profile = stats.profile || { name: 'Aditya Chaudhary' };
   const kpis = stats.kpis || {

@@ -288,39 +288,6 @@ async function initDashboard() {
       }
     });
   }
-
-  // 8. Reactive debounced (800ms) storage change listener for seamless dashboard updates
-  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
-    let storageDebounceTimer = null;
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== 'local') return;
-      const watchKeys = ['campaigns', 'outfox_bucket_cooldowns', 'outfox_tick_lock', 'quota', 'actions'];
-      const matched = Object.keys(changes).some(
-        (k) => watchKeys.includes(k) || k.startsWith('enrollments:') || k.startsWith('listMembers:')
-      );
-      if (!matched) return;
-
-      if (storageDebounceTimer) clearTimeout(storageDebounceTimer);
-      storageDebounceTimer = setTimeout(async () => {
-        // Dispatch custom event for views with active internal state (e.g. queue, campaigns)
-        window.dispatchEvent(new CustomEvent('outfox:storage-change', { detail: { changes } }));
-
-        // ONLY trigger silent refresh callback on the currently active view — NEVER call switchView() or show spinner
-        if (currentViewContext && typeof currentViewContext.onLiveUpdate === 'function') {
-          try {
-            await currentViewContext.onLiveUpdate();
-          } catch (err) {
-            console.warn('[Dashboard] onLiveUpdate error:', err);
-          }
-        } else if (currentViewId === 'home') {
-          const appRoot = document.getElementById('app-root');
-          if (appRoot && currentViewId === 'home') {
-            await renderHomeView(appRoot, currentViewContext || { switchView, showToast });
-          }
-        }
-      }, 800);
-    });
-  }
 }
 
 /**

@@ -9,6 +9,8 @@
  * only what changed.
  */
 
+import { idbGet, idbGetAll, idbPut, idbPutMany, idbCount, isIdbAvailable } from './idb.js';
+
 /* ================================================================== */
 /*  Storage keys                                                      */
 /* ================================================================== */
@@ -194,6 +196,31 @@ function mergeKnown(existing, incoming) {
   return out;
 }
 
+let migrationChecked = false;
+async function ensureIdbMigrated() {
+  if (migrationChecked || !isIdbAvailable()) return;
+  migrationChecked = true;
+  try {
+    const profCount = await idbCount('profiles');
+    if (profCount === 0) {
+      const index = await get(K.PROFILE_INDEX, []);
+      if (index.length) {
+        const data = await getMany(index.map(K.profile));
+        const list = index.map((id) => data[K.profile(id)]).filter(Boolean);
+        if (list.length) await idbPutMany('profiles', list);
+      }
+    }
+
+    const actCount = await idbCount('actions');
+    if (actCount === 0) {
+      const acts = await get(K.ACTIONS, []);
+      if (acts.length) await idbPutMany('actions', acts);
+    }
+  } catch (err) {
+    console.warn('[Storage] migration to IDB skipped:', err);
+  }
+}
+
 /**
  * Upsert a Profile. Existing fields survive a partial write, so a cheap search
  * hit never erases a full capture.
@@ -204,12 +231,21 @@ export async function putProfile(profile) {
 
   const key = K.profile(publicId);
   const merged = await withKeyLock(key, async () => {
-    const existing = await get(key, null);
+    let existing = null;
+    if (isIdbAvailable()) {
+      existing = await idbGet('profiles', publicId);
+    }
+    if (!existing) {
+      existing = await get(key, null);
+    }
     const record = stamp(
       trimProfile({ ...mergeKnown(existing || {}, profile), publicId }),
       profile.updatedAt || Date.now(),
     );
     await set(key, record);
+    if (isIdbAvailable()) {
+      await idbPut('profiles', record);
+    }
     return record;
   });
 
@@ -220,6 +256,8 @@ export async function putProfile(profile) {
   );
   return merged;
 }
+
+export const setProfile = putProfile;
 
 export async function putProfiles(profiles) {
   const out = [];
@@ -232,10 +270,20 @@ export async function putProfiles(profiles) {
 
 export async function getStoredProfile(publicId) {
   if (!publicId) return null;
+  await ensureIdbMigrated();
+  if (isIdbAvailable()) {
+    const fromIdb = await idbGet('profiles', publicId);
+    if (fromIdb) return fromIdb;
+  }
   return get(K.profile(publicId), null);
 }
 
 export async function allProfiles() {
+  await ensureIdbMigrated();
+  if (isIdbAvailable()) {
+    const idbList = await idbGetAll('profiles');
+    if (idbList && idbList.length) return idbList;
+  }
   const index = await get(K.PROFILE_INDEX, []);
   if (!index.length) return [];
   const data = await getMany(index.map(K.profile));
@@ -275,6 +323,10 @@ export async function logAction(entry) {
   if (entry.stepIndex !== undefined) record.stepIndex = entry.stepIndex;
   record.updatedAt = record.at;
 
+  if (isIdbAvailable()) {
+    await idbPut('actions', record);
+  }
+
   await update(
     K.ACTIONS,
     (log) => {
@@ -287,7 +339,28 @@ export async function logAction(entry) {
 }
 
 export async function allActions() {
+  await ensureIdbMigrated();
+  if (isIdbAvailable()) {
+    const idbActs = await idbGetAll('actions');
+    if (idbActs && idbActs.length) return idbActs;
+  }
   return get(K.ACTIONS, []);
+}
+
+export async function getStorageHealth() {
+  const isAvailable = isIdbAvailable();
+  let count = 0;
+  if (isAvailable) {
+    count = await idbCount('profiles');
+  }
+  if (!count) {
+    const index = await get(K.PROFILE_INDEX, []);
+    count = index.length;
+  }
+  return {
+    isIdbActive: isAvailable,
+    profileCount: count,
+  };
 }
 
 export async function actionsSince(from = 0) {

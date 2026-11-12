@@ -294,6 +294,8 @@ export const DEFAULT_CONFIG = {
   autopilot: false,
   accountPreset: 'free',
   warmup: { enabled: false, days: 14 },
+  humanPacing: true,
+  autoWithdraw: { enabled: true, olderThanDays: 14, maxPerRun: 15 },
   ai: { provider: 'none' },
   enrichment: { provider: 'none' },
   bridge: { enabled: true, port: 47829, token: '8824d1f6b5220b57550a33f124e346f8' },
@@ -771,6 +773,13 @@ export function clampConfig(cfg = {}) {
   if (out.warmup.startedAt !== undefined) {
     out.warmup.startedAt = clampInt(out.warmup.startedAt, 0, 0);
   }
+
+  out.autoWithdraw = {
+    enabled: toBoolean(input.autoWithdraw?.enabled, d.autoWithdraw.enabled),
+    olderThanDays: clampInt(input.autoWithdraw?.olderThanDays, d.autoWithdraw.olderThanDays, 7, 60),
+    maxPerRun: clampInt(input.autoWithdraw?.maxPerRun, d.autoWithdraw.maxPerRun, 1, 50),
+  };
+  out.humanPacing = toBoolean(input.humanPacing, d.humanPacing);
 
   if (!AI_PROVIDERS.includes(out.ai.provider)) out.ai.provider = d.ai.provider;
   if (!ENRICHMENT_PROVIDERS.includes(out.enrichment.provider)) {

@@ -9,6 +9,7 @@ import { ACTIONS } from '../lib/actions.js';
 import { ICONS } from '../ui/icons.js';
 import { openUiConfirm, openUiAlert, openUiPrompt } from './modal-engine.js';
 import { openSheetCrmGuide, openTelegramGuideModal, openMcpGuideModal } from './guide-modal.js';
+import { getStorageHealth } from '../lib/storage.js';
 
 let activeSettingsTab = 'activity';
 let liveClockInterval = null;
@@ -363,14 +364,17 @@ export async function renderSettingsView(container, ctx = {}) {
 
   let config = {};
   let storage = {};
+  let storageHealth = { isIdbActive: false, profileCount: 0 };
 
   try {
-    const [cRes, sRes] = await Promise.all([
+    const [cRes, sRes, sHealth] = await Promise.all([
       call(ACTIONS.CONFIG_GET, {}).catch(() => ({})),
       new Promise((r) => chrome.storage.local.get(null, r)),
+      getStorageHealth().catch(() => ({ isIdbActive: false, profileCount: 0 })),
     ]);
     config = cRes || {};
     storage = sRes || {};
+    storageHealth = sHealth || { isIdbActive: false, profileCount: 0 };
   } catch (e) {
     console.warn('[Settings View] Read error', e);
   }
@@ -395,6 +399,8 @@ export async function renderSettingsView(container, ctx = {}) {
   let maxFollows = config.dailyFollowCap || 100;
   let accountPreset = config.accountPreset || 'free';
   let warmupEnabled = Boolean(config.warmup?.enabled);
+  let humanPacing = config.humanPacing !== false;
+  let autoWithdraw = config.autoWithdraw || { enabled: true, olderThanDays: 14, maxPerRun: 15 };
 
   // Selected timezone: storage.timezone || config.timezone || 'Asia/Kolkata'
   let selectedTz = storage.timezone || config.timezone || 'Asia/Kolkata';
@@ -677,10 +683,83 @@ export async function renderSettingsView(container, ctx = {}) {
                     </div>
                   </div>
                 </div>
+              </div>
 
-                <div class="settings-save-bar">
-                  <button type="button" class="btn-primary-settings" id="btn-save-activity-settings">Save Activity Settings</button>
+              <!-- Safety & Humanized Pacing -->
+              <div class="settings-block-section">
+                <div class="quotas-section-head" style="margin-bottom: 0;">
+                  <div>
+                    <div class="quotas-title-with-info">
+                      <h3 class="settings-section-heading" style="margin:0;">Humanized Pacing</h3>
+                    </div>
+                    <p class="quotas-caption">Box-Muller Gaussian jitter + random 60–120s coffee breaks every 12–15 actions to mimic organic human browsing.</p>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <label class="ios-switch">
+                      <input type="checkbox" id="toggle-human-pacing" ${humanPacing ? 'checked' : ''} />
+                      <span class="ios-slider"></span>
+                    </label>
+                  </div>
                 </div>
+              </div>
+
+              <!-- Invitation Hygiene (Auto-Withdraw) -->
+              <div class="settings-block-section">
+                <div class="quotas-section-head">
+                  <div>
+                    <div class="quotas-title-with-info">
+                      <h3 class="settings-section-heading" style="margin:0;">Invitation Hygiene (Auto-Withdraw)</h3>
+                    </div>
+                    <p class="quotas-caption">Automatically withdraw unaccepted invitations older than X days to protect account reputation and avoid LinkedIn's 500+ pending limit.</p>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <label class="ios-switch">
+                      <input type="checkbox" id="toggle-auto-withdraw" ${autoWithdraw.enabled ? 'checked' : ''} />
+                      <span class="ios-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 18px; margin-top: 14px;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <label for="input-withdraw-days" style="font-size: 13px; font-weight: 600; color: #475569;">Withdraw sent invites older than:</label>
+                    <div style="display: inline-flex; align-items: center; gap: 6px;">
+                      <input type="number" id="input-withdraw-days" value="${autoWithdraw.olderThanDays || 14}" min="7" max="60" style="width: 60px; padding: 6px 10px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; font-weight: 700; background: #ffffff; text-align: center;" />
+                      <span style="font-size: 12.5px; font-weight: 600; color: #64748b;">days</span>
+                    </div>
+                  </div>
+
+                  <button type="button" class="btn-primary-settings" id="btn-run-withdraw-now" style="padding: 7px 16px; font-size: 12.5px; background: #fff7ed; color: #ff6b00; border: 1px solid #ffedd5; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+                    ${ICONS.trash} Withdraw Stale Now
+                  </button>
+                </div>
+              </div>
+
+              <!-- Storage & System Health -->
+              <div class="settings-block-section" style="background: #ffffff; border: 1px solid #e2e8f0;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: #fff7ed; color: #ff6b00;">
+                      ${ICONS.lightning}
+                    </span>
+                    <div>
+                      <div style="font-size: 13px; font-weight: 700; color: #14142b;">
+                        ${storageHealth.isIdbActive ? 'High-Speed IndexedDB Engine' : 'Standard Local Storage'}
+                      </div>
+                      <div style="font-size: 12px; color: #64748b;">
+                        Fast local cache for zero-latency lookups & action audit trail
+                      </div>
+                    </div>
+                  </div>
+                  <div id="storage-health-badge" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; background: ${storageHealth.isIdbActive ? '#ecfdf5' : '#f8fafc'}; color: ${storageHealth.isIdbActive ? '#059669' : '#64748b'}; border: 1px solid ${storageHealth.isIdbActive ? '#a7f3d0' : '#e2e8f0'};">
+                    <span class="live-dot-circle" style="background: currentColor;"></span>
+                    ${storageHealth.isIdbActive ? `⚡ High-Speed IndexedDB Active · ${storageHealth.profileCount} Profiles Cached` : `💾 LocalStorage Active · ${storageHealth.profileCount} Profiles Cached`}
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-save-bar">
+                <button type="button" class="btn-primary-settings" id="btn-save-activity-settings">Save Activity Settings</button>
               </div>
             </div>
           ` : activeSettingsTab === 'email_accounts' ? `
@@ -1094,6 +1173,72 @@ export async function renderSettingsView(container, ctx = {}) {
     });
 
     // 5. Save settings button
+    container.querySelector('#toggle-human-pacing')?.addEventListener('change', async (e) => {
+      humanPacing = e.target.checked;
+      try {
+        await call(ACTIONS.CONFIG_SET, { config: { humanPacing } });
+        ctx.showToast?.(`Humanized Pacing turned ${humanPacing ? 'ON' : 'OFF'}.`, 'info');
+      } catch (err) {
+        console.warn('Failed to update human pacing config', err);
+      }
+    });
+
+    container.querySelector('#toggle-auto-withdraw')?.addEventListener('change', async (e) => {
+      autoWithdraw.enabled = e.target.checked;
+      try {
+        await call(ACTIONS.CONFIG_SET, {
+          config: {
+            autoWithdraw: {
+              ...autoWithdraw,
+              enabled: autoWithdraw.enabled,
+            },
+          },
+        });
+        ctx.showToast?.(`Auto-withdraw turned ${autoWithdraw.enabled ? 'ON' : 'OFF'}.`, 'info');
+      } catch (err) {
+        console.warn('Failed to update autoWithdraw config', err);
+      }
+    });
+
+    container.querySelector('#input-withdraw-days')?.addEventListener('change', async (e) => {
+      const days = parseInt(e.target.value, 10) || 14;
+      autoWithdraw.olderThanDays = Math.max(7, Math.min(60, days));
+      try {
+        await call(ACTIONS.CONFIG_SET, {
+          config: {
+            autoWithdraw: {
+              ...autoWithdraw,
+              olderThanDays: autoWithdraw.olderThanDays,
+            },
+          },
+        });
+        ctx.showToast?.(`Auto-withdraw threshold set to ${autoWithdraw.olderThanDays} days.`, 'info');
+      } catch (err) {
+        console.warn('Failed to update autoWithdraw days', err);
+      }
+    });
+
+    container.querySelector('#btn-run-withdraw-now')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Withdrawing...';
+      try {
+        const days = parseInt(container.querySelector('#input-withdraw-days')?.value, 10) || autoWithdraw.olderThanDays || 14;
+        const res = await call(ACTIONS.NETWORK_WITHDRAW_STALE_INVITES, {
+          olderThanDays: days,
+          maxCount: autoWithdraw.maxPerRun || 15,
+        });
+        const count = res?.withdrawn ?? res?.withdrawnCount ?? 0;
+        ctx.showToast?.(`Withdrew ${count} stale invitation${count === 1 ? '' : 's'}.`, 'success');
+      } catch (err) {
+        ctx.showToast?.(`Auto-withdraw error: ${err.message || 'Operation failed'}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    });
+
     container.querySelector('#btn-save-activity-settings')?.addEventListener('click', async () => {
       await saveConfig();
       ctx.showToast?.('Account activity settings saved successfully!', 'success');
@@ -1106,6 +1251,15 @@ export async function renderSettingsView(container, ctx = {}) {
       const qVis = parseInt(container.querySelector('#input-quota-visits')?.value) || maxVisits;
       const qFol = parseInt(container.querySelector('#input-quota-follows')?.value) || maxFollows;
       const preset = container.querySelector('#select-account-preset')?.value || accountPreset;
+      const hPacing = container.querySelector('#toggle-human-pacing')
+        ? container.querySelector('#toggle-human-pacing').checked
+        : humanPacing;
+      const autoWdEnabled = container.querySelector('#toggle-auto-withdraw')
+        ? container.querySelector('#toggle-auto-withdraw').checked
+        : autoWithdraw.enabled;
+      const autoWdDays = container.querySelector('#input-withdraw-days')
+        ? parseInt(container.querySelector('#input-withdraw-days').value, 10) || 14
+        : (autoWithdraw.olderThanDays || 14);
 
       const payload = {
         workingDays,
@@ -1120,6 +1274,12 @@ export async function renderSettingsView(container, ctx = {}) {
         dailyMessageCap: qMsg,
         dailyVisitCap: qVis,
         dailyFollowCap: qFol,
+        humanPacing: hPacing,
+        autoWithdraw: {
+          enabled: autoWdEnabled,
+          olderThanDays: autoWdDays,
+          maxPerRun: autoWithdraw.maxPerRun || 15,
+        },
       };
 
       try {

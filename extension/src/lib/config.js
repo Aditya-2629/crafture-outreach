@@ -27,6 +27,7 @@ export async function setConfig(partial) {
     ai: { ...current.ai, ...(input.ai || {}) },
     enrichment: { ...current.enrichment, ...(input.enrichment || {}) },
     bridge: { ...current.bridge, ...(input.bridge || {}) },
+    autoWithdraw: { ...(current.autoWithdraw || {}), ...(input.autoWithdraw || {}) },
     mailbox: { ...(current.mailbox || {}), ...(input.mailbox || {}) },
     telegram: { ...(current.telegram || {}), ...(input.telegram || {}) },
   };

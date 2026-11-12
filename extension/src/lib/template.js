@@ -29,7 +29,29 @@ const FIELDS = {
 const PLACEHOLDER = /\{\{\s*([\w.]+)\s*(?:\|([^}]*))?\}\}/g;
 
 /**
+ * Resolve Spintax format `{option1|option2|option3}` to random options.
+ * Recursively resolves nested spintax while leaving non-spintax braces alone.
+ * @param {string} text
+ * @returns {string}
+ */
+export function resolveSpintax(text) {
+  if (!text) return '';
+  let out = String(text);
+  const pattern = /\{([^{}]+)\}/g;
+  while (pattern.test(out)) {
+    out = out.replace(pattern, (match, group) => {
+      // Do not touch {{variable}} placeholders (they have no '|' or are double-braced)
+      if (!group.includes('|')) return match;
+      const options = group.split('|');
+      return options[Math.floor(Math.random() * options.length)];
+    });
+  }
+  return out;
+}
+
+/**
  * Render a template against a Profile.
+ * First substitutes {{placeholders}}, then resolves Spintax {a|b|c}, and collapses spaces.
  * @param {string} template
  * @param {object} profile
  * @returns {string} never null; collapses the double spaces an empty
@@ -39,7 +61,7 @@ export function renderTemplate(template, profile = {}) {
   if (!template) return '';
   const p = profile || {};
 
-  const out = String(template).replace(PLACEHOLDER, (_match, field, fallback) => {
+  const substituted = String(template).replace(PLACEHOLDER, (_match, field, fallback) => {
     const getter = FIELDS[field];
     const value = getter ? getter(p) : p[field];
     if (value === undefined || value === null || value === '') {
@@ -48,6 +70,7 @@ export function renderTemplate(template, profile = {}) {
     return String(value);
   });
 
+  const out = resolveSpintax(substituted);
   return out.replace(/[ \t]{2,}/g, ' ').trim();
 }
 

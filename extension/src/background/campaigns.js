@@ -798,7 +798,26 @@ export async function tick() {
             halted = true;
             break;
           }
-          // A per-person failure (bad urn, deleted profile) stops that person.
+
+          // Distinguish permanent failure from transient errors with exponential retry
+          const isPermanent =
+            res.error?.code === ERROR.NOT_FOUND ||
+            res.error?.code === ERROR.INVALID_PARAMS ||
+            /not found|invalid|blacklisted|already invited/i.test(friendlyError);
+
+          const retries = enrollment.retryCount || 0;
+          if (!isPermanent && retries < 3) {
+            const backoffMins = [15, 60, 240][retries] || 240;
+            enrollment.retryCount = retries + 1;
+            enrollment.nextAt = Date.now() + backoffMins * 60000;
+            enrollment.lastError = `Retry ${enrollment.retryCount}/3 in ${backoffMins}m: ${friendlyError}`;
+            enrollment.updatedAt = Date.now();
+            dirty = true;
+            logDebug('warn', 'Runner', `[Retry ${enrollment.retryCount}/3] ${enrollment.publicId} scheduled in ${backoffMins}m`);
+            break;
+          }
+
+          // Permanent failure or max retries exceeded stops that prospect.
           enrollment.status = 'stopped';
           enrollment.error = friendlyError;
           enrollment.updatedAt = Date.now();

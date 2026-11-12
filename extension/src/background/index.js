@@ -10,6 +10,7 @@
  */
 
 import { ACTIONS, ERROR, EngineError, err } from '../lib/actions.js';
+import { getConfig } from '../lib/config.js';
 import { handle, register } from './engine.js';
 import { sendApproved } from './queue.js';
 import { unfollowAll, unfollowCount, unfollowStatus, unfollowStop } from './unfollow.js';
@@ -129,12 +130,26 @@ function reconnectBridge() {
     .catch((e) => console.warn('[Bridge] reconnect failed:', e.message));
 }
 
+export const STALE_WITHDRAW_ALARM = 'outfox-stale-withdraw';
+
 chrome.alarms.create(CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
 chrome.alarms.create(QUEUE_TICK_ALARM, { periodInMinutes: QUEUE_TICK_MINUTES });
+chrome.alarms.create(STALE_WITHDRAW_ALARM, { periodInMinutes: 720 });
 startKeepalive();
 
-chrome.alarms.onAlarm.addListener((alarm) => {
+chrome.alarms.onAlarm.addListener(async (alarm) => {
   onAlarm(alarm).catch(() => {});
+
+  if (alarm.name === STALE_WITHDRAW_ALARM) {
+    const cfg = await getConfig();
+    if (cfg.autoWithdraw?.enabled) {
+      handle(ACTIONS.NETWORK_WITHDRAW_STALE_INVITES, {
+        olderThanDays: cfg.autoWithdraw.olderThanDays || 14,
+        maxCount: cfg.autoWithdraw.maxPerRun || 15,
+      }, 'system').catch((e) => console.warn('[AutoWithdraw]', e.message));
+    }
+    return;
+  }
 
   if (alarm.name === QUEUE_TICK_ALARM) {
     sendApproved().catch((e) => console.warn('[Queue tick]', e.message));

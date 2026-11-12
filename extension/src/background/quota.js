@@ -556,11 +556,39 @@ export async function snapshotAll() {
 /*  Pacing                                                            */
 /* ================================================================== */
 
-/** Sleep a random time between `minDelayMs` and `maxDelayMs`. */
+let sessionWriteCount = 0;
+let nextBreakInterval = 12 + Math.floor(Math.random() * 4); // 12-15 actions
+
+function gaussianRandom(min, max) {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  const num = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  const mean = (min + max) / 2;
+  const stdDev = Math.max(1, (max - min) / 6);
+  const val = mean + num * stdDev;
+  return Math.min(max, Math.max(min, Math.round(val)));
+}
+
+/** Sleep with humanized pacing: Gaussian bell-curve distribution and periodic coffee breaks. */
 export async function humanDelay() {
   const config = await getConfig();
-  const spread = Math.max(0, config.maxDelayMs - config.minDelayMs);
-  const ms = Math.round(config.minDelayMs + Math.random() * spread);
+  let ms;
+
+  if (config.humanPacing !== false) {
+    ms = gaussianRandom(config.minDelayMs, config.maxDelayMs);
+    sessionWriteCount += 1;
+    if (sessionWriteCount >= nextBreakInterval) {
+      sessionWriteCount = 0;
+      nextBreakInterval = 12 + Math.floor(Math.random() * 4);
+      const coffeeBreakMs = 60000 + Math.floor(Math.random() * 60000); // 60-120 seconds
+      await sleepFn(coffeeBreakMs);
+    }
+  } else {
+    const spread = Math.max(0, config.maxDelayMs - config.minDelayMs);
+    ms = Math.round(config.minDelayMs + Math.random() * spread);
+  }
+
   await sleepFn(ms);
   return ms;
 }

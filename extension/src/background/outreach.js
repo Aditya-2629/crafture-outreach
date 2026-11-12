@@ -73,7 +73,13 @@ const SENDERS = {
       subject,
       body,
     }),
-  [ACTIONS.OUTREACH_LIKE]: ({ postUrl }) => voyager.likePost({ postUrl }),
+  [ACTIONS.OUTREACH_LIKE]: async ({ postUrl, publicId }) => {
+    if (!postUrl) {
+      logDebug('info', 'Outreach', `No post URL found for ${publicId || 'prospect'} — gracefully skipping like step.`);
+      return { status: 'skipped', reason: 'no_post_url' };
+    }
+    return voyager.likePost({ postUrl });
+  },
   [ACTIONS.OUTREACH_COMMENT]: ({ postUrl, body }) => voyager.commentPost({ postUrl, body }),
   [ACTIONS.OUTREACH_ENDORSE]: ({ publicId, skillUrn }) => voyager.endorseSkill({ publicId, skillUrn }),
 };

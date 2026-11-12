@@ -22,6 +22,42 @@ export const CAMPAIGN_TEMPLATES = [
     steps: [],
   },
   {
+    id: 'social_warmup',
+    title: '🔥 Social Warmup + Connect',
+    badge: 'High Acceptance (45%+)',
+    category: 'Invitation',
+    tags: ['Invitation', 'Visit', 'Social Warmup'],
+    flowText: '[Profile Visit] → [Like Post] → [Follow] → [Wait 1 Day] → [Invite + Spintax] → [Follow-up Message]',
+    bestFor: 'Pre-warms leads with subtle profile visits, post likes, and follows before inviting to achieve 45%+ connection rates.',
+    icon: ICONS.invitation,
+    steps: [
+      { type: 'view' },
+      { type: 'like' },
+      { type: 'follow' },
+      { type: 'wait', waitMs: 86400000, delayLabel: 'Wait 1 day' },
+      {
+        type: 'invite',
+        note: '{Hi|Hey} {{firstName}}, {loved your recent post|saw your work at {{company}}} — would love to connect!',
+      },
+      {
+        type: 'branch',
+        branch: {
+          on: 'accepted',
+          ms: 172800000,
+          then: [
+            { type: 'wait', waitMs: 86400000, delayLabel: 'Wait 1 day' },
+            {
+              type: 'message',
+              body: '{Hi|Hey} {{firstName}}, thanks for connecting! Looking forward to keeping in touch.',
+            },
+            { type: 'crm_sync' },
+          ],
+          else: [],
+        },
+      },
+    ],
+  },
+  {
     id: 'standard',
     title: 'Standard Invitation',
     category: 'Invitation',
@@ -977,6 +1013,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       <div class="tpl-tags">
                         ${tpl.tags.map((t) => `<span class="tpl-tag-pill">${t}</span>`).join('')}
                       </div>
+                      ${tpl.badge ? `<span style="background:#fff7ed; color:#ff6b00; border:1px solid #ffedd5; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:12px; margin-left:auto;">${tpl.badge}</span>` : ''}
                     </div>
                     <h4 class="tpl-title">${tpl.title}</h4>
                     <p class="tpl-desc">${tpl.bestFor}</p>

@@ -5,6 +5,7 @@
 
 import { openUiConfirm } from './modal-engine.js';
 import { ICONS } from '../ui/icons.js';
+import { resolveSpintax } from '../lib/template.js';
 
 let activeCategory = 'message';
 
@@ -49,7 +50,7 @@ export function openEditMessageModal({ template = null, category = 'message', on
     const isPronounGood = pronounsCount <= 1;
     const hasSpamPoliteness = /\b(sincerely|best regards|warm regards|yours truly|cheers)\b/i.test(content);
 
-    let previewText = (content || 'Your message will appear here...')
+    let previewText = resolveSpintax(content || 'Your message will appear here...')
       .replace(/\{\{firstName\}\}/g, '<strong style="color:#ff6b00;">Alex</strong>')
       .replace(/\{\{lastName\}\}/g, '<strong style="color:#ff6b00;">Rivera</strong>')
       .replace(/\{\{fullName\}\}/g, '<strong style="color:#ff6b00;">Alex Rivera</strong>')
@@ -106,7 +107,7 @@ export function openEditMessageModal({ template = null, category = 'message', on
               </div>
             </div>
 
-            <div class="edit-msg-toolbar">
+            <div class="edit-msg-toolbar" style="display: flex; align-items: center; gap: 8px;">
               <div class="variable-dropdown-wrap" style="position:relative;">
                 <button type="button" class="btn-pill-variable" id="btn-var-dropdown">
                   Insert a variable ⌵
@@ -158,6 +159,10 @@ export function openEditMessageModal({ template = null, category = 'message', on
                   </div>
                 </div>
               </div>
+
+              <button type="button" class="btn-pill-variable" id="btn-insert-spintax" title="Insert randomized greeting or phrasing">
+                🎲 Insert Spintax
+              </button>
 
               <div class="toolbar-media-icons">
                 <div class="media-popover-wrap" style="position:relative;">
@@ -232,9 +237,14 @@ export function openEditMessageModal({ template = null, category = 'message', on
             </div>
 
             <div class="preview-card">
-              <div class="preview-card-head">
-                <span class="preview-title">Preview</span>
-                <span class="preview-sub">How your prospect will see your message ⌵</span>
+              <div class="preview-card-head" style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <span class="preview-title">Preview</span>
+                  <span class="preview-sub">How your prospect will see your message ⌵</span>
+                </div>
+                <button type="button" id="btn-shuffle-preview" title="Shuffle Spintax Preview" style="background: #fff7ed; border: 1px solid #ffedd5; color: #ff6b00; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                  🔄 Shuffle Preview
+                </button>
               </div>
               <div class="preview-bubble-body">
                 <div class="preview-msg-text">${previewText}</div>
@@ -286,6 +296,16 @@ export function openEditMessageModal({ template = null, category = 'message', on
     varBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       varMenu.classList.toggle('hidden');
+    });
+
+    backdrop.querySelector('#btn-insert-spintax')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      insertTextAtCursor('{Hi|Hey|Hello} ');
+    });
+
+    backdrop.querySelector('#btn-shuffle-preview')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderModal();
     });
 
     backdrop.querySelectorAll('.var-menu-item').forEach((item) => {

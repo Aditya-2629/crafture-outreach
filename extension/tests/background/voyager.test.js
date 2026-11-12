@@ -989,6 +989,27 @@ describe('writes', () => {
       ).rejects.toMatchObject({ code: ERROR.RATE_LIMITED });
     });
 
+    it('auto-fallbacks to blank invite when personalized note is rejected, sets note limit flag, and succeeds', async () => {
+      // First call with note fails with 400 PERSONALIZED_INVITATION_QUOTA_EXCEEDED
+      net.push(status(400, inviteQuotaExhausted));
+      // Second call (blank retry) succeeds
+      net.push(inviteCreated);
+
+      const res = await v.sendInvite({ profileUrn: 'urn:li:fsd_profile:ACoAAAada', note: 'Hi Ada' });
+      expect(res.invitationUrn).toBe('urn:li:fsd_invitation:7000000000000000001');
+      expect(res.sentWithoutNote).toBe(true);
+
+      // Verify second call was sent without customMessage
+      expect(net.calls[0].json.customMessage).toBe('Hi Ada');
+      expect(net.calls[1].json.customMessage).toBeUndefined();
+
+      // Subsequent call skips note upfront because note limit is active
+      net.push(inviteCreated);
+      const res2 = await v.sendInvite({ profileUrn: 'urn:li:fsd_profile:ACoAAAbob', note: 'Hi Bob' });
+      expect(res2.sentWithoutNote).toBe(true);
+      expect(net.calls[2].json.customMessage).toBeUndefined();
+    });
+
     it('resolves a public id to a urn when the caller has none', async () => {
       net.push(profileView);
       net.push(inviteCreated);

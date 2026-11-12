@@ -19,6 +19,7 @@ export const K = Object.freeze({
   CONFIG: 'config',
   QUOTA: 'quota',
   BUCKET_COOLDOWNS: 'outfox_bucket_cooldowns',
+  NOTE_LIMIT_UNTIL: 'outfox_note_limit_until',
   TICK_LOCK: 'outfox_tick_lock',
   BLACKLIST: 'blacklist',
   COMPANY_BLACKLIST: 'company_blacklist',
@@ -477,6 +478,23 @@ export async function isCompanyBlacklisted(profile = {}) {
     if (headline && term.length > 3 && headline.includes(term)) return true;
     return false;
   });
+}
+
+/** Check if LinkedIn monthly personalized note limit is active */
+export async function isNoteLimitActive() {
+  try {
+    const until = await get(K.NOTE_LIMIT_UNTIL, 0);
+    return typeof until === 'number' && Date.now() < until;
+  } catch {
+    return false;
+  }
+}
+
+/** Record note limit active timestamp (defaults to 24h) */
+export async function setNoteLimitActive(ms = 24 * 60 * 60 * 1000) {
+  try {
+    await set(K.NOTE_LIMIT_UNTIL, Date.now() + ms);
+  } catch {}
 }
 
 /* ================================================================== */

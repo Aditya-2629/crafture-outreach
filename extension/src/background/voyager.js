@@ -15,6 +15,7 @@
  */
 
 import { ERROR, EngineError, INVITE_NOTE_FIX, INVITE_NOTE_MAX } from '../lib/actions.js';
+import { isNoteLimitActive, setNoteLimitActive, logDebug } from '../lib/storage.js';
 import { noteBucketBackoff } from './quota.js';
 import { collection } from './normalized.js';
 import {
@@ -1154,7 +1155,9 @@ function inviteFailure(payload, fallback) {
  * @returns {Promise<{invitationUrn: string, inviteeUrn: string}>}
  */
 export async function sendInvite({ publicId, publicIdentifier, profileUrn, note }) {
-  const message = note === undefined || note === null ? '' : String(note);
+  let message = note === undefined || note === null ? '' : String(note);
+  let sentWithoutNote = false;
+
   // Length is checked before the profile is resolved: refusing costs nothing,
   // and resolving costs a metered profile view.
   if (message.length > INVITE_NOTE_MAX) {
@@ -1165,40 +1168,117 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
     );
   }
 
+  // If monthly personalized note limit is active for this account, skip note upfront
+  if (message && (await isNoteLimitActive())) {
+    logDebug(
+      'info',
+      'Outreach',
+      `[Outreach] Monthly note limit active until tomorrow. Sending blank invitation to ${publicId || publicIdentifier || 'prospect'}...`,
+    );
+    message = '';
+    sentWithoutNote = true;
+  }
+
   const id = publicId || publicIdentifier;
   const urn = toFsdProfileUrn(profileUrn) || (await resolveProfileUrn(id));
-
-  const body = { invitee: { inviteeUnion: { memberProfile: urn } } };
-  // LinkedIn's dialog omits the field entirely for a note-less invitation, and
-  // an empty string is not the same thing: it spends a personalised invitation.
-  if (message) body.customMessage = message;
 
   const path = `${ENDPOINTS.createInvitation}?${qs({
     action: 'verifyQuotaAndCreateV2',
     decorationId: ENDPOINTS.decorations.invitationCreation,
   })}`;
 
-  let raw;
-  try {
-    raw = await voyagerFetch(path, {
+  const sendPost = async (customMsg) => {
+    const body = { invitee: { inviteeUnion: { memberProfile: urn } } };
+    if (customMsg) body.customMessage = customMsg;
+    return voyagerFetch(path, {
       method: 'POST',
       body,
       headers: { 'content-type': 'application/json; charset=UTF-8' },
     });
+  };
+
+  let raw;
+  const attemptedNote = Boolean(message);
+
+  try {
+    raw = await sendPost(message);
   } catch (e) {
-    if (looksLikeAllowance(e?.code, e?.message) || /invitation limit|weekly.*limit|429/i.test(e?.message || '')) {
+    // If a personalized note was attempted and rejected, retry blank once without tripping bucket cooldown
+    if (attemptedNote) {
+      logDebug(
+        'info',
+        'Outreach',
+        `[INFO] [Outreach] Personalized note rejected (likely monthly free-account note limit). Retrying blank connection request without note...`,
+      );
       try {
-        await noteBucketBackoff('invite', 24 * 60 * 60 * 1000);
-      } catch (_) {}
+        raw = await sendPost('');
+        const val = (raw && raw.data && raw.data.value) || {};
+        const blankUrn = val['*invitation'] || val.invitationUrn || '';
+        if (blankUrn) {
+          sentWithoutNote = true;
+          await setNoteLimitActive();
+        } else {
+          throw inviteFailure(e && e.response, (e && e.message) || 'LinkedIn answered with no invitation urn.');
+        }
+      } catch (blankErr) {
+        // Only trip RATE_LIMITED / bucket cooldown if the BLANK invitation also fails with 429 or weekly limit
+        if (
+          blankErr?.status === 429 ||
+          /weekly.*limit|429/i.test(blankErr?.message || '')
+        ) {
+          try {
+            await noteBucketBackoff('invite', 24 * 60 * 60 * 1000);
+          } catch (_) {}
+        }
+        if (blankErr instanceof EngineError && blankErr.code !== ERROR.LINKEDIN_ERROR) throw blankErr;
+        throw inviteFailure(
+          e?.response || blankErr?.response,
+          e?.message || blankErr?.message || 'LinkedIn refused the invitation.',
+        );
+      }
+    } else {
+      // It was already blank when it failed
+      if (
+        e?.status === 429 ||
+        /weekly.*limit|429/i.test(e?.message || '')
+      ) {
+        try {
+          await noteBucketBackoff('invite', 24 * 60 * 60 * 1000);
+        } catch (_) {}
+      }
+      if (e instanceof EngineError && e.code !== ERROR.LINKEDIN_ERROR) throw e;
+      throw inviteFailure(e && e.response, (e && e.message) || 'LinkedIn refused the invitation.');
     }
-    // A stand-down (rate limit, challenge, signed out) is the user's to act on
-    // and must not be dressed up as an invitation problem.
-    if (e instanceof EngineError && e.code !== ERROR.LINKEDIN_ERROR) throw e;
-    throw inviteFailure(e && e.response, (e && e.message) || 'LinkedIn refused the invitation.');
   }
 
-  const value = (raw && raw.data && raw.data.value) || {};
-  const invitationUrn = value['*invitation'] || value.invitationUrn || '';
+  let value = (raw && raw.data && raw.data.value) || {};
+  let invitationUrn = value['*invitation'] || value.invitationUrn || '';
+
+  // If answered without invitation urn on a note attempt, retry blank
+  if (!invitationUrn && attemptedNote && !sentWithoutNote) {
+    logDebug(
+      'info',
+      'Outreach',
+      `[INFO] [Outreach] Personalized note rejected (likely monthly free-account note limit). Retrying blank connection request without note...`,
+    );
+    try {
+      raw = await sendPost('');
+      const val = (raw && raw.data && raw.data.value) || {};
+      const blankUrn = val['*invitation'] || val.invitationUrn || '';
+      if (blankUrn) {
+        sentWithoutNote = true;
+        await setNoteLimitActive();
+        value = val;
+        invitationUrn = blankUrn;
+      } else {
+        throw inviteFailure(raw, 'LinkedIn answered with no invitation urn.');
+      }
+    } catch (blankErr) {
+      if (blankErr instanceof EngineError && blankErr.code !== ERROR.LINKEDIN_ERROR) throw blankErr;
+      throw inviteFailure(blankErr?.response, blankErr?.message || 'LinkedIn refused the invitation.');
+    }
+  }
+
   if (!invitationUrn) {
     throw inviteFailure(raw, 'LinkedIn answered with no invitation urn.');
   }
@@ -1206,6 +1286,7 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
   return {
     invitationUrn,
     inviteeUrn: value.inviteeUrn || value['*invitee'] || urn,
+    ...(sentWithoutNote ? { sentWithoutNote: true } : {}),
   };
 }
 

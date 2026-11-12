@@ -12,7 +12,7 @@
 import { ACTIONS, ERROR, EVENTS, EngineError, INVITE_NOTE_MAX } from '../lib/actions.js';
 import { getConfig } from '../lib/config.js';
 import { handle, register } from './engine.js';
-import { K, allActions, get, getStoredProfile, newId, remove, set, stamp, isBlacklisted, getBlacklist, addToBlacklist, removeFromBlacklist, logDebug, isCompanyBlacklisted, getCompanyBlacklist, addCompanyToBlacklist, removeCompanyFromBlacklist } from '../lib/storage.js';
+import { K, allActions, get, getStoredProfile, newId, remove, set, stamp, isBlacklisted, getBlacklist, addToBlacklist, removeFromBlacklist, logDebug, isCompanyBlacklisted, getCompanyBlacklist, addCompanyToBlacklist, removeCompanyFromBlacklist, isNoteLimitActive } from '../lib/storage.js';
 import { pickVariant, renderTemplate } from '../lib/template.js';
 import { emit } from './events.js';
 import * as inbox from './inbox.js';
@@ -772,25 +772,29 @@ async function stepParams(campaign, step, enrollment, routed = null) {
 
   if (step.type === 'invite') {
     let noteText = variant || step.note || '';
-    if (noteText.includes('{{ai_opener') || step.useAi === true) {
-      const opener = await resolveAiOpener(profile, noteText);
-      noteText = noteText.replace(
-        /\{\{\s*ai_opener\s*(?:\|([^}]*))?\}\}/g,
-        (_m, fallback) => opener || (fallback ? fallback.trim() : ''),
-      );
-      if (step.useAi && !noteText.trim()) noteText = opener;
-    }
-    const fitted = fitInviteNote(renderTemplate(noteText, profile));
-    params.note = fitted.note;
-    if (fitted.truncated) {
-      await emit(EVENTS.CAMPAIGN_NOTE_TRUNCATED, {
-        campaignId: campaign.campaignId,
-        publicId: enrollment.publicId,
-        stepIndex: enrollment.stepIndex,
-        originalLength: fitted.originalLength,
-        limit: INVITE_NOTE_MAX,
-        note: fitted.note,
-      });
+    if (await isNoteLimitActive()) {
+      params.note = '';
+    } else {
+      if (noteText.includes('{{ai_opener') || step.useAi === true) {
+        const opener = await resolveAiOpener(profile, noteText);
+        noteText = noteText.replace(
+          /\{\{\s*ai_opener\s*(?:\|([^}]*))?\}\}/g,
+          (_m, fallback) => opener || (fallback ? fallback.trim() : ''),
+        );
+        if (step.useAi && !noteText.trim()) noteText = opener;
+      }
+      const fitted = fitInviteNote(renderTemplate(noteText, profile));
+      params.note = fitted.note;
+      if (fitted.truncated) {
+        await emit(EVENTS.CAMPAIGN_NOTE_TRUNCATED, {
+          campaignId: campaign.campaignId,
+          publicId: enrollment.publicId,
+          stepIndex: enrollment.stepIndex,
+          originalLength: fitted.originalLength,
+          limit: INVITE_NOTE_MAX,
+          note: fitted.note,
+        });
+      }
     }
   }
   if (step.type === 'message') {
@@ -1250,13 +1254,16 @@ export async function tick() {
         if (!res.ok) {
           const errorCode = res.error?.code;
           const errorMsg = res.error?.message || '';
+          const isNoteLimitOnly = /personalized.*invitation|custom.*message.*limit|note limit/i.test(errorMsg);
           const isRateLimit =
-            errorCode === ERROR.RATE_LIMITED ||
-            errorCode === ERROR.CHALLENGE_DETECTED ||
-            /429|999|403|rate limit|safety cooldown|cooldown/i.test(errorMsg);
+            !isNoteLimitOnly &&
+            (errorCode === ERROR.RATE_LIMITED ||
+             errorCode === ERROR.CHALLENGE_DETECTED ||
+             /429|999|403|rate limit|safety cooldown|cooldown/i.test(errorMsg));
           const isQuota =
-            errorCode === ERROR.QUOTA_EXCEEDED ||
-            /quota|limit reached|daily limit/i.test(errorMsg);
+            !isNoteLimitOnly &&
+            (errorCode === ERROR.QUOTA_EXCEEDED ||
+             /quota|limit reached|daily limit/i.test(errorMsg));
 
           const bucket = normalizeBucket(step.type);
           const bucketTitle = bucket.charAt(0).toUpperCase() + bucket.slice(1);
@@ -1383,9 +1390,12 @@ export async function tick() {
           }
 
           const stepVerb = step.type.charAt(0).toUpperCase() + step.type.slice(1);
+          const historyLabel = routed
+            ? 'Sent Free InMail (routed)'
+            : (res.data?.sentWithoutNote ? 'Sent Invite (blank - note limit reached)' : `Sent ${stepVerb}`);
           recordHistory(enrollment, {
             step: step.type,
-            label: routed ? 'Sent Free InMail (routed)' : `Sent ${stepVerb}`,
+            label: historyLabel,
             status: 'completed',
           });
 

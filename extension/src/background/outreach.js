@@ -102,10 +102,16 @@ export async function send(action, params, origin = 'approved', context = {}) {
   await quota.reserve(kind);
   await quota.humanDelay();
 
+  let sendResult;
   try {
-    await SENDERS[action](params);
+    sendResult = await SENDERS[action](params);
   } catch (e) {
-    if (kind === 'invite' && (e?.status === 429 || /quota|limit|allowance|remaining|weekly|too many/i.test(e?.message || ''))) {
+    const isRateLimited =
+      e?.status === 429 ||
+      e?.code === ERROR.RATE_LIMITED ||
+      e?.code === ERROR.CHALLENGE_DETECTED ||
+      /weekly.*limit|too many/i.test(e?.message || '');
+    if (kind === 'invite' && isRateLimited) {
       try {
         await quota.noteBucketBackoff('invite', 24 * 60 * 60 * 1000);
       } catch (_) {}
@@ -117,7 +123,11 @@ export async function send(action, params, origin = 'approved', context = {}) {
     throw e;
   }
 
-  const result = { status: 'sent', sentAt: Date.now() };
+  const result = {
+    status: 'sent',
+    sentAt: Date.now(),
+    ...(sendResult?.sentWithoutNote ? { sentWithoutNote: true } : {}),
+  };
   await logAction({
     action,
     publicId: params.publicId || '',
@@ -125,7 +135,7 @@ export async function send(action, params, origin = 'approved', context = {}) {
     result,
     ...context,
   });
-  logDebug('good', 'Outreach', `Successfully sent ${action} to ${params.publicId || 'prospect'}`);
+  logDebug('good', 'Outreach', `Successfully sent ${action} to ${params.publicId || 'prospect'}${sendResult?.sentWithoutNote ? ' (without note)' : ''}`);
   return result;
 }
 

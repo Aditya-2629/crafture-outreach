@@ -8,7 +8,7 @@
 import { call } from '../ui/api.js';
 import { ACTIONS } from '../lib/actions.js';
 import { ICONS } from '../ui/icons.js';
-import { openUiConfirm } from './modal-engine.js';
+import { openUiConfirm, openLeadTimelineModal } from './modal-engine.js';
 
 let selectedQueueIds = new Set();
 let activeCampaignFilter = 'all';
@@ -671,7 +671,7 @@ function paint(state) {
                   </td>
                   <td>
                     <div class="queue-prospect-cell">
-                      <span class="prospect-name">${escapeHtml(item.prospectName)}</span>
+                      <span class="prospect-name btn-open-timeline" data-public-id="${escapeHtml(item.publicId)}" data-camp-id="${escapeHtml(item.campaignId)}" style="cursor: pointer; color: #1e293b; font-weight: 600; text-decoration: underline decoration-dotted;" title="Click to view outreach timeline">${escapeHtml(item.prospectName)}</span>
                     </div>
                   </td>
                   <td>
@@ -775,10 +775,10 @@ function paint(state) {
     </div>
   `;
 
-  wireQueueEvents(container, filteredQueue, campaigns, allStorage, ctx);
+  wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allStorage, ctx);
 }
 
-function wireQueueEvents(container, filteredQueue, campaigns, allStorage, ctx) {
+function wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allStorage, ctx) {
   const resetQuotaBtn = container.querySelector('#btn-queue-reset-quota');
   if (resetQuotaBtn) {
     resetQuotaBtn.addEventListener('click', async () => {
@@ -827,6 +827,31 @@ function wireQueueEvents(container, filteredQueue, campaigns, allStorage, ctx) {
       if (chk.checked) activeTypeFilters.add(chk.value);
       else activeTypeFilters.delete(chk.value);
       fetchAndPaint(container, ctx, false);
+    });
+  });
+
+  container.querySelectorAll('.btn-open-timeline').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const publicId = btn.dataset.publicId;
+      const campId = btn.dataset.campId;
+      const item = queuedItems.find((q) => q.publicId === publicId && q.campaignId === campId);
+      openLeadTimelineModal({
+        lead: item
+          ? {
+              publicId: item.publicId,
+              fullName: item.prospectName,
+              status: item.enrollment?.status || 'active',
+              currentStepLabel: `${item.actionType} (${item.campaignName})`,
+              nextRunAt: item.nextAt || 0,
+              lastError: item.enrollment?.error || item.enrollment?.lastError || '',
+              lastActionAt: item.enrollment?.lastActionAt || 0,
+              history: item.enrollment?.history || [],
+            }
+          : null,
+        publicId,
+        campaignId: campId,
+        campaignName: item?.campaignName,
+      });
     });
   });
 
@@ -913,7 +938,7 @@ export async function renderQueueView(container, ctx = {}) {
         cleanupTimers();
         return;
       }
-      const relevantKeys = ['campaigns', 'outfox_bucket_cooldowns', 'actions', 'quota'];
+      const relevantKeys = ['campaigns', 'outfox_bucket_cooldowns', 'outfox_tick_lock', 'actions', 'quota'];
       const hasRelevant = Object.keys(changes).some(
         (k) => relevantKeys.includes(k) || k.startsWith('enrollments:')
       );

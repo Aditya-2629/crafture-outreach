@@ -6,7 +6,7 @@
 import { call } from '../ui/api.js';
 import { ACTIONS } from '../lib/actions.js';
 import { allProfiles } from '../lib/storage.js';
-import { openUiConfirm, openUiAlert, openUiSelectModal } from './modal-engine.js';
+import { openUiConfirm, openUiAlert, openUiSelectModal, openLeadTimelineModal } from './modal-engine.js';
 import { ICONS } from '../ui/icons.js';
 import { getConfig } from '../lib/config.js';
 
@@ -1564,7 +1564,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                     <td>
                       <div class="lead-meta-cell">
                         <div class="lead-name-row">
-                          <span>${lead.fullName}</span>
+                          <span class="btn-open-lead-timeline" data-public-id="${lead.publicId}" style="cursor:pointer; font-weight:600; color:#1e293b; text-decoration:underline decoration-dotted;" title="Click to view outreach timeline">${lead.fullName}</span>
                           ${lead.email ? `<span style="font-size:11px; color:#ff6b00; cursor:pointer;" title="${lead.email}">✉️</span>` : ''}
                         </div>
                         <div class="lead-company-sub">${lead.company || lead.publicId}</div>
@@ -1589,6 +1589,19 @@ export async function renderCampaignsView(container, ctx = {}) {
           </tbody>
         </table>
       `;
+
+      tableWrap.querySelectorAll('.btn-open-lead-timeline').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const pid = btn.dataset.publicId;
+          const found = filtered.find((l) => l.publicId === pid) || (cachedLiveData?.leads || []).find((l) => l.publicId === pid);
+          openLeadTimelineModal({
+            lead: found || null,
+            publicId: pid,
+            campaignId: drawerCampId,
+            campaignName: cachedLiveData?.campaignName || '',
+          });
+        });
+      });
     }
 
     container.querySelector('#btn-drawer-close')?.addEventListener('click', closeLiveLeadsDrawer);
@@ -1639,6 +1652,28 @@ export async function renderCampaignsView(container, ctx = {}) {
           }
         });
       }
+
+      const handleStorageChange = async () => {
+        if (!container || !container.isConnected) {
+          window.removeEventListener('outfox:storage-change', handleStorageChange);
+          return;
+        }
+        if (drawerCampId) {
+          fetchAndRenderDrawer(true);
+        }
+        if (viewState === 'list') {
+          try {
+            const res = await call(ACTIONS.CAMPAIGN_GET_ALL, {});
+            if (res?.campaigns) {
+              campaigns = res.campaigns;
+              renderList();
+            }
+          } catch {
+            /* ignore reload error */
+          }
+        }
+      };
+      window.addEventListener('outfox:storage-change', handleStorageChange);
     } catch {
       /* runtime message listener is best-effort */
     }

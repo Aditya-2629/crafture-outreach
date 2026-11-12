@@ -158,4 +158,59 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
     const tableText = container.querySelector('.queue-table').textContent;
     expect(tableText).toContain('Cooldown (38m left)');
   });
+
+  it('opens Lead Timeline Modal with chronological history when clicking prospect name', async () => {
+    const now = Date.now();
+    stubEngine({
+      [ACTIONS.STATUS_GET]: () => ({ quotas: {} }),
+      [ACTIONS.CONFIG_GET]: () => ({}),
+    });
+
+    await chrome.storage.local.set({
+      campaigns: [
+        {
+          campaignId: 'camp_tl_1',
+          name: 'Timeline Test Campaign',
+          status: 'active',
+          steps: [{ type: 'view' }, { type: 'invite' }],
+        },
+      ],
+      'enrollments:camp_tl_1': [
+        {
+          publicId: 'ada_timeline',
+          fullName: 'Ada Lovelace',
+          status: 'active',
+          stepIndex: 1,
+          nextAt: now + 15 * 60 * 1000,
+          history: [
+            { step: 'enrolled', label: 'Enrolled in campaign', timestamp: now - 3600000, status: 'completed' },
+            { step: 'view', label: 'Sent Visit', timestamp: now - 1800000, status: 'completed' },
+          ],
+        },
+      ],
+      outfox_bucket_cooldowns: {},
+    });
+
+    await renderQueueView(container, ctx);
+    await flush();
+
+    const trigger = container.querySelector('.btn-open-timeline[data-public-id="ada_timeline"]');
+    expect(trigger).not.toBeNull();
+
+    trigger.click();
+    await flush();
+
+    const modal = document.querySelector('#waalaxy-timeline-modal-backdrop');
+    expect(modal).not.toBeNull();
+    expect(modal.textContent).toContain('Ada Lovelace');
+    expect(modal.textContent).toContain('Timeline Test Campaign');
+    expect(modal.textContent).toContain('Enrolled in campaign');
+    expect(modal.textContent).toContain('Sent Visit');
+    expect(modal.textContent).toContain('Sequence Timeline');
+
+    // Close modal
+    const closeBtn = modal.querySelector('#modal-btn-close');
+    closeBtn.click();
+    expect(document.querySelector('#waalaxy-timeline-modal-backdrop')).toBeNull();
+  });
 });

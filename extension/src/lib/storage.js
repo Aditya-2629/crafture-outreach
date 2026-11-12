@@ -19,6 +19,7 @@ export const K = Object.freeze({
   CONFIG: 'config',
   QUOTA: 'quota',
   BUCKET_COOLDOWNS: 'outfox_bucket_cooldowns',
+  TICK_LOCK: 'outfox_tick_lock',
   BLACKLIST: 'blacklist',
   COMPANY_BLACKLIST: 'company_blacklist',
   DEBUG_LOGS: 'debug_logs',

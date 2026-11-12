@@ -867,4 +867,58 @@ describe('v1 migration', () => {
     vi.restoreAllMocks();
     await chrome.storage.local.remove('outfox_bucket_cooldowns');
   });
+
+  it('acquires and releases crash-proof persistent tick lock with 5-minute TTL', async () => {
+    // Verify tick lock key
+    expect(campaigns.TICK_LOCK_KEY).toBe('outfox_tick_lock');
+
+    // Acquire lock
+    const locked = await campaigns.acquireTickLock();
+    expect(locked).toBe(true);
+    expect(await campaigns.isTickActive()).toBe(true);
+
+    // Concurrent tick should be skipped cleanly while locked
+    const concurrentAcquire = await campaigns.acquireTickLock();
+    expect(concurrentAcquire).toBe(false);
+
+    const tickRes = await campaigns.tick();
+    expect(tickRes).toEqual({ executed: 0, queued: 0 });
+
+    // Release lock
+    await campaigns.releaseTickLock();
+    expect(await campaigns.isTickActive()).toBe(false);
+
+    // Can acquire again
+    expect(await campaigns.acquireTickLock()).toBe(true);
+    await campaigns.releaseTickLock();
+  });
+
+  it('records chronological history on enrollment and exposes it via getCampaignLiveStatus', async () => {
+    await storage.putProfile({ publicId: 'lead_hist', firstName: 'Ada', company: 'Tech Corp' });
+
+    const c = (await handle(ACTIONS.CAMPAIGN_CREATE, {
+      name: 'HistoryTrackingTest',
+      steps: [{ type: 'view' }],
+      publicIds: ['lead_hist'],
+      settings: { autopilot: true },
+    })).data;
+
+    // Initially enrolled has enrolled history
+    const initialStatus = await campaigns.getCampaignLiveStatus(c.campaignId);
+    expect(initialStatus.leads).toHaveLength(1);
+    expect(initialStatus.leads[0].history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ step: 'enrolled', label: 'Enrolled in campaign' }),
+      ]),
+    );
+
+    // Execute view step
+    net.push(profileView);
+    await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+
+    const updatedStatus = await campaigns.getCampaignLiveStatus(c.campaignId);
+    const lead = updatedStatus.leads[0];
+    expect(lead.history.length).toBeGreaterThanOrEqual(2);
+    expect(lead.history.some((h) => h.step === 'view' || h.step === 'action')).toBe(true);
+  });
 });

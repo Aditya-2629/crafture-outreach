@@ -79,7 +79,68 @@ export function addTickHook(fn) {
 }
 
 /** Global execution lock preventing concurrent tick execution across tabs/alarms */
+export const TICK_LOCK_KEY = K.TICK_LOCK || 'outfox_tick_lock';
+export const TICK_LOCK_TTL_MS = 5 * 60 * 1000; // 5-minute TTL
+
 let isTickRunning = false;
+
+/** Check if a tick is currently running (in-memory or persistent storage lock) */
+export async function isTickActive() {
+  try {
+    const lock = await get(TICK_LOCK_KEY, null);
+    if (lock && typeof lock.lockedAt === 'number' && Date.now() - lock.lockedAt < TICK_LOCK_TTL_MS) {
+      return true;
+    }
+  } catch {
+    /* ignore storage read error */
+  }
+  return isTickRunning;
+}
+
+/** Acquire persistent tick lock with 5-minute TTL */
+export async function acquireTickLock() {
+  const now = Date.now();
+  try {
+    const lock = await get(TICK_LOCK_KEY, null);
+    if (lock && typeof lock.lockedAt === 'number' && now - lock.lockedAt < TICK_LOCK_TTL_MS) {
+      return false; // Still locked within 5 min TTL
+    }
+    await set(TICK_LOCK_KEY, { lockedAt: now });
+    isTickRunning = true;
+    return true;
+  } catch {
+    if (isTickRunning) return false;
+    isTickRunning = true;
+    return true;
+  }
+}
+
+/** Release persistent tick lock */
+export async function releaseTickLock() {
+  try {
+    await remove(TICK_LOCK_KEY);
+  } catch {
+    /* ignore */
+  } finally {
+    isTickRunning = false;
+  }
+}
+
+/** Record a chronological history event onto an enrollment */
+export function recordHistory(enrollment, { step, label, status = 'completed', error = '', reason = '' }) {
+  if (!enrollment) return;
+  if (!Array.isArray(enrollment.history)) {
+    enrollment.history = [];
+  }
+  enrollment.history.push({
+    step: step || 'step',
+    label: label || step || 'Action',
+    status,
+    timestamp: Date.now(),
+    ...(error ? { error } : {}),
+    ...(reason ? { reason } : {}),
+  });
+}
 
 /* ================================================================== */
 /*  Storage + v1 migration                                            */
@@ -129,6 +190,14 @@ export function migrateCampaign(v1) {
       status: c.replied ? 'replied' : 'active',
       lastActionAt: c.lastStepAt ? new Date(c.lastStepAt).getTime() : 0,
       enrolledAt: v1.createdAt || Date.now(),
+      history: [
+        {
+          step: 'enrolled',
+          label: 'Enrolled in campaign',
+          status: c.replied ? 'replied' : 'active',
+          timestamp: c.lastStepAt ? new Date(c.lastStepAt).getTime() : (v1.createdAt || Date.now()),
+        },
+      ],
     }),
   );
 
@@ -204,16 +273,17 @@ function advance(campaign, enrollment, completedStep = null) {
     enrollment.path = enrollment.path.slice(0, -2);
     enrollment.stepIndex = branchIndex + 1;
   }
-  // When Step 1 (view) completes, ensure advance() sets a realistic nextAt delay
-  // (e.g., at least 15–30 minutes or the configured wait step) so Step 2 (invite)
-  // doesn't immediately fire 2 minutes later for all people at once.
-  if (completedStep && completedStep.type === 'view') {
+  // When a step completes, ensure advance() sets a realistic nextAt delay
+  // so the subsequent step does not immediately execute on the next tick
+  if (completedStep) {
     const nextSteps = stepsAt(campaign, enrollment.path);
     const nextStep = nextSteps[enrollment.stepIndex];
-    if (nextStep && nextStep.type !== 'wait') {
-      const delayMs = Math.floor(Math.random() * (30 - 15 + 1) + 15) * 60 * 1000; // 15–30m
+    if (nextStep && nextStep.type !== 'wait' && nextStep.type !== 'branch') {
+      const delayMs = completedStep.type === 'view'
+        ? Math.floor(Math.random() * (30 - 15 + 1) + 15) * 60 * 1000 // 15–30m
+        : Math.floor(Math.random() * (60 - 30 + 1) + 30) * 60 * 1000; // 30–60m
       enrollment.nextAt = Date.now() + delayMs;
-      logDebug('info', 'Pacing', `[Step Stagger] View step completed for ${enrollment.publicId}. Next step scheduled in ${(delayMs / 60000).toFixed(0)}m.`);
+      logDebug('info', 'Pacing', `[Step Stagger] ${completedStep.type} completed for ${enrollment.publicId}. Next step scheduled in ${(delayMs / 60000).toFixed(0)}m.`);
     }
   }
 }
@@ -226,6 +296,11 @@ function isFinished(campaign, enrollment) {
 async function finish(campaign, enrollment) {
   enrollment.status = enrollment.accepted ? 'accepted' : 'done';
   enrollment.updatedAt = Date.now();
+  recordHistory(enrollment, {
+    step: 'completed',
+    label: enrollment.accepted ? 'Sequence finished (Connection Accepted)' : 'Sequence finished',
+    status: 'completed',
+  });
   await emit(EVENTS.CAMPAIGN_COMPLETED, {
     campaignId: campaign.campaignId,
     publicId: enrollment.publicId,
@@ -345,6 +420,14 @@ export async function enroll(campaignId, publicIds) {
         status: 'active',
         lastActionAt: 0,
         enrolledAt: Date.now(),
+        history: [
+          {
+            step: 'enrolled',
+            label: 'Enrolled in campaign',
+            status: 'active',
+            timestamp: Date.now(),
+          },
+        ],
       }),
     );
     enrolled += 1;
@@ -441,6 +524,7 @@ export async function getCampaignLiveStatus(campaignId) {
   const enrollments = await readEnrollments(campaign.campaignId);
   const now = Date.now();
   const totalSteps = campaign.steps?.length || 0;
+  const isRunning = await isTickActive();
 
   const STEP_TYPE_LABELS = {
     invite: 'Connection Request',
@@ -477,7 +561,7 @@ export async function getCampaignLiveStatus(campaignId) {
       if (status === 'active') {
         if (enr.nextAt && enr.nextAt > now) {
           status = 'waiting';
-        } else if (isTickRunning) {
+        } else if (isRunning) {
           status = 'running';
         }
       } else if (
@@ -487,6 +571,24 @@ export async function getCampaignLiveStatus(campaignId) {
         status === 'email_skipped_no_email'
       ) {
         status = 'failed';
+      }
+
+      let leadHistory = Array.isArray(enr.history) && enr.history.length > 0 ? [...enr.history] : [];
+      if (leadHistory.length === 0) {
+        leadHistory.push({
+          step: 'enrolled',
+          label: 'Enrolled in campaign',
+          status: 'completed',
+          timestamp: enr.enrolledAt || (Date.now() - 3600000),
+        });
+        if (enr.lastActionAt && enr.lastActionAt > (enr.enrolledAt || 0)) {
+          leadHistory.push({
+            step: 'action',
+            label: `Executed ${enr.lastRoutedAction ? 'Free InMail' : (currentStepLabel || 'step')}`,
+            status: 'completed',
+            timestamp: enr.lastActionAt,
+          });
+        }
       }
 
       return {
@@ -509,6 +611,7 @@ export async function getCampaignLiveStatus(campaignId) {
         lastActionAt: enr.lastActionAt || enr.enrolledAt || 0,
         accepted: Boolean(enr.accepted),
         replied: enr.status === 'replied',
+        history: leadHistory,
       };
     }),
   );
@@ -521,7 +624,7 @@ export async function getCampaignLiveStatus(campaignId) {
     replied: leads.filter((l) => l.status === 'replied').length,
     failed: leads.filter((l) => l.status === 'failed').length,
     paused: leads.filter((l) => l.status === 'paused' || campaign.status === 'paused').length,
-    currentlyRunning: isTickRunning ? 1 : 0,
+    currentlyRunning: isRunning ? 1 : 0,
   };
 
   return {
@@ -719,11 +822,11 @@ async function stepParams(campaign, step, enrollment, routed = null) {
  * @returns {Promise<{executed: number, queued: number}>}
  */
 export async function tick() {
-  if (isTickRunning) {
-    console.log('[Runner] Previous tick still executing. Skipping duplicate tick.');
+  const acquired = await acquireTickLock();
+  if (!acquired) {
+    console.log('[Runner] Previous tick still executing (storage lock active). Skipping duplicate tick.');
     return { executed: 0, queued: 0 };
   }
-  isTickRunning = true;
 
   try {
     logDebug('info', 'Runner', 'Sequence tick started. Checking active campaigns...');
@@ -820,17 +923,34 @@ export async function tick() {
         if (item.status === 'rejected') {
           enrollment.status = 'stopped';
           enrollment.error = 'The queued step was rejected.';
+          recordHistory(enrollment, {
+            step: 'queue',
+            label: 'Queued step was rejected',
+            status: 'rejected',
+            error: enrollment.error,
+          });
           continue;
         }
         if (item.status === 'failed') {
           enrollment.status = 'stopped';
           enrollment.error =
             (item.result && item.result.error && item.result.error.message) || 'The queued step failed.';
+          recordHistory(enrollment, {
+            step: 'queue',
+            label: 'Queued step failed',
+            status: 'failed',
+            error: enrollment.error,
+          });
           continue;
         }
 
         // Sent: carry on from the step after the one that was queued.
         enrollment.lastActionAt = Date.now();
+        recordHistory(enrollment, {
+          step: 'queue',
+          label: 'Queued step approved & executed',
+          status: 'completed',
+        });
         advance(campaign, enrollment);
         if (isFinished(campaign, enrollment)) {
           await finish(campaign, enrollment);
@@ -843,6 +963,11 @@ export async function tick() {
         if (await inbox.repliedSince(enrollment.publicId, watermark)) {
           enrollment.status = 'replied';
           enrollment.updatedAt = now;
+          recordHistory(enrollment, {
+            step: 'replied',
+            label: 'Prospect replied to outreach',
+            status: 'replied',
+          });
           dirty = true;
           continue;
         }
@@ -853,6 +978,12 @@ export async function tick() {
         enrollment.status = 'blacklisted';
         enrollment.error = 'Contact is on the Do Not Contact blacklist.';
         enrollment.updatedAt = now;
+        recordHistory(enrollment, {
+          step: 'blacklisted',
+          label: 'Contact is on blacklist',
+          status: 'blacklisted',
+          error: enrollment.error,
+        });
         dirty = true;
         continue;
       }
@@ -862,6 +993,12 @@ export async function tick() {
         enrollment.status = 'blacklisted';
         enrollment.error = `Company "${profileForGuard.company || profileForGuard.companyName || 'Blocked'}" is on the Company Exclusion list.`;
         enrollment.updatedAt = now;
+        recordHistory(enrollment, {
+          step: 'blacklisted',
+          label: 'Company is on exclusion list',
+          status: 'blacklisted',
+          error: enrollment.error,
+        });
         dirty = true;
         continue;
       }
@@ -941,6 +1078,12 @@ export async function tick() {
           logDebug('info', 'Runner', `[Runner] Prospect ${enrollment.publicId} is already connected. Auto-advancing to message step.`);
           enrollment.accepted = true;
           const skippedIndex = enrollment.stepIndex;
+          recordHistory(enrollment, {
+            step: 'invite',
+            label: 'Already connected (Invite auto-accepted)',
+            status: 'skipped',
+            reason: 'alreadyConnected',
+          });
           advance(campaign, enrollment);
           enrollment.updatedAt = Date.now();
           dirty = true;
@@ -973,6 +1116,12 @@ export async function tick() {
               enrollment.error =
                 'Cannot message: Prospect is not a 1st-degree connection yet. Send a Connection Request (Invite) first.';
               enrollment.updatedAt = Date.now();
+              recordHistory(enrollment, {
+                step: 'message',
+                label: 'Blocked: Not a 1st-degree connection yet',
+                status: 'blocked',
+                error: enrollment.error,
+              });
               dirty = true;
               await emit(EVENTS.CAMPAIGN_STEP_DONE, {
                 campaignId: campaign.campaignId,
@@ -1017,6 +1166,12 @@ export async function tick() {
             logDebug('warn', 'Runner', `[Runner] Skipped email step for ${enrollment.publicId}: No email found (NO_EMAIL).`);
             enrollment.status = 'email_skipped_no_email';
             enrollment.updatedAt = Date.now();
+            recordHistory(enrollment, {
+              step: 'email',
+              label: 'Skipped: No email address found',
+              status: 'skipped',
+              reason: 'NO_EMAIL',
+            });
             dirty = true;
             await emit(EVENTS.CAMPAIGN_STEP_DONE, {
               campaignId: campaign.campaignId,
@@ -1085,6 +1240,12 @@ export async function tick() {
             enrollment.nextAt = nextActiveStart;
             enrollment.lastError = `Daily quota reached. Postponed until tomorrow's active window (${new Date(nextActiveStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`;
             enrollment.updatedAt = Date.now();
+            recordHistory(enrollment, {
+              step: step.type,
+              label: `Postponed: Daily ${bucket} quota reached`,
+              status: 'quota_postponed',
+              error: enrollment.lastError,
+            });
             dirty = true;
 
             logDebug('info', 'Runner', `${bucketTitle} daily quota reached. Resting until tomorrow's active window (${new Date(nextActiveStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).`);
@@ -1104,6 +1265,12 @@ export async function tick() {
             enrollment.nextAt = cooldownUntil;
             enrollment.lastError = `Safety cooldown active. Resuming in ~${mins}m`;
             enrollment.updatedAt = Date.now();
+            recordHistory(enrollment, {
+              step: step.type,
+              label: `Postponed: Safety cooldown (~${mins}m)`,
+              status: 'cooldown_postponed',
+              error: enrollment.lastError,
+            });
             dirty = true;
 
             logDebug('info', 'Runner', `${bucketTitle} bucket resting for ~${mins}m (human pacing)`);
@@ -1131,6 +1298,12 @@ export async function tick() {
             enrollment.nextAt = Date.now() + backoffMins * 60000;
             enrollment.lastError = `Retry ${enrollment.retryCount}/3 in ${backoffMins}m: ${friendlyError}`;
             enrollment.updatedAt = Date.now();
+            recordHistory(enrollment, {
+              step: step.type,
+              label: `Retry ${enrollment.retryCount}/3: ${friendlyError}`,
+              status: 'retrying',
+              error: friendlyError,
+            });
             dirty = true;
             logDebug('warn', 'Runner', `[Retry ${enrollment.retryCount}/3] ${enrollment.publicId} scheduled in ${backoffMins}m`);
             break;
@@ -1140,6 +1313,12 @@ export async function tick() {
           enrollment.status = 'stopped';
           enrollment.error = friendlyError;
           enrollment.updatedAt = Date.now();
+          recordHistory(enrollment, {
+            step: step.type,
+            label: `Failed: ${friendlyError}`,
+            status: 'failed',
+            error: friendlyError,
+          });
           dirty = true;
           break;
         }
@@ -1153,6 +1332,11 @@ export async function tick() {
           queued += 1;
           // Stay on this step; the next tick picks it up once a human has approved or rejected it.
           enrollment.pendingQueueId = res.data.queueId;
+          recordHistory(enrollment, {
+            step: step.type,
+            label: `Sent to approval queue`,
+            status: 'queued',
+          });
         } else {
           executed += 1;
           enrollment.lastActionAt = Date.now();
@@ -1165,6 +1349,14 @@ export async function tick() {
             if (res.data.messageId) enrollment.gmailLastMessageId = res.data.messageId;
             if (params.subject) enrollment.gmailSubject = params.subject;
           }
+
+          const stepVerb = step.type.charAt(0).toUpperCase() + step.type.slice(1);
+          recordHistory(enrollment, {
+            step: step.type,
+            label: routed ? 'Sent Free InMail (routed)' : `Sent ${stepVerb}`,
+            status: 'completed',
+          });
+
           advance(campaign, enrollment, step);
 
           // Between actions inside a tick, enforce human-like randomized jitter (35s–75s)
@@ -1239,7 +1431,7 @@ export async function tick() {
 
     return { executed, queued };
   } finally {
-    isTickRunning = false;
+    await releaseTickLock();
     scheduleNextTickAlarm();
   }
 }

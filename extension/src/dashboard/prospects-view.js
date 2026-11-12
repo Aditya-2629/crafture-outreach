@@ -7,9 +7,9 @@
 import { call } from '../ui/api.js';
 import { ACTIONS } from '../lib/actions.js';
 import { openCsvImportWizard } from './csv-import-modal.js';
-import { openUiPrompt, openUiConfirm, openUiSelectModal, openUiAlert } from './modal-engine.js';
+import { openUiPrompt, openUiConfirm, openUiSelectModal, openUiAlert, openLeadTimelineModal } from './modal-engine.js';
 import { ICONS } from '../ui/icons.js';
-export { openUiPrompt, openUiConfirm, openUiSelectModal, openUiAlert };
+export { openUiPrompt, openUiConfirm, openUiSelectModal, openUiAlert, openLeadTimelineModal };
 
 export async function renderProspectsView(container, ctx = {}) {
   if (!container) return;
@@ -531,7 +531,7 @@ export async function renderProspectsView(container, ctx = {}) {
                             ${(p.fullName[0] || 'L').toUpperCase()}
                           </div>
                           <div>
-                            <span style="font-weight:600; color:#14142b; display:block;">${p.fullName}</span>
+                            <span class="prospect-timeline-trigger" data-id="${p.publicId}" style="font-weight:600; color:#14142b; display:block; cursor:pointer; text-decoration:underline decoration-dotted;" title="Click to view outreach timeline">${p.fullName}</span>
                             <a href="${p.profileUrl}" target="_blank" style="font-size:11px; color:#ff6b00; text-decoration:none;">Profile ↗</a>
                           </div>
                         </div>
@@ -695,6 +695,16 @@ export async function renderProspectsView(container, ctx = {}) {
         if (ctx.showToast) ctx.showToast('List renamed successfully!', 'success');
         paint();
       }
+    });
+
+    // Prospect Timeline click
+    container.querySelectorAll('.prospect-timeline-trigger').forEach((el) => {
+      el.addEventListener('click', () => {
+        const publicId = el.dataset.id;
+        if (publicId) {
+          openLeadTimelineModal({ publicId });
+        }
+      });
     });
 
     // B. Search

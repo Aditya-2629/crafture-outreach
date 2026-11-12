@@ -81,6 +81,44 @@ describe('call', () => {
       expect(e.display).toBe('sign in open linkedin.com (NOT_LOGGED_IN)');
     }
   });
+
+  it('retries on service worker wakeup error (No SW / connection failed) and succeeds when worker awakens', async () => {
+    let callCount = 0;
+    chrome.runtime.sendMessage = (_msg, cb) => {
+      callCount++;
+      if (callCount === 1) {
+        Object.defineProperty(chrome.runtime, 'lastError', {
+          value: { message: 'Could not establish connection. Receiving end does not exist.' },
+          configurable: true,
+        });
+        return cb(undefined);
+      }
+      Object.defineProperty(chrome.runtime, 'lastError', {
+        value: null,
+        configurable: true,
+      });
+      return cb({ ok: true, data: { status: 'awakened' } });
+    };
+
+    const res = await call(ACTIONS.STATUS_GET);
+    expect(res).toEqual({ status: 'awakened' });
+    expect(callCount).toBe(2);
+  });
+
+  it('exhausts 2 retries and throws ApiError when service worker remains dead', async () => {
+    let callCount = 0;
+    chrome.runtime.sendMessage = (_msg, cb) => {
+      callCount++;
+      Object.defineProperty(chrome.runtime, 'lastError', {
+        value: { message: 'No SW' },
+        configurable: true,
+      });
+      return cb(undefined);
+    };
+
+    await expect(call(ACTIONS.STATUS_GET)).rejects.toBeInstanceOf(ApiError);
+    expect(callCount).toBe(3); // 1 initial + 2 retries
+  });
 });
 
 describe('local UI state', () => {

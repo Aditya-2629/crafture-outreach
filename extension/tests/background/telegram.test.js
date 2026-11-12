@@ -444,6 +444,98 @@ describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
       expect(finalMsg.body.text).toContain('Sarah Connor');
       expect(finalMsg.body.text).toContain('Google');
     });
+
+    it('preserves thought_signature verbatim in Gemini multi-turn tool-calling loop', async () => {
+      vi.spyOn(lists, 'getAll').mockResolvedValue([
+        { listId: 'l1', name: 'Designers', count: 10 },
+      ]);
+
+      const fetchCalls = [];
+      global.fetch = vi.fn(async (url, opts) => {
+        const body = opts?.body ? JSON.parse(opts.body) : null;
+        fetchCalls.push({ url, body });
+
+        if (url.includes('api.telegram.org')) {
+          return { ok: true, json: async () => ({ ok: true, result: { message_id: 1001 } }) };
+        }
+
+        // Native Gemini generateContent endpoint
+        if (url.includes(':generateContent')) {
+          const contents = body?.contents || [];
+          const lastTurn = contents[contents.length - 1];
+
+          // Turn 1: user prompt -> model returns tool call with thought_signature
+          if (lastTurn.role === 'user' && lastTurn.parts?.[0]?.text) {
+            return {
+              ok: true,
+              json: async () => ({
+                candidates: [
+                  {
+                    content: {
+                      role: 'model',
+                      parts: [
+                        {
+                          thought: true,
+                          text: 'Checking the lists',
+                          thought_signature: 'sig_crypto_hash_12345',
+                        },
+                        {
+                          functionCall: {
+                            name: 'list_prospect_lists',
+                            args: {},
+                          },
+                          thought_signature: 'sig_crypto_hash_12345',
+                        },
+                      ],
+                    },
+                  },
+                ],
+              }),
+            };
+          }
+
+          // Turn 2: model content + user functionResponse sent back
+          if (lastTurn.role === 'user' && lastTurn.parts?.[0]?.functionResponse) {
+            // Verify model content in history preserved the thought_signature
+            const modelTurn = contents[contents.length - 2];
+            expect(modelTurn.role).toBe('model');
+            expect(modelTurn.parts[1].thought_signature).toBe('sig_crypto_hash_12345');
+
+            return {
+              ok: true,
+              json: async () => ({
+                candidates: [
+                  {
+                    content: {
+                      role: 'model',
+                      parts: [{ text: 'Found 1 prospect list: Designers (10 leads).' }],
+                    },
+                  },
+                ],
+              }),
+            };
+          }
+        }
+
+        return { ok: true, json: async () => ({}) };
+      });
+
+      await set('config', {
+        ai: { provider: 'gemini', apiKey: 'test_gemini_key', model: 'gemini-2.5-flash' },
+      });
+
+      await runAgentLoop('test_bot_token', '9999', 'What lists do I have?');
+
+      const geminiCalls = fetchCalls.filter((c) => c.url.includes(':generateContent'));
+      expect(geminiCalls.length).toBe(2);
+
+      // Verify the 2nd call included the model turn with thought_signature
+      const secondCallContents = geminiCalls[1].body.contents;
+      const modelStep = secondCallContents.find((c) => c.role === 'model');
+      expect(modelStep).toBeDefined();
+      expect(modelStep.parts[1].functionCall.name).toBe('list_prospect_lists');
+      expect(modelStep.parts[1].thought_signature).toBe('sig_crypto_hash_12345');
+    });
   });
 });
 

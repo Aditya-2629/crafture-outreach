@@ -1454,12 +1454,38 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
     }
 
     const data = await res.json();
-    const rawGeminiContent = data.candidates?.[0]?.content || { role: 'model', parts: [] };
+    const candidate = data.candidates?.[0];
+    // Keep exact untouched candidate content, ensuring valid role
+    const rawGeminiContent = candidate?.content || { role: 'model', parts: [] };
+    if (!rawGeminiContent.role) rawGeminiContent.role = 'model';
+
+    // Ensure thought_signature / thoughtSignature are preserved and available on all functionCall parts
+    let turnSignature = candidate?.thought_signature || candidate?.thoughtSignature || null;
+    for (const part of rawGeminiContent.parts || []) {
+      if (!turnSignature && (part.thought_signature || part.thoughtSignature)) {
+        turnSignature = part.thought_signature || part.thoughtSignature;
+      }
+      if (!turnSignature && (part.functionCall?.thought_signature || part.functionCall?.thoughtSignature)) {
+        turnSignature = part.functionCall.thought_signature || part.functionCall.thoughtSignature;
+      }
+    }
+    if (turnSignature && Array.isArray(rawGeminiContent.parts)) {
+      for (const part of rawGeminiContent.parts) {
+        if (!part.thought_signature) part.thought_signature = turnSignature;
+        if (!part.thoughtSignature) part.thoughtSignature = turnSignature;
+        if (part.functionCall) {
+          if (!part.functionCall.thought_signature) part.functionCall.thought_signature = turnSignature;
+          if (!part.functionCall.thoughtSignature) part.functionCall.thoughtSignature = turnSignature;
+        }
+      }
+    }
+
     let text = '';
     const toolCalls = [];
     for (const part of rawGeminiContent.parts || []) {
-      if (part.text) text += part.text;
-      else if (part.functionCall) {
+      if (part.text && !part.thought) {
+        text += part.text;
+      } else if (part.functionCall) {
         toolCalls.push({
           id: `gemini_${Math.random().toString(36).slice(2, 8)}`,
           name: part.functionCall.name,

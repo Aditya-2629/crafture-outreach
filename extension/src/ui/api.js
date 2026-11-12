@@ -57,21 +57,40 @@ function normalize(response) {
   return offline();
 }
 
+const RETRYABLE_SW_PATTERNS = [
+  'no sw',
+  'could not establish connection',
+  'receiving end does not exist',
+  'context invalidated',
+  'timed out',
+];
+
+function isWakeupError(error) {
+  if (!error) return false;
+  if (error.code === ERROR.EXTENSION_OFFLINE) return true;
+  const msg = String(error.message || '').toLowerCase();
+  return RETRYABLE_SW_PATTERNS.some((p) => msg.includes(p));
+}
+
 /**
  * Send one action to the engine and resolve with the contract envelope.
  * Never rejects — transport failures come back as `EXTENSION_OFFLINE`.
  *
  * @param {string} action  a value from `ACTIONS`
  * @param {object} [params]
+ * @param {number} [timeoutMs=6000]
  * @returns {Promise<{ok: true, data: *, rateLimit?: object} | {ok: false, error: object}>}
  */
-export function send(action, params = {}) {
+export function send(action, params = {}, timeoutMs = 6000) {
   return new Promise((resolve) => {
     let settled = false;
+    let timer = null;
+
     const finish = (response) => {
       if (settled) return;
       settled = true;
-      const lastError = chrome.runtime && chrome.runtime.lastError;
+      if (timer) clearTimeout(timer);
+      const lastError = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.lastError;
       if (lastError) {
         resolve(offline(lastError.message));
         return;
@@ -79,7 +98,17 @@ export function send(action, params = {}) {
       resolve(normalize(response));
     };
 
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        finish(offline('No SW (timed out)'));
+      }, timeoutMs);
+    }
+
     try {
+      if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+        finish(offline('No SW'));
+        return;
+      }
       const maybePromise = chrome.runtime.sendMessage({ action, params }, finish);
       if (maybePromise && typeof maybePromise.then === 'function') {
         maybePromise.then(finish, (e) => finish(offline(e && e.message)));
@@ -92,15 +121,44 @@ export function send(action, params = {}) {
 
 /**
  * Like `send`, but returns `data` and throws an `ApiError` on `ok: false`.
+ * Automatically retries up to 2 times (waiting 350ms between retries) if the MV3 service
+ * worker was asleep ('No SW' / 'Could not establish connection'), guarded by a 6-second timeout.
+ *
  * @param {string} action
  * @param {object} [params]
  */
 export async function call(action, params = {}) {
-  const envelope = await send(action, params);
-  if (!envelope.ok) {
+  const maxRetries = 2;
+  const overallTimeoutMs = 6000;
+  const start = Date.now();
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const elapsed = Date.now() - start;
+    const remainingTime = Math.max(1000, overallTimeoutMs - elapsed);
+
+    let envelope;
+    try {
+      envelope = await send(action, params, remainingTime);
+    } catch (err) {
+      envelope = offline(err && err.message);
+    }
+
+    if (envelope.ok) {
+      return envelope.data;
+    }
+
+    const shouldRetry =
+      attempt < maxRetries &&
+      isWakeupError(envelope.error) &&
+      (Date.now() - start) < overallTimeoutMs;
+
+    if (shouldRetry) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      continue;
+    }
+
     throw new ApiError(envelope.error.code, envelope.error.message, envelope.error);
   }
-  return envelope.data;
 }
 
 /**

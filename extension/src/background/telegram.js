@@ -21,9 +21,10 @@ import { onEvent } from './events.js';
 import { getLiveDashboardStats } from './stats.js';
 import { snapshotAll } from './quota.js';
 import { addToBlacklist, addCompanyToBlacklist, getStoredProfile, get, set } from '../lib/storage.js';
-import { getActiveCandidate, setActiveCandidate, getAllCandidates } from './candidates.js';
+import { getActiveCandidate, setActiveCandidate, getAllCandidates, saveCandidate } from './candidates.js';
 import { enrichLead } from './enrich.js';
 import { matchAndAdaptObjection, snoozeLead, popDueSnoozes } from './objections.js';
+import { syncAllLeadsToSheet, backupToGoogleDrive } from './google-workspace.js';
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
 let isPolling = false;
@@ -139,6 +140,17 @@ async function callTelegramApi(token, method, payload = {}) {
   return data.result;
 }
 
+export async function sendChatAction(token, chatId, action = 'typing') {
+  try {
+    return await callTelegramApi(token, 'sendChatAction', {
+      chat_id: chatId,
+      action,
+    });
+  } catch {
+    return null;
+  }
+}
+
 // 🛡️ Bulletproof Telegram Message Dispatcher with Entity Error Fallback
 export async function sendTelegramMessage(token, chatId, text, options = {}) {
   try {
@@ -188,16 +200,126 @@ async function sendTelegramAlert(text, options = {}) {
   }
 }
 
-// 🌐 Live Workspace Context Provider
-export async function getLiveWorkspaceContext() {
-  const [allLists, allCamps, activeCand, quotas] = await Promise.all([
+// 🌐 Live Workspace Context Builder for Gemini-Grade Agentic Copilot
+export async function buildAgentContext() {
+  const [allLists, allCamps, activeCand, quotas, latestBp] = await Promise.all([
     lists.getAll().catch(() => []),
     campaigns.getAll().catch(() => []),
     getActiveCandidate().catch(() => null),
     snapshotAll().catch(() => ({})),
+    getLatestBlueprint().catch(() => null),
   ]);
 
-  return { allLists, allCamps, activeCand, quotas };
+  const invitesLeft = Math.max(0, (quotas.invite?.dailyCap || 20) - (quotas.invite?.dailyUsed || 0));
+  const messagesLeft = Math.max(0, (quotas.message?.dailyCap || 40) - (quotas.message?.dailyUsed || 0));
+  const emailsLeft = Math.max(0, (quotas.email?.dailyCap || 50) - (quotas.email?.dailyUsed || 0));
+
+  let bpStr = 'None';
+  if (latestBp) {
+    const stepsSummary = (latestBp.steps || [])
+      .map((s, i) => {
+        let desc = `Step ${i + 1} (${(s.type || 'action').toUpperCase()})`;
+        if (s.delayDays) desc += ` [delay: ${s.delayDays}d]`;
+        if (s.note) desc += `: Note="${s.note}"`;
+        if (s.subject) desc += `: Subject="${s.subject}"`;
+        if (s.body) desc += `: Body="${s.body}"`;
+        return desc;
+      })
+      .join(' | ');
+    bpStr = `ID: "${latestBp.blueprintId}", Campaign: "${latestBp.campaignName || latestBp.name}", TargetList: "${latestBp.listName}", Steps: [${stepsSummary}]`;
+  }
+
+  const campList = allCamps.map((c) => ({
+    id: c.campaignId || c.id,
+    name: c.name,
+    status: c.status,
+    enrolledCount: c.stats?.enrolled || 0,
+    activeCount: c.stats?.active || 0,
+    repliedCount: c.stats?.replied || 0,
+    failedCount: c.stats?.failed || 0,
+  }));
+
+  const listsSummary = allLists.map((l) => ({
+    listId: l.listId,
+    name: l.name,
+    count: l.count || l.itemCount || 0,
+  }));
+
+  return {
+    activePersona: {
+      name: activeCand?.name || 'Default',
+      slug: activeCand?.slug || 'default',
+      mode: activeCand?.mode || 'reverse_recruiting',
+      resumeUrl: activeCand?.resumeUrl || '',
+      calendarUrl: activeCand?.bookingLink || '',
+    },
+    prospectLists: listsSummary,
+    campaigns: campList,
+    quotasRemaining: {
+      invitesLeft,
+      messagesLeft,
+      emailsLeft,
+    },
+    pendingBlueprint: latestBp,
+    raw: { allLists, allCamps, activeCand, quotas, latestBp, bpStr },
+  };
+}
+
+export function buildSystemPrompt(context) {
+  const { activePersona, prospectLists, campaigns: campList, quotasRemaining, raw } = context;
+
+  const listsStr = prospectLists.length
+    ? prospectLists.map((l) => `  - "${l.name}" (ID: ${l.listId}, Leads: ${l.count})`).join('\n')
+    : '  (No lists saved yet)';
+
+  const campsStr = campList.length
+    ? campList.map((c) => `  - "${c.name}" (ID: ${c.id}, Status: ${c.status}, Enrolled: ${c.enrolledCount}, Replied: ${c.repliedCount}, Failed: ${c.failedCount})`).join('\n')
+    : '  (No campaigns yet)';
+
+  return `You are OutFox AI SDR, an elite autonomous Agentic Copilot controlling LinkedIn outreach sequences directly from Telegram.
+
+CORE CAPABILITIES & DIRECTIVES:
+1. Multi-Turn ReAct Agent:
+   - You understand user intent, inspect live workspace state, and execute 1 or more tools sequentially to fulfill requests.
+2. Language & Tone:
+   - Match the user's language and style seamlessly (natural Hinglish or English).
+   - Be concise, direct, helpful, and proactive—like a trusted senior co-founder or SDR lead.
+   - Avoid generic robotic disclaimers and corporate fluff.
+3. Grounded Reality (Never Hallucinate):
+   - Never invent or assume campaign stats, lead names, lists, or errors.
+   - When asked about live status or progress, call \`get_campaign_live_status\`.
+   - When asked about prospect lists, call \`list_prospect_lists\`.
+4. Sequence Blueprints & Conversational Step Edits:
+   - When user asks to design, create, or start a campaign (e.g. "design campaign for USA recruiters", "banao sequence"), call \`design_campaign_blueprint\`.
+   - When user asks to edit, rewrite, translate, or adjust steps (e.g. "step 2 aur 3 dono change kar ke friendly bana de", "thoda casual bana de", "4 din baad ek breakup message aur daal"), call \`update_blueprint_steps\` to modify one or multiple steps at once.
+   - Always present the updated copy and steps clearly in your response so the user can review before launching.
+5. Multi-Action Execution:
+   - If the user asks for multiple tasks at once (e.g. "pause old campaign and design a new sequence for recruiter leads"), execute both tools in your ReAct loop and summarize the outcomes together.
+
+⚡ LIVE WORKSPACE STATE:
+• Active Persona: "${activePersona.name}" (Slug: ${activePersona.slug}, Mode: ${activePersona.mode}, Resume: ${activePersona.resumeUrl || 'None'}, Calendar: ${activePersona.calendarUrl || 'None'})
+• Saved Prospect Lists (${prospectLists.length}):
+${listsStr}
+• Campaigns (${campList.length}):
+${campsStr}
+• Today's Quotas Remaining:
+  - Invites Left: ${quotasRemaining.invitesLeft}
+  - Messages Left: ${quotasRemaining.messagesLeft}
+  - Emails Left: ${quotasRemaining.emailsLeft}
+• Current Pending Blueprint:
+  ${raw.bpStr}
+`;
+}
+
+// 🌐 Live Workspace Context Provider (Compatibility Wrapper)
+export async function getLiveWorkspaceContext() {
+  const ctx = await buildAgentContext();
+  return {
+    allLists: ctx.raw.allLists,
+    allCamps: ctx.raw.allCamps,
+    activeCand: ctx.raw.activeCand,
+    quotas: ctx.raw.quotas,
+  };
 }
 
 // 🔍 Fuzzy Disambiguation Matcher for Lead Lists
@@ -444,100 +566,127 @@ const AI_TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'design_campaign_blueprint',
-      description: 'Architect a multi-step sequence blueprint for user pre-flight approval. Call this whenever the user wants to design, create, start, or launch a campaign sequence (including typos like degsig, desig, or hindi commands like sequence banao).',
+      name: 'get_campaign_live_status',
+      description:
+        'Get real-time live status of campaigns and prospects. Returns overall summary (active, waiting, completed, replied, failed) and per-lead status (fullName, company, status, currentStep, nextRunIn, lastError). Always call this when asked about live status or campaign progress.',
       parameters: {
         type: 'object',
         properties: {
-          campaignName: { type: 'string', description: 'Proposed name for the campaign' },
-          listName: { type: 'string', description: 'Target lead list name to enroll leads from' },
-          hasViewStep: { type: 'boolean', description: 'True if profile view step should precede the invite' },
-          inviteNote: { type: 'string', description: 'Personalized connection request note with {{firstName}}' },
-          followupMessage: { type: 'string', description: 'Warm welcome message sent when connection is accepted' },
-        },
-        required: ['listName'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'edit_campaign_blueprint',
-      description: 'Update or modify the pending outreach campaign blueprint before launch (e.g. change invite note, change step 3 follow-up message, or campaign name).',
-      parameters: {
-        type: 'object',
-        properties: {
-          stepToEdit: {
+          campaignNameOrId: {
             type: 'string',
-            enum: ['invite', 'followup', 'name'],
-            description: "Which step to edit: 'invite' (step 2 note), 'followup' (step 3 message), or 'name'.",
+            description: 'Optional campaign name or ID. If omitted, returns live status for active campaigns.',
           },
-          newText: { type: 'string', description: 'The updated text provided by the user.' },
         },
-        required: ['stepToEdit', 'newText'],
       },
     },
   },
   {
     type: 'function',
     function: {
-      name: 'create_outreach_campaign',
-      description: 'Launch a multi-step outreach sequence campaign attached to a prospect list.',
+      name: 'list_prospect_lists',
+      description: 'List all saved prospect lists with their IDs, names, and lead counts.',
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'design_campaign_blueprint',
+      description:
+        'Architect and design a new multi-step outreach sequence blueprint for user pre-flight approval and launch. Call when user asks to design, create, banao, or setup a campaign.',
       parameters: {
         type: 'object',
         properties: {
-          name: { type: 'string', description: 'Name of the campaign' },
-          listName: { type: 'string', description: 'Name of the list of leads to enroll, e.g. "data analyst USA"' },
-          hasViewStep: { type: 'boolean', description: 'True if sequence should view profile first' },
+          listQuery: {
+            type: 'string',
+            description: 'Name or keywords of the prospect list to enroll leads from (e.g. "Data Analyst USA")',
+          },
+          campaignName: { type: 'string', description: 'Proposed name for the campaign' },
+          goal: { type: 'string', description: 'Outreach goal (e.g. recruiter connection, founder pitch, job search)' },
+          tone: { type: 'string', description: 'Tone of copy (e.g. casual, friendly, formal, direct)' },
+          stepsCount: { type: 'number', description: 'Desired number of steps (e.g. 2, 3, or 4)' },
           inviteNote: { type: 'string', description: 'Personalized connection note with {{firstName}}' },
-          followupMessage: { type: 'string', description: 'Warm welcome message sent when connection is accepted' },
+          followupMessage: { type: 'string', description: 'Warm welcome message after connection is accepted' },
         },
-        required: ['name', 'listName'],
+        required: ['listQuery'],
       },
     },
   },
   {
     type: 'function',
     function: {
-      name: 'search_and_save_leads',
-      description: 'Search LinkedIn for candidates, job-seekers or managers by title and location, and optionally save them to a list.',
+      name: 'update_blueprint_steps',
+      description:
+        'Update one or multiple steps of the active campaign blueprint (e.g. change invite note, change follow-up messages, adjust delay days, or append new steps like breakup message). Use this when user says "step 2 aur 3 change kar", "make it more casual", "add a breakup message", etc.',
       parameters: {
         type: 'object',
         properties: {
-          keywords: { type: 'string', description: "Job title or search keywords, e.g. 'Data Analyst' or 'Engineering Manager'" },
-          location: { type: 'string', description: "Geographic location filter, e.g. 'United States' or 'Austin, Texas'" },
-          openToWorkOnly: { type: 'boolean', description: 'True if looking for candidates who are open to work / job seekers' },
-          listName: { type: 'string', description: 'Optional name of the list to automatically save these leads into' },
-          count: { type: 'number', description: 'Number of prospects to find (default: 10, max: 25)' },
+          blueprintId: { type: 'string', description: 'Optional blueprint ID to update (defaults to latest pending blueprint)' },
+          campaignName: { type: 'string', description: 'Updated campaign name if user requested a rename' },
+          updates: {
+            type: 'array',
+            description: 'Array of updates to existing steps',
+            items: {
+              type: 'object',
+              properties: {
+                stepNumber: { type: 'number', description: '1-based step index (1, 2, 3, etc.)' },
+                type: { type: 'string', enum: ['view', 'invite', 'message', 'email'], description: 'Step action type' },
+                note: { type: 'string', description: 'New connection request note (for invite step)' },
+                body: { type: 'string', description: 'New message body text (for message or email step)' },
+                subject: { type: 'string', description: 'Email subject line (for email step)' },
+                delayDays: { type: 'number', description: 'Days to wait before this step executes' },
+              },
+              required: ['stepNumber'],
+            },
+          },
+          appendSteps: {
+            type: 'array',
+            description: 'New steps to append at the end of the sequence',
+            items: {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['view', 'invite', 'message', 'email'], description: 'Step action type' },
+                note: { type: 'string', description: 'Connection note' },
+                body: { type: 'string', description: 'Message body' },
+                subject: { type: 'string', description: 'Email subject' },
+                delayDays: { type: 'number', description: 'Days to wait before sending' },
+                desc: { type: 'string', description: 'Short description of step' },
+              },
+            },
+          },
         },
-        required: ['keywords'],
       },
     },
   },
   {
     type: 'function',
     function: {
-      name: 'send_linkedin_message',
-      description: 'Send a direct message to a connection on LinkedIn.',
+      name: 'launch_blueprint',
+      description: 'Convert and launch the active pending sequence blueprint into a live running campaign immediately.',
       parameters: {
         type: 'object',
         properties: {
-          recipientNameOrUrn: { type: 'string', description: 'Recipient name, username/slug, or profile URN' },
-          message: { type: 'string', description: 'The message body to send' },
+          blueprintId: { type: 'string', description: 'Optional blueprint ID to launch (defaults to latest pending)' },
         },
-        required: ['recipientNameOrUrn', 'message'],
       },
     },
   },
   {
     type: 'function',
     function: {
-      name: 'manage_campaigns',
-      description: 'Check status, pause, or resume OutFox outreach campaigns.',
+      name: 'control_campaign',
+      description: 'Pause or resume one or all OutFox outreach campaigns.',
       parameters: {
         type: 'object',
         properties: {
-          action: { type: 'string', enum: ['status', 'pause', 'resume'], description: 'Action to perform on campaigns' },
+          action: { type: 'string', enum: ['pause', 'resume'], description: 'Action to perform: pause or resume' },
+          campaignNameOrId: {
+            type: 'string',
+            description: 'Optional specific campaign name or ID to control. If omitted, controls all campaigns.',
+          },
         },
         required: ['action'],
       },
@@ -546,14 +695,28 @@ const AI_TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'switch_candidate_workspace',
-      description: 'Switch active candidate persona workspace (e.g. aditya or agency) to alter targeting, pitch templates, and booking links.',
+      name: 'switch_candidate_persona',
+      description: 'Switch active candidate persona workspace (e.g. "aditya" or "agency") to update targeting, pitch templates, and booking links.',
       parameters: {
         type: 'object',
         properties: {
-          candidateNameOrSlug: { type: 'string', description: 'Name or slug of candidate to switch to, e.g. "aditya" or "agency"' },
+          slugOrName: { type: 'string', description: 'Name or slug of candidate to switch to, e.g. "aditya" or "agency"' },
         },
-        required: ['candidateNameOrSlug'],
+        required: ['slugOrName'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_candidate_links',
+      description: 'Update resume URL or calendar/booking link for the active candidate persona.',
+      parameters: {
+        type: 'object',
+        properties: {
+          resumeUrl: { type: 'string', description: 'New PDF or Google Drive resume URL' },
+          calendarUrl: { type: 'string', description: 'New Calendly or booking link URL' },
+        },
       },
     },
   },
@@ -574,16 +737,76 @@ const AI_TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'get_campaign_live_status',
-      description: 'Get real-time per-lead progress, status counts (waiting, active, completed, replied, failed), countdown timers, and remaining quotas for campaigns.',
+      name: 'block_company',
+      description: 'Add an entire company name or domain to the Company Exclusion list to skip all employees across campaigns.',
       parameters: {
         type: 'object',
         properties: {
-          campaignNameOrId: {
-            type: 'string',
-            description: 'Optional campaign name or ID. If omitted, returns live status for active campaigns.',
-          },
+          companyOrDomain: { type: 'string', description: 'Company name (e.g. "Infosys") or domain (e.g. "tcs.com")' },
         },
+        required: ['companyOrDomain'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'snooze_lead',
+      description: 'Snooze a prospect for N days (default 30 days) to pause outreach and receive a follow-up reminder.',
+      parameters: {
+        type: 'object',
+        properties: {
+          publicId: { type: 'string', description: 'LinkedIn public ID or identifier of the lead' },
+          days: { type: 'number', description: 'Number of days to snooze (default: 30)' },
+        },
+        required: ['publicId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'sync_google_workspace',
+      description: 'Sync OutFox CRM leads to Google Sheets or trigger a cloud backup to Google Drive.',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['sync_sheet', 'backup_drive'], description: 'Action to perform: sync_sheet or backup_drive' },
+        },
+        required: ['action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_and_save_leads',
+      description: 'Search LinkedIn for prospects by keyword/title and location, and save to a list.',
+      parameters: {
+        type: 'object',
+        properties: {
+          keywords: { type: 'string', description: 'Job title or search keywords, e.g. "Data Analyst" or "Engineering Manager"' },
+          location: { type: 'string', description: 'Geographic location filter, e.g. "United States" or "Austin, Texas"' },
+          openToWorkOnly: { type: 'boolean', description: 'True if looking for candidates who are open to work' },
+          listName: { type: 'string', description: 'Optional name of the list to automatically save these leads into' },
+          count: { type: 'number', description: 'Number of prospects to find (default: 10, max: 25)' },
+        },
+        required: ['keywords'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'send_linkedin_message',
+      description: 'Send a direct message to a connection on LinkedIn.',
+      parameters: {
+        type: 'object',
+        properties: {
+          recipientNameOrUrn: { type: 'string', description: 'Recipient name, username/slug, or profile URN' },
+          message: { type: 'string', description: 'The message body to send' },
+        },
+        required: ['recipientNameOrUrn', 'message'],
       },
     },
   },
@@ -634,7 +857,7 @@ export function createOptimalBlueprint(blueprintId, targetList, candidate, args 
   };
 }
 
-// 📋 Visual Blueprint Pre-Flight Approval Card (Handles escaping & custom headers safely)
+// 📋 Visual Blueprint Pre-Flight Approval Card
 async function presentCampaignBlueprint(botToken, chatId, blueprintOrId, maybeBp, maybeNotice) {
   let blueprint = blueprintOrId;
   let notice = '';
@@ -684,16 +907,326 @@ async function presentCampaignBlueprint(botToken, chatId, blueprintOrId, maybeBp
   return sendTelegramMessage(botToken, chatId, card, { reply_markup: replyMarkup });
 }
 
-async function executeTool(name, args = {}) {
-  if (name === 'switch_candidate_workspace') {
-    const switched = await setActiveCandidate(args.candidateNameOrSlug);
+export async function launchBlueprintInternal(blueprintId) {
+  const blueprints = await getStoredBlueprints();
+  const blueprint =
+    (blueprintId ? blueprints[blueprintId] : null) ||
+    (blueprintId ? pendingBlueprints.get(blueprintId) : null) ||
+    (await getLatestBlueprint());
+
+  if (!blueprint) {
+    throw new Error('Blueprint expired or not found.');
+  }
+
+  const camp = await campaigns.create({
+    name: blueprint.campaignName || blueprint.name || 'Outreach Campaign',
+    listId: blueprint.listId,
+    steps: blueprint.steps,
+    settings: { stopOnReply: true, autopilot: false },
+  });
+
+  const actualId = blueprint.blueprintId || blueprintId;
+  if (actualId) await removeStoredBlueprint(actualId);
+
+  const enrolled = await campaigns.readEnrollments(camp.campaignId).catch(() => []);
+  return {
+    campaign: camp,
+    blueprint,
+    enrolledCount: enrolled.length,
+  };
+}
+
+export async function executeTool(name, args = {}) {
+  if (name === 'get_campaign_live_status') {
+    const all = await campaigns.getAll();
+    let target = null;
+    if (args.campaignNameOrId) {
+      const q = String(args.campaignNameOrId).toLowerCase().trim();
+      target = all.find(
+        (c) =>
+          c.campaignId === args.campaignNameOrId ||
+          c.id === args.campaignNameOrId ||
+          (c.name && c.name.toLowerCase() === q) ||
+          (c.name && c.name.toLowerCase().includes(q)),
+      );
+    }
+    const campId = target
+      ? target.campaignId || target.id
+      : all.find((c) => c.status === 'active')?.campaignId || all[0]?.campaignId || null;
+
+    if (!campId) {
+      return {
+        status: 'no_campaigns',
+        message: 'No campaigns found in workspace.',
+      };
+    }
+
+    const liveData = await campaigns.getCampaignLiveStatus(campId);
     return {
-      switched: true,
+      status: 'ok',
+      campaignId: campId,
+      campaignName: liveData.campaignName || target?.name || 'Campaign',
+      summary: liveData.summary || {},
+      leadsCount: (liveData.leads || []).length,
+      topLeads: (liveData.leads || []).slice(0, 8).map((l) => ({
+        fullName: l.fullName || 'Lead',
+        company: l.company || '',
+        status: l.status,
+        currentStep: l.currentStep,
+        nextRunIn: l.nextRunIn,
+        lastError: l.lastError || null,
+      })),
+    };
+  }
+
+  if (name === 'list_prospect_lists') {
+    const all = await lists.getAll();
+    return {
+      totalLists: all.length,
+      lists: all.map((l) => ({
+        listId: l.listId,
+        name: l.name,
+        count: l.count || l.itemCount || 0,
+      })),
+    };
+  }
+
+  if (name === 'design_campaign_blueprint' || name === 'create_outreach_campaign') {
+    const allLists = await lists.getAll();
+    const activeCand = await getActiveCandidate();
+    const searchName = String(args.listQuery || args.listName || '').trim();
+
+    const matchObj = findBestMatchingList(allLists, searchName);
+    const targetList = matchObj
+      ? matchObj.match
+      : allLists.find((l) => (l.name || '').toLowerCase().includes(searchName.toLowerCase())) ||
+        allLists[0] ||
+        { name: searchName || 'Leads', listId: 'unknown', count: 25 };
+
+    const blueprintId = 'bp_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+    const blueprint = createOptimalBlueprint(blueprintId, targetList, activeCand, {
+      campaignName: args.campaignName,
+      name: args.campaignName,
+      inviteNote: args.inviteNote,
+      followupMessage: args.followupMessage,
+      hasViewStep: args.hasViewStep !== false,
+    });
+
+    if (args.stepsCount === 2) {
+      blueprint.steps = blueprint.steps.filter((s) => s.type === 'invite' || s.type === 'message');
+    } else if (args.stepsCount === 1) {
+      blueprint.steps = blueprint.steps.filter((s) => s.type === 'invite');
+    }
+
+    await saveStoredBlueprint(blueprintId, blueprint);
+
+    return {
+      ok: true,
+      blueprintId,
+      campaignName: blueprint.campaignName,
+      listName: blueprint.listName,
+      leadCount: blueprint.leadCount,
+      stepsCount: blueprint.steps.length,
+      steps: blueprint.steps.map((s, idx) => ({
+        stepNumber: idx + 1,
+        type: s.type,
+        note: s.note || null,
+        body: s.body || null,
+        subject: s.subject || null,
+        delayDays: s.delayDays || 0,
+        desc: s.desc || s.type,
+      })),
+    };
+  }
+
+  if (name === 'update_blueprint_steps' || name === 'edit_campaign_blueprint') {
+    let bp = null;
+    if (args.blueprintId) {
+      const allBps = await getStoredBlueprints();
+      bp = allBps[args.blueprintId] || pendingBlueprints.get(args.blueprintId);
+    }
+    if (!bp) {
+      bp = await getLatestBlueprint();
+    }
+    if (!bp) {
+      const allLists = await lists.getAll().catch(() => []);
+      const activeCand = await getActiveCandidate().catch(() => null);
+      const targetList = allLists[0] || { name: 'USA Prospects', listId: 'unknown', count: 25 };
+      const bpId = `bp_${Date.now()}`;
+      bp = createOptimalBlueprint(bpId, targetList, activeCand, {});
+    }
+
+    const blueprintId = bp.blueprintId || `bp_${Date.now()}`;
+
+    if (args.campaignName) {
+      bp.campaignName = args.campaignName.trim();
+      bp.name = bp.campaignName;
+    }
+
+    // Support legacy single stepToEdit argument
+    if (args.stepToEdit && args.newText) {
+      const stepToEdit = args.stepToEdit;
+      let cleanText = String(args.newText || '').trim().replace(/\{\{\s*full_name\s*\}\}/gi, '{{firstName}}');
+      if (stepToEdit === 'followup') {
+        bp.followupMessage = cleanText;
+        const msgStep = bp.steps.find((s) => s.type === 'message');
+        if (msgStep) msgStep.body = cleanText;
+        else bp.steps.push({ type: 'message', body: cleanText, delayDays: 1, desc: 'Follow-up message after acceptance' });
+      } else if (stepToEdit === 'invite') {
+        bp.inviteNote = cleanText;
+        const inviteStep = bp.steps.find((s) => s.type === 'invite');
+        if (inviteStep) inviteStep.note = cleanText;
+      } else if (stepToEdit === 'name') {
+        bp.campaignName = cleanText;
+        bp.name = cleanText;
+      }
+    }
+
+    // Apply updates array for multi-step editing
+    if (Array.isArray(args.updates)) {
+      for (const upd of args.updates) {
+        const stepNum = Number(upd.stepNumber);
+        if (!stepNum || stepNum < 1) continue;
+        const idx = stepNum - 1;
+
+        if (!bp.steps[idx]) {
+          bp.steps[idx] = {
+            type: upd.type || 'message',
+            desc: `Step ${stepNum}`,
+            delayDays: upd.delayDays || 1,
+          };
+        }
+
+        const step = bp.steps[idx];
+        if (upd.type) step.type = upd.type;
+        if (upd.note !== undefined) {
+          step.note = String(upd.note).replace(/\{\{\s*full_name\s*\}\}/gi, '{{firstName}}');
+          bp.inviteNote = step.note;
+        }
+        if (upd.body !== undefined) {
+          step.body = String(upd.body).replace(/\{\{\s*full_name\s*\}\}/gi, '{{firstName}}');
+          if (step.type === 'message' || !bp.followupMessage) {
+            bp.followupMessage = step.body;
+          }
+        }
+        if (upd.subject !== undefined) step.subject = String(upd.subject);
+        if (upd.delayDays !== undefined) step.delayDays = Number(upd.delayDays);
+      }
+    }
+
+    // Append new steps
+    if (Array.isArray(args.appendSteps)) {
+      for (const ns of args.appendSteps) {
+        bp.steps.push({
+          type: ns.type || 'message',
+          body: ns.body ? String(ns.body).replace(/\{\{\s*full_name\s*\}\}/gi, '{{firstName}}') : undefined,
+          note: ns.note ? String(ns.note).replace(/\{\{\s*full_name\s*\}\}/gi, '{{firstName}}') : undefined,
+          subject: ns.subject,
+          delayDays: ns.delayDays !== undefined ? Number(ns.delayDays) : 2,
+          desc: ns.desc || (ns.type === 'message' ? 'Follow-up message' : ns.type),
+        });
+      }
+    }
+
+    await saveStoredBlueprint(blueprintId, bp);
+
+    return {
+      ok: true,
+      blueprintId,
+      campaignName: bp.campaignName,
+      listName: bp.listName,
+      leadCount: bp.leadCount || 0,
+      stepsCount: bp.steps.length,
+      steps: bp.steps.map((s, idx) => ({
+        stepNumber: idx + 1,
+        type: s.type,
+        note: s.note || null,
+        body: s.body || null,
+        subject: s.subject || null,
+        delayDays: s.delayDays || 0,
+        desc: s.desc || s.type,
+      })),
+    };
+  }
+
+  if (name === 'launch_blueprint') {
+    const res = await launchBlueprintInternal(args.blueprintId);
+    return {
+      ok: true,
+      campaignId: res.campaign.campaignId,
+      campaignName: res.campaign.name,
+      listName: res.blueprint.listName,
+      enrolledCount: res.enrolledCount,
+      stepsCount: res.blueprint.steps.length,
+    };
+  }
+
+  if (name === 'control_campaign' || name === 'manage_campaigns') {
+    const all = await campaigns.getAll();
+    const action = args.action;
+    let target = null;
+    if (args.campaignNameOrId) {
+      const q = String(args.campaignNameOrId).toLowerCase().trim();
+      target = all.find(
+        (c) =>
+          c.campaignId === args.campaignNameOrId ||
+          c.id === args.campaignNameOrId ||
+          (c.name && c.name.toLowerCase() === q) ||
+          (c.name && c.name.toLowerCase().includes(q)),
+      );
+    }
+
+    if (action === 'pause') {
+      const toPause = target ? [target] : all.filter((c) => c.status === 'active' || c.status === 'running');
+      for (const c of toPause) await campaigns.setStatus(c.campaignId, 'paused');
+      return {
+        ok: true,
+        action: 'paused',
+        count: toPause.length,
+        campaigns: toPause.map((c) => c.name),
+      };
+    } else if (action === 'resume') {
+      const toResume = target ? [target] : all.filter((c) => c.status === 'paused');
+      for (const c of toResume) await campaigns.setStatus(c.campaignId, 'active');
+      return {
+        ok: true,
+        action: 'resumed',
+        count: toResume.length,
+        campaigns: toResume.map((c) => c.name),
+      };
+    }
+    return {
+      total: all.length,
+      active: all.filter((c) => c.status === 'active').length,
+      paused: all.filter((c) => c.status === 'paused').length,
+    };
+  }
+
+  if (name === 'switch_candidate_persona' || name === 'switch_candidate_workspace') {
+    const targetSlug = args.slugOrName || args.candidateNameOrSlug;
+    const switched = await setActiveCandidate(targetSlug);
+    return {
+      ok: true,
       name: switched.name,
       slug: switched.slug,
       title: switched.title,
       mode: switched.mode,
       bookingLink: switched.bookingLink,
+      resumeUrl: switched.resumeUrl || '',
+    };
+  }
+
+  if (name === 'update_candidate_links') {
+    const cand = await getActiveCandidate();
+    if (!cand) return { ok: false, message: 'No active candidate persona found.' };
+    if (args.resumeUrl) cand.resumeUrl = String(args.resumeUrl).trim();
+    if (args.calendarUrl) cand.bookingLink = String(args.calendarUrl).trim();
+    const saved = await saveCandidate(cand);
+    return {
+      ok: true,
+      name: saved.name,
+      resumeUrl: saved.resumeUrl,
+      calendarUrl: saved.bookingLink,
     };
   }
 
@@ -708,81 +1241,37 @@ async function executeTool(name, args = {}) {
     };
   }
 
-  if (name === 'edit_campaign_blueprint') {
-    let bp = await getLatestBlueprint();
-    let bpId = bp?.blueprintId;
-
-    // Auto-Recovery: synthesize blueprint on the fly if storage was empty
-    if (!bp) {
-      const allLists = await lists.getAll().catch(() => []);
-      const activeCand = await getActiveCandidate().catch(() => null);
-      const targetList =
-        allLists.find((l) => l.name.toLowerCase().includes('data analyst')) ||
-        allLists[0] ||
-        { name: 'Data Analyst USA', listId: 'unknown', count: 25 };
-      bpId = `bp_${Date.now()}`;
-      bp = createOptimalBlueprint(bpId, targetList, activeCand, {});
-    }
-
-    const stepToEdit = args.stepToEdit || 'invite';
-    let cleanText = String(args.newText || '').trim();
-    cleanText = cleanText.replace(/\{\{\s*full_name\s*\}\}/gi, '{{firstName}}');
-
-    if (stepToEdit === 'followup') {
-      bp.followupMessage = cleanText;
-      const msgStep = bp.steps.find((s) => s.type === 'message');
-      if (msgStep) msgStep.body = cleanText;
-      else bp.steps.push({ type: 'message', body: cleanText, delayDays: 1, desc: 'Follow-up message after acceptance' });
-    } else if (stepToEdit === 'invite') {
-      bp.inviteNote = cleanText;
-      const inviteStep = bp.steps.find((s) => s.type === 'invite');
-      if (inviteStep) inviteStep.note = cleanText;
-    } else if (stepToEdit === 'name') {
-      bp.campaignName = cleanText;
-      bp.name = cleanText;
-    }
-
-    await saveStoredBlueprint(bpId, bp);
-    return { ok: true, stepToEdit, blueprintId: bpId, blueprint: bp };
+  if (name === 'block_company') {
+    const company = args.companyOrDomain || args.company;
+    await addCompanyToBlacklist(company);
+    return {
+      ok: true,
+      blocked: company,
+      message: `Company '${company}' added to exclusion blacklist.`,
+    };
   }
 
-  if (name === 'design_campaign_blueprint' || name === 'create_outreach_campaign') {
-    const allLists = await lists.getAll();
-    const activeCand = await getActiveCandidate();
-    const searchName = String(args.listName || '').trim();
-
-    const matchObj = findBestMatchingList(allLists, searchName);
-
-    if (!matchObj) {
-      return {
-        type: 'list_not_found',
-        searched: searchName,
-        availableLists: allLists.map((l) => l.name),
-      };
-    }
-
-    const targetList = matchObj.match;
-    const confidence = matchObj.confidence;
-
-    const blueprintId = 'bp_' + Math.random().toString(36).slice(2, 9);
-    const blueprint = createOptimalBlueprint(blueprintId, targetList, activeCand, args);
-
-    await saveStoredBlueprint(blueprintId, blueprint);
-
-    if (confidence >= 0.60 && confidence < 0.90) {
-      return {
-        type: 'disambiguation_required',
-        blueprintId,
-        matchedName: targetList.name,
-        leadCount: blueprint.leadCount,
-        searched: searchName,
-      };
-    }
-
+  if (name === 'snooze_lead') {
+    const snoozed = await snoozeLead({
+      publicId: args.publicId,
+      days: Number(args.days) || 30,
+    });
     return {
-      type: 'blueprint_ready',
-      blueprint,
+      ok: true,
+      publicId: args.publicId,
+      days: Number(args.days) || 30,
+      reminderAt: snoozed.reminderAt,
     };
+  }
+
+  if (name === 'sync_google_workspace') {
+    if (args.action === 'backup_drive') {
+      const res = await backupToGoogleDrive();
+      return { ok: true, action: 'backup_drive', fileId: res?.fileId, name: res?.name };
+    } else {
+      const res = await syncAllLeadsToSheet();
+      return { ok: true, action: 'sync_sheet', syncedRows: res?.syncedRows || 0 };
+    }
   }
 
   if (name === 'search_and_save_leads') {
@@ -825,48 +1314,6 @@ async function executeTool(name, args = {}) {
     };
   }
 
-  if (name === 'manage_campaigns') {
-    const all = await campaigns.getAll();
-    if (args.action === 'pause') {
-      const active = all.filter((c) => c.status === 'active');
-      for (const c of active) await campaigns.setStatus(c.campaignId, 'paused');
-      return { pausedCount: active.length, message: `${active.length} campaign(s) paused.` };
-    }
-    if (args.action === 'resume') {
-      const paused = all.filter((c) => c.status === 'paused');
-      for (const c of paused) await campaigns.setStatus(c.campaignId, 'active');
-      return { resumedCount: paused.length, message: `${paused.length} campaign(s) resumed. Runner triggered!` };
-    }
-    return {
-      total: all.length,
-      active: all.filter((c) => c.status === 'active').length,
-      paused: all.filter((c) => c.status === 'paused').length,
-    };
-  }
-
-  if (name === 'get_campaign_live_status') {
-    const all = await campaigns.getAll();
-    let target = null;
-    if (args.campaignNameOrId) {
-      const q = String(args.campaignNameOrId).toLowerCase().trim();
-      target = all.find(
-        (c) =>
-          c.campaignId === args.campaignNameOrId ||
-          (c.name && c.name.toLowerCase() === q) ||
-          (c.name && c.name.toLowerCase().includes(q)),
-      );
-    }
-    if (!target) {
-      target = all.find((c) => c.status === 'active' || c.status === 'running') || all[0];
-    }
-
-    return {
-      type: 'live_status',
-      targetCampaignId: target?.campaignId || null,
-      targetCampaignName: target?.name || null,
-    };
-  }
-
   if (name === 'send_linkedin_message') {
     await voyager.sendMessage({
       publicId: args.recipientNameOrUrn,
@@ -878,7 +1325,362 @@ async function executeTool(name, args = {}) {
   throw new Error(`Unknown tool: ${name}`);
 }
 
-async function callDynamicAi(userText, options = {}) {
+export async function callLlmWithTools(provider, aiConfig, messages, tools = []) {
+  const apiKey = aiConfig.apiKey || '';
+  const model =
+    aiConfig.model ||
+    (provider === 'groq'
+      ? 'llama-3.3-70b-versatile'
+      : provider === 'gemini'
+        ? 'gemini-2.0-flash'
+        : 'gpt-4o-mini');
+
+  const useTools = Array.isArray(tools) && tools.length > 0;
+
+  if (provider === 'anthropic') {
+    const url = `${aiConfig.baseUrl || 'https://api.anthropic.com'}/v1/messages`;
+    const sysMsg = messages.find((m) => m.role === 'system');
+    const nonSysMessages = messages.filter((m) => m.role !== 'system');
+
+    while (nonSysMessages.length > 0 && nonSysMessages[0].role !== 'user') {
+      nonSysMessages.shift();
+    }
+    if (nonSysMessages.length === 0) {
+      nonSysMessages.push({ role: 'user', content: 'Hello' });
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: model || 'claude-3-5-sonnet-20241022',
+        max_tokens: 1024,
+        system: sysMsg?.content || '',
+        messages: nonSysMessages,
+        ...(useTools
+          ? {
+              tools: tools.map((t) => ({
+                name: t.function.name,
+                description: t.function.description,
+                input_schema: t.function.parameters,
+              })),
+            }
+          : {}),
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Anthropic API error ${res.status}: ${errText.slice(0, 180)}`);
+    }
+
+    const data = await res.json();
+    let text = '';
+    const toolCalls = [];
+    if (Array.isArray(data.content)) {
+      for (const part of data.content) {
+        if (part.type === 'text') text += part.text;
+        else if (part.type === 'tool_use') {
+          toolCalls.push({
+            id: part.id,
+            name: part.name,
+            args: part.input || {},
+          });
+        }
+      }
+    }
+    return { text, toolCalls, rawContent: data.content };
+  }
+
+  // OpenAI / Groq / Gemini / Ollama
+  let url = '';
+  const headers = { 'Content-Type': 'application/json' };
+
+  if (provider === 'groq') {
+    url = `${aiConfig.baseUrl || 'https://api.groq.com'}/openai/v1/chat/completions`;
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  } else if (provider === 'gemini') {
+    url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  } else if (provider === 'ollama') {
+    url = `${aiConfig.baseUrl || 'http://127.0.0.1:11434'}/api/chat`;
+  } else {
+    // openai / openai-compatible
+    url = `${aiConfig.baseUrl || 'https://api.openai.com/v1'}/chat/completions`;
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+
+  const resolvedModel =
+    provider === 'gemini'
+      ? (model.includes('gemini') ? model : 'gemini-2.0-flash')
+      : model;
+
+  const payload = {
+    model: resolvedModel,
+    messages,
+    ...(useTools ? { tools, tool_choice: 'auto' } : {}),
+  };
+  if (provider === 'ollama') {
+    payload.stream = false;
+  }
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`${provider.toUpperCase()} API error ${res.status}: ${errText.slice(0, 180)}`);
+  }
+
+  const data = await res.json();
+
+  if (provider === 'ollama') {
+    const msg = data.message;
+    const text = msg?.content || '';
+    const toolCalls = [];
+    if (Array.isArray(msg?.tool_calls)) {
+      for (const tc of msg.tool_calls) {
+        toolCalls.push({
+          id: tc.id || `call_${Math.random().toString(36).slice(2, 8)}`,
+          name: tc.function?.name,
+          args: typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments) : (tc.function?.arguments || {}),
+        });
+      }
+    }
+    return { text, toolCalls, rawMessage: msg };
+  }
+
+  const msg = data.choices?.[0]?.message;
+  const text = msg?.content || '';
+  const toolCalls = [];
+  if (Array.isArray(msg?.tool_calls) && msg.tool_calls.length > 0) {
+    for (const tc of msg.tool_calls) {
+      let parsedArgs = {};
+      try {
+        parsedArgs = typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments) : (tc.function?.arguments || {});
+      } catch (e) {
+        parsedArgs = {};
+      }
+      toolCalls.push({
+        id: tc.id || `call_${Math.random().toString(36).slice(2, 8)}`,
+        name: tc.function?.name,
+        args: parsedArgs,
+      });
+    }
+  }
+
+  return { text, toolCalls, rawMessage: msg };
+}
+
+export async function runAgentLoop(botToken, chatId, userText) {
+  let typingTimer = null;
+  const startTyping = () => {
+    sendChatAction(botToken, chatId, 'typing');
+    typingTimer = setInterval(() => {
+      sendChatAction(botToken, chatId, 'typing');
+    }, 3800);
+  };
+  const stopTyping = () => {
+    if (typingTimer) {
+      clearInterval(typingTimer);
+      typingTimer = null;
+    }
+  };
+
+  startTyping();
+
+  try {
+    const cfg = await getConfig();
+    const ai = cfg.ai || {};
+    const provider = ai.provider || 'none';
+
+    if (provider === 'none' || (!ai.apiKey && provider !== 'ollama')) {
+      const offlineMsg =
+        `⚠️ *AI Copilot Not Configured:*\n` +
+        `OutFox Dashboard ➔ *Settings ➔ AI Engine* me jaakar apna Groq ya Gemini API Key connect karo!\n\n` +
+        `_Quick Actions Available:_\n` +
+        `• \`/live\` — Check live campaigns\n` +
+        `• \`/pulse\` — Daily scorecard\n` +
+        `• \`/candidates\` — Switch persona`;
+      stopTyping();
+      return sendTelegramMessage(botToken, chatId, offlineMsg);
+    }
+
+    const contextData = await buildAgentContext();
+    const systemPrompt = buildSystemPrompt(contextData);
+    const recentHistory = await getRecentChatTurns();
+
+    // Avoid duplicate user message if already recorded
+    let historyTurns = [...recentHistory];
+    if (
+      historyTurns.length > 0 &&
+      historyTurns[historyTurns.length - 1].role === 'user' &&
+      historyTurns[historyTurns.length - 1].content.trim() === userText.replace(/[*_`\[\]]/g, '').trim().slice(0, 500)
+    ) {
+      historyTurns.pop();
+    }
+
+    let messages = [
+      { role: 'system', content: systemPrompt },
+      ...historyTurns,
+      { role: 'user', content: userText },
+    ];
+
+    let lastBlueprint = null;
+    let launchedCampaign = null;
+    let controlledCampaigns = null;
+    let finalContent = '';
+    let iterations = 0;
+    const MAX_ITERATIONS = 5;
+
+    while (iterations < MAX_ITERATIONS) {
+      iterations++;
+
+      const response = await callLlmWithTools(provider, ai, messages, AI_TOOLS);
+
+      if (response.toolCalls && response.toolCalls.length > 0) {
+        if (provider === 'anthropic') {
+          messages.push({
+            role: 'assistant',
+            content: response.rawContent || response.toolCalls.map((tc) => ({
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.name,
+              input: tc.args,
+            })),
+          });
+        } else {
+          messages.push({
+            role: 'assistant',
+            content: response.text || null,
+            tool_calls: response.toolCalls.map((tc) => ({
+              id: tc.id,
+              type: 'function',
+              function: {
+                name: tc.name,
+                arguments: JSON.stringify(tc.args),
+              },
+            })),
+          });
+        }
+
+        for (const tc of response.toolCalls) {
+          try {
+            const toolOutput = await executeTool(tc.name, tc.args);
+
+            if (tc.name === 'design_campaign_blueprint' || tc.name === 'update_blueprint_steps') {
+              lastBlueprint = toolOutput;
+            } else if (tc.name === 'launch_blueprint') {
+              launchedCampaign = toolOutput;
+            } else if (tc.name === 'control_campaign') {
+              controlledCampaigns = toolOutput;
+            }
+
+            if (provider === 'anthropic') {
+              messages.push({
+                role: 'user',
+                content: [
+                  {
+                    type: 'tool_result',
+                    tool_use_id: tc.id,
+                    content: JSON.stringify(toolOutput),
+                  },
+                ],
+              });
+            } else {
+              messages.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                content: JSON.stringify(toolOutput),
+              });
+            }
+          } catch (err) {
+            const errorOutput = { error: err.message || 'Tool execution failed' };
+            if (provider === 'anthropic') {
+              messages.push({
+                role: 'user',
+                content: [
+                  {
+                    type: 'tool_result',
+                    tool_use_id: tc.id,
+                    is_error: true,
+                    content: JSON.stringify(errorOutput),
+                  },
+                ],
+              });
+            } else {
+              messages.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                content: JSON.stringify(errorOutput),
+              });
+            }
+          }
+        }
+      } else {
+        finalContent = response.text || '';
+        break;
+      }
+    }
+
+    if (!finalContent && lastBlueprint) {
+      finalContent = `📋 *Campaign Blueprint Ready!*\n\n• Campaign: *${lastBlueprint.campaignName}*\n• Target List: *${lastBlueprint.listName}*\n• Steps: *${(lastBlueprint.steps || []).length}*`;
+    }
+
+    if (!finalContent) {
+      finalContent = 'Understood. Done!';
+    }
+
+    // Build action buttons based on executed tools
+    const inlineButtons = [];
+
+    if (lastBlueprint && (lastBlueprint.blueprintId || lastBlueprint.ok)) {
+      const bpId = lastBlueprint.blueprintId || (await getLatestBlueprint())?.blueprintId;
+      if (bpId) {
+        inlineButtons.push([
+          { text: '🚀 Launch Campaign Now', callback_data: `camp_approve:${bpId}` },
+        ]);
+        inlineButtons.push([
+          { text: '✏️ Edit Note / Pitch', callback_data: `camp_edit_info:${bpId}` },
+          { text: '❌ Discard', callback_data: `camp_discard:${bpId}` },
+        ]);
+      }
+    } else if (controlledCampaigns) {
+      inlineButtons.push([
+        { text: '📊 Live Status', callback_data: 'live_status' },
+        { text: controlledCampaigns.action === 'paused' ? '▶️ Resume All' : '⏸️ Pause All', callback_data: controlledCampaigns.action === 'paused' ? 'camp_resume' : 'camp_pause' },
+      ]);
+    } else if (launchedCampaign) {
+      inlineButtons.push([
+        { text: '📊 Live Status', callback_data: 'live_status' },
+        { text: '⏸️ Pause Campaign', callback_data: 'camp_pause' },
+      ]);
+    }
+
+    await recordChatTurn('assistant', finalContent);
+
+    stopTyping();
+    const replyMarkup = inlineButtons.length > 0 ? { inline_keyboard: inlineButtons } : undefined;
+    return await sendTelegramMessage(botToken, chatId, finalContent, replyMarkup ? { reply_markup: replyMarkup } : {});
+  } catch (err) {
+    console.error('[Telegram Agent Loop Error]', err);
+    stopTyping();
+    const fallbackText = `⚠️ *Copilot Error:* ${err.message || 'Something went wrong.'}\n\n_Tip: Use /live or /clear to reset._`;
+    return await sendTelegramMessage(botToken, chatId, fallbackText);
+  } finally {
+    stopTyping();
+  }
+}
+
+export async function callDynamicAi(userText, options = {}) {
   const cfg = await getConfig();
   const ai = cfg.ai || {};
   const provider = ai.provider || 'none';
@@ -886,181 +1688,23 @@ async function callDynamicAi(userText, options = {}) {
   if (provider === 'none' || (!ai.apiKey && provider !== 'ollama')) {
     return {
       type: 'text',
-      content: `⚠️ *AI Engine Not Configured:*\nOutFox Dashboard ➔ *Settings ➔ AI Engine* me jaakar apna Groq ya Gemini API Key connect karo!\n\n_Quick Actions:_\n• \`Campaign status\`\n• \`Pause campaign\`\n• \`Resume campaign\``,
+      content: 'AI Engine not configured.',
     };
   }
 
-  const ctx = await getLiveWorkspaceContext();
-  const activeCand = ctx.activeCand;
-  const allLists = ctx.allLists;
-  const allCamps = ctx.allCamps;
-  const quotas = ctx.quotas;
-
-  const invRemaining = Math.max(0, (quotas.invite?.dailyCap || 20) - (quotas.invite?.dailyUsed || 0));
-  const msgRemaining = Math.max(0, (quotas.message?.dailyCap || 40) - (quotas.message?.dailyUsed || 0));
-
-  const workspaceContextStr =
-    `\n\n⚡ CURRENT LIVE WORKSPACE CONTEXT:\n` +
-    `• Active Candidate: "${activeCand?.name || 'Aditya'}" (${activeCand?.title || 'Data Analyst'}, Mode: ${activeCand?.mode || 'reverse_recruiting'})\n` +
-    `• Saved Invite Note: "${activeCand?.pitchTemplate || ''}"\n` +
-    `• Saved Follow-Up: "${activeCand?.followupTemplate || ''}"\n` +
-    `• Booking Link: ${activeCand?.bookingLink || 'https://calendly.com'}\n` +
-    `• Existing Lead Lists (${allLists.length}):\n` +
-    (allLists.length ? allLists.map((l) => `  - "${l.name}" (ID: ${l.listId}, Leads: ${l.count || l.itemCount || 0})`).join('\n') : '  (None yet)') +
-    `\n• Active Campaigns (${allCamps.length}):\n` +
-    (allCamps.length ? allCamps.map((c) => `  - "${c.name}" (${c.status}, Enrolled: ${c.stats?.enrolled || 0})`).join('\n') : '  (None yet)') +
-    `\n• Today's Quota Remaining: Invites: ${invRemaining}, Messages: ${msgRemaining}\n` +
-    `When user requests to launch, design, create, or build a campaign sequence (including typos like "degsig campaign", "desig", or "banao sequence"), call design_campaign_blueprint. When modifying sequence steps or pitches, call edit_campaign_blueprint.`;
-
-  const apiKey = ai.apiKey || '';
-  const model =
-    ai.model ||
-    (provider === 'groq'
-      ? 'llama-3.3-70b-versatile'
-      : provider === 'gemini'
-        ? 'gemini-2.0-flash'
-        : 'gpt-4o-mini');
-
   const systemPrompt =
-    (options.systemPrompt ||
-      (options.forceText
-        ? 'You are OutFox AI SDR, an expert LinkedIn outreach copywriter. Write concise, warm, professional responses without corporate fluff. Keep under 240 characters.'
-        : 'You are OutFox AI SDR, an autonomous assistant controlling LinkedIn outreach. ' +
-          'Understand user requests in English, Hindi, or Hinglish. ' +
-          'When the user asks to search prospects, save leads to a list, design/create campaigns, edit campaign steps, send messages, switch candidates, or enrich leads, call the matching function tool. ' +
-          'Always be helpful, warm, and accurate.')) + workspaceContextStr;
-
-  let url = '';
-  let headers = { 'Content-Type': 'application/json' };
-  let body = {};
-  const useTools = !options.forceText;
-
-  const recentTurns = options.forceText ? [] : (await getRecentChatTurns());
-
-  // If recentTurns already ends with the current user message (recorded at start of command), avoid duplicating it
-  let historyTurns = [...recentTurns];
-  if (
-    historyTurns.length > 0 &&
-    historyTurns[historyTurns.length - 1].role === 'user' &&
-    historyTurns[historyTurns.length - 1].content.trim() === userText.replace(/[*_`\[\]]/g, '').trim().slice(0, 600)
-  ) {
-    historyTurns.pop();
-  }
-
-  const assembledMessages = [
+    options.systemPrompt ||
+    'You are OutFox AI SDR, an expert LinkedIn outreach copywriter. Write concise, warm, professional responses without corporate fluff. Keep under 240 characters.';
+  const messages = [
     { role: 'system', content: systemPrompt },
-    ...historyTurns,
     { role: 'user', content: userText },
   ];
 
-  // Anthropic messages format: system prompt is top-level; messages array must start with 'user' and alternate
-  let anthropicMessages = [...historyTurns, { role: 'user', content: userText }];
-  while (anthropicMessages.length > 0 && anthropicMessages[0].role !== 'user') {
-    anthropicMessages.shift();
-  }
-  if (anthropicMessages.length === 0) {
-    anthropicMessages = [{ role: 'user', content: userText }];
-  }
-  const sanitizedAnthropicMessages = [];
-  for (const m of anthropicMessages) {
-    if (sanitizedAnthropicMessages.length > 0 && sanitizedAnthropicMessages[sanitizedAnthropicMessages.length - 1].role === m.role) {
-      sanitizedAnthropicMessages[sanitizedAnthropicMessages.length - 1].content += '\n' + m.content;
-    } else {
-      sanitizedAnthropicMessages.push({ role: m.role, content: m.content });
-    }
-  }
-
-  if (provider === 'groq') {
-    url = `${ai.baseUrl || 'https://api.groq.com'}/openai/v1/chat/completions`;
-    headers['Authorization'] = `Bearer ${apiKey}`;
-    body = {
-      model,
-      messages: assembledMessages,
-      ...(useTools ? { tools: AI_TOOLS, tool_choice: 'auto' } : {}),
-    };
-  } else if (provider === 'gemini') {
-    url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
-    headers['Authorization'] = `Bearer ${apiKey}`;
-    body = {
-      model: model.includes('gemini') ? model : 'gemini-2.0-flash',
-      messages: assembledMessages,
-      ...(useTools ? { tools: AI_TOOLS, tool_choice: 'auto' } : {}),
-    };
-  } else if (provider === 'openai' || provider === 'openai-compatible') {
-    url = `${ai.baseUrl || 'https://api.openai.com/v1'}/chat/completions`;
-    headers['Authorization'] = `Bearer ${apiKey}`;
-    body = {
-      model,
-      messages: assembledMessages,
-      ...(useTools ? { tools: AI_TOOLS, tool_choice: 'auto' } : {}),
-    };
-  } else if (provider === 'anthropic') {
-    url = `${ai.baseUrl || 'https://api.anthropic.com'}/v1/messages`;
-    headers['x-api-key'] = apiKey;
-    headers['anthropic-version'] = '2023-06-01';
-    headers['anthropic-dangerous-direct-browser-access'] = 'true';
-    body = {
-      model: model || 'claude-3-5-sonnet-20241022',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: sanitizedAnthropicMessages,
-      ...(useTools
-        ? {
-            tools: AI_TOOLS.map((t) => ({
-              name: t.function.name,
-              description: t.function.description,
-              input_schema: t.function.parameters,
-            })),
-          }
-        : {}),
-    };
-  } else if (provider === 'ollama') {
-    url = `${ai.baseUrl || 'http://127.0.0.1:11434'}/api/chat`;
-    body = {
-      model: model || 'llama3.1',
-      stream: false,
-      messages: assembledMessages,
-      ...(useTools ? { tools: AI_TOOLS } : {}),
-    };
-  } else {
-    throw new Error(`Unsupported AI provider: ${provider}`);
-  }
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`AI Provider (${provider}) error ${res.status}: ${errText.slice(0, 180)}`);
-  }
-
-  const data = await res.json();
-
-  if (provider === 'anthropic') {
-    if (useTools) {
-      const toolUse = (data.content || []).find((c) => c.type === 'tool_use');
-      if (toolUse) {
-        return { type: 'tool_call', name: toolUse.name, args: toolUse.input || {} };
-      }
-    }
-    const textPart = (data.content || []).find((c) => c.type === 'text');
-    return { type: 'text', content: textPart?.text || 'Understood.' };
-  }
-
-  const msg = data.choices?.[0]?.message;
-  if (useTools && msg?.tool_calls?.length > 0) {
-    const firstCall = msg.tool_calls[0];
-    return {
-      type: 'tool_call',
-      name: firstCall.function.name,
-      args: JSON.parse(firstCall.function.arguments || '{}'),
-    };
-  }
-
-  return { type: 'text', content: msg?.content || 'Understood.' };
+  const res = await callLlmWithTools(provider, ai, messages, []);
+  return {
+    type: 'text',
+    content: res.text,
+  };
 }
 
 // 👥 Send Candidate Personas List with 1-Tap Switch Buttons
@@ -1349,53 +1993,7 @@ async function handleUserCommand(botToken, chatId, text) {
     );
   }
 
-  // 1. Conversational Sequence Step Editing Interceptor (with Auto-Recovery & Persistent Storage)
-  const editCmd = parseBlueprintEditCommand(trimmed);
-  if (editCmd && editCmd.newContent) {
-    let bp = await getLatestBlueprint();
-    let latestId = bp?.blueprintId;
-
-    // Auto-Recovery: synthesize blueprint on the fly if storage was empty
-    if (!bp) {
-      const allLists = await lists.getAll().catch(() => []);
-      const activeCand = await getActiveCandidate().catch(() => null);
-      const targetList =
-        allLists.find((l) => l.name.toLowerCase().includes('data analyst')) ||
-        allLists[0] ||
-        { name: 'Data Analyst USA', listId: 'unknown', count: 25 };
-      latestId = `bp_${Date.now()}`;
-      bp = createOptimalBlueprint(latestId, targetList, activeCand, {});
-    }
-
-    if (editCmd.targetStep === 'followup') {
-      bp.followupMessage = editCmd.newContent;
-      const msgStep = bp.steps.find((s) => s.type === 'message');
-      if (msgStep) msgStep.body = editCmd.newContent;
-      else bp.steps.push({ type: 'message', body: editCmd.newContent, delayDays: 1, desc: 'Follow-up message after acceptance' });
-      await saveStoredBlueprint(latestId, bp);
-      await recordChatTurn('assistant', 'Updated Step 3 (Follow-Up Message) of campaign blueprint.');
-      return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Step 3 (Follow-Up Message) Updated Successfully!*');
-    }
-
-    if (editCmd.targetStep === 'invite') {
-      bp.inviteNote = editCmd.newContent;
-      const inviteStep = bp.steps.find((s) => s.type === 'invite');
-      if (inviteStep) inviteStep.note = editCmd.newContent;
-      await saveStoredBlueprint(latestId, bp);
-      await recordChatTurn('assistant', 'Updated Step 2 (Connection Note) of campaign blueprint.');
-      return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Step 2 (Connection Note) Updated Successfully!*');
-    }
-
-    if (editCmd.targetStep === 'name') {
-      bp.campaignName = editCmd.newContent;
-      bp.name = editCmd.newContent;
-      await saveStoredBlueprint(latestId, bp);
-      await recordChatTurn('assistant', `Updated campaign name to "${editCmd.newContent}".`);
-      return presentCampaignBlueprint(botToken, chatId, latestId, bp, '✏️ *Campaign Name Updated Successfully!*');
-    }
-  }
-
-  // 2. Candidate Switcher Commands
+  // 1. Candidate Switcher Commands
   const switchMatch = trimmed.match(/^\/switch(?:\s+(.+))?$/i);
   if (switchMatch) {
     const target = (switchMatch[1] || '').trim();
@@ -1422,184 +2020,25 @@ async function handleUserCommand(botToken, chatId, text) {
     return sendCandidatesList(botToken, chatId);
   }
 
-  // 3. Email Waterfall Enrichment Command
+  // 2. Email Waterfall Enrichment Command
   const enrichMatch = trimmed.match(/^\/enrich\s+([a-zA-Z0-9\-_%]+)/i);
   if (enrichMatch) {
     const publicId = enrichMatch[1].trim();
     return handleEnrichLead(botToken, chatId, publicId);
   }
 
-  // 4. Quick Daily Stats / Pulse Command
+  // 3. Quick Daily Stats / Pulse Command
   if (/^\/?(pulse|stats|scorecard|daily\s*stats|report)/i.test(trimmed)) {
     return renderDailyStats(botToken, chatId);
   }
 
-  // 5. Live Campaign & Per-Lead Status Command (/live, /status, or natural language)
-  if (
-    /^\/?(live|status|live\s*status)/i.test(trimmed) ||
-    /^(campaign\s*status|campaign\s*ka\s*(?:live\s*)?status|kis\s*lead\s*ka\s*kya\s*status)/i.test(trimmed) ||
-    /live\s*status\s*batao/i.test(trimmed)
-  ) {
+  // 4. Explicit Live Status Slash Command
+  if (/^\/?live$/i.test(trimmed)) {
     return renderLiveCampaignStatus(botToken, chatId);
   }
 
-  try {
-    await sendTelegramMessage(botToken, chatId, `⚡ *AI analyzing intent...*`);
-
-    const aiResult = await callDynamicAi(trimmed);
-
-    if (aiResult.type === 'tool_call') {
-      const execResult = await executeTool(aiResult.name, aiResult.args);
-
-      if (aiResult.name === 'edit_campaign_blueprint') {
-        if (execResult.ok && execResult.blueprint) {
-          const stepLabel =
-            execResult.stepToEdit === 'followup'
-              ? 'Step 3 (Follow-Up Message)'
-              : execResult.stepToEdit === 'invite'
-                ? 'Step 2 (Connection Note)'
-                : 'Campaign Name';
-          await recordChatTurn('assistant', `Updated ${stepLabel} in campaign blueprint.`);
-          const notice =
-            execResult.stepToEdit === 'followup'
-              ? '✏️ *Step 3 (Follow-Up Message) Updated Successfully!*'
-              : execResult.stepToEdit === 'invite'
-                ? '✏️ *Step 2 (Connection Note) Updated Successfully!*'
-                : '✏️ *Campaign Name Updated Successfully!*';
-          return presentCampaignBlueprint(botToken, chatId, execResult.blueprintId, execResult.blueprint, notice);
-        } else {
-          return sendTelegramMessage(botToken, chatId, `⚠️ ${execResult.error || 'Failed to edit blueprint.'}`);
-        }
-      }
-
-      if (aiResult.name === 'design_campaign_blueprint' || aiResult.name === 'create_outreach_campaign') {
-        if (execResult.type === 'disambiguation_required') {
-          const disambigMsg =
-            `🤔 *Did you mean list "${execResult.matchedName}" (${execResult.leadCount} leads)?*\n` +
-            `You requested outreach for _"${execResult.searched}"_.`;
-
-          const replyMarkup = {
-            inline_keyboard: [
-              [{ text: `✅ Yes, use "${execResult.matchedName}"`, callback_data: `bp_view:${execResult.blueprintId}` }],
-              [{ text: '📁 Select from All Lists', callback_data: 'list_all_for_camp' }],
-            ],
-          };
-
-          return sendTelegramMessage(botToken, chatId, disambigMsg, { reply_markup: replyMarkup });
-        }
-
-        if (execResult.type === 'list_not_found') {
-          const notFoundMsg =
-            `⚠️ *List "${execResult.searched}" nahi mili.*\n\n` +
-            `Existing lists: ${execResult.availableLists.map((n) => `\`${n}\``).join(', ') || 'None'}\n\n` +
-            `_Pehle leads search karke list banao ya /candidates check karo._`;
-
-          const replyMarkup = {
-            inline_keyboard: [
-              [{ text: '📁 View All Lists', callback_data: 'list_all_for_camp' }],
-              [{ text: '👥 Switch Persona', callback_data: 'show_candidates' }],
-            ],
-          };
-
-          return sendTelegramMessage(botToken, chatId, notFoundMsg, { reply_markup: replyMarkup });
-        }
-
-        if (execResult.type === 'blueprint_ready') {
-          const bp = execResult.blueprint;
-          await recordChatTurn('assistant', `Generated campaign blueprint for list "${bp.listName}" with ${(bp.steps || []).length} steps.`);
-          return presentCampaignBlueprint(botToken, chatId, bp.blueprintId || execResult.blueprintId, bp);
-        }
-      }
-
-      let reply = `✅ *Action Completed Successfully!*\n\n`;
-      let replyMarkup = null;
-
-      if (aiResult.name === 'switch_candidate_workspace') {
-        await recordChatTurn('assistant', `Switched active candidate persona to ${execResult.name} (${execResult.title}).`);
-        reply +=
-          `🔄 *Candidate Workspace Switched!*\n\n` +
-          `• Name: *${execResult.name}* (\`${execResult.slug}\`)\n` +
-          `• Title: ${execResult.title}\n` +
-          `• Mode: ${execResult.mode === 'reverse_recruiting' ? 'Reverse Recruiting' : 'Agency Sourcing'}\n` +
-          `• Booking Link: ${execResult.bookingLink}`;
-
-        replyMarkup = {
-          inline_keyboard: [
-            [{ text: '📊 Outreach Pulse', callback_data: 'daily_stats' }],
-          ],
-        };
-      } else if (aiResult.name === 'enrich_lead_email') {
-        await recordChatTurn('assistant', execResult.email ? `Enriched lead ${execResult.publicId}: found email ${execResult.email}.` : `Could not find email for lead ${execResult.publicId}.`);
-        if (execResult.email) {
-          reply +=
-            `📧 *Enrichment Successful!*\n\n` +
-            `• Lead: \`${execResult.publicId}\`\n` +
-            `• Email: \`${execResult.email}\`\n` +
-            (execResult.phone ? `• Phone: \`${execResult.phone}\`\n` : '') +
-            `• Source: ${execResult.source.toUpperCase()}\n` +
-            `• Confidence: ${Math.round((execResult.confidence || 0.8) * 100)}%`;
-        } else {
-          reply += `⚠️ No email found for \`${execResult.publicId}\` across Apollo and Hunter.`;
-        }
-      } else if (aiResult.name === 'search_and_save_leads') {
-        const listNameUsed = execResult.listName || lastSearchedList;
-        await recordChatTurn('assistant', `Found ${execResult.countFound} prospects on LinkedIn and saved to list "${listNameUsed}".`);
-        reply += `🎯 *Found ${execResult.countFound} Prospects on LinkedIn!*\n`;
-        if (execResult.listSaved) {
-          reply += `📁 *Saved to List:* \`${execResult.listName}\`\n\n`;
-        }
-        reply += `*Top Candidates:*\n`;
-        execResult.topProfiles.forEach((p, i) => {
-          reply += `*${i + 1}. ${p.name}*\n💼 ${p.headline}\n📍 ${p.location}\n${p.url ? `🔗 [Profile Link](${p.url})\n` : ''}\n`;
-        });
-
-        const targetList = execResult.listName || lastSearchedList;
-        replyMarkup = {
-          inline_keyboard: [
-            [{ text: `🚀 Launch Campaign for "${targetList}"`, callback_data: `quick_launch:${targetList}` }],
-            [
-              { text: '📊 Pulse', callback_data: 'daily_stats' },
-              { text: '⏸️ Pause All', callback_data: 'camp_pause' },
-            ],
-          ],
-        };
-      } else if (aiResult.name === 'get_campaign_live_status') {
-        await recordChatTurn('assistant', `Checked live status for campaign ${execResult.targetCampaignName || 'active'}.`);
-        return renderLiveCampaignStatus(botToken, chatId, execResult.targetCampaignId);
-      } else if (aiResult.name === 'manage_campaigns') {
-        await recordChatTurn('assistant', execResult.message || `Campaign status: ${execResult.active} active, ${execResult.paused} paused.`);
-        if (execResult.pausedCount !== undefined) {
-          reply += `⏸️ *Paused:* ${execResult.pausedCount} active campaign(s).`;
-        } else if (execResult.resumedCount !== undefined) {
-          reply += `▶️ *Resumed:* ${execResult.resumedCount} campaign(s). Runner kicked off!`;
-        } else {
-          reply += `📊 *Campaign Status:*\n• Active: *${execResult.active}*\n• Paused: *${execResult.paused}*\n• Total: *${execResult.total}*`;
-        }
-
-        replyMarkup = {
-          inline_keyboard: [
-            [
-              { text: '⏸️ Pause All', callback_data: 'camp_pause' },
-              { text: '▶️ Resume All', callback_data: 'camp_resume' },
-            ],
-          ],
-        };
-      } else if (aiResult.name === 'send_linkedin_message') {
-        await recordChatTurn('assistant', `Sent LinkedIn message to ${execResult.recipient}.`);
-        reply += `✉️ Message sent to *${execResult.recipient}*!`;
-      } else {
-        reply += JSON.stringify(execResult, null, 2);
-      }
-
-      return sendTelegramMessage(botToken, chatId, reply, replyMarkup ? { reply_markup: replyMarkup } : {});
-    }
-
-    await recordChatTurn('assistant', aiResult.content);
-    return sendTelegramMessage(botToken, chatId, aiResult.content);
-  } catch (err) {
-    console.error('[Telegram Command Error]', err);
-    return sendTelegramMessage(botToken, chatId, `❌ Error: ${err.message}`);
-  }
+  // 5. 100% of Natural Language Flows into the Multi-Turn ReAct Agent Loop
+  return runAgentLoop(botToken, chatId, trimmed);
 }
 
 async function handleCallback(botToken, chatId, callbackData) {
@@ -1609,37 +2048,23 @@ async function handleCallback(botToken, chatId, callbackData) {
   // 1. Blueprint Pre-Flight Approval: Approve & Launch
   if (data.startsWith('camp_approve:')) {
     const blueprintId = data.replace('camp_approve:', '').trim();
-    const blueprints = await getStoredBlueprints();
-    const blueprint = blueprints[blueprintId] || pendingBlueprints.get(blueprintId) || (await getLatestBlueprint());
-    if (!blueprint) {
-      return sendTelegramMessage(botToken, chatId, `⚠️ *Blueprint expired or already launched.*`);
-    }
-
-    await sendTelegramMessage(botToken, chatId, `🚀 *Launching campaign sequence for "${blueprint.campaignName || blueprint.name}"...*`);
+    await sendTelegramMessage(botToken, chatId, `🚀 *Launching campaign sequence...*`);
     try {
-      const camp = await campaigns.create({
-        name: blueprint.campaignName || blueprint.name,
-        listId: blueprint.listId,
-        steps: blueprint.steps,
-        settings: { stopOnReply: true, autopilot: false },
-      });
-
-      await removeStoredBlueprint(blueprintId);
-      const enrolled = await campaigns.readEnrollments(camp.campaignId).catch(() => []);
-      await recordChatTurn('assistant', `Campaign "${camp.name}" launched for list "${blueprint.listName}" with ${enrolled.length} enrolled leads.`);
+      const res = await launchBlueprintInternal(blueprintId);
+      await recordChatTurn('assistant', `Campaign "${res.campaign.name}" launched for list "${res.blueprint.listName}" with ${res.enrolledCount} enrolled leads.`);
 
       const launchMsg =
         `🚀 *Campaign Successfully Launched!*\n\n` +
-        `• Campaign: *${camp.name}*\n` +
-        `• Target List: *${blueprint.listName}*\n` +
-        `• Enrolled Leads: *${enrolled.length}*\n` +
-        `• Sequence Steps: *${blueprint.steps.length}*\n\n` +
+        `• Campaign: *${res.campaign.name}*\n` +
+        `• Target List: *${res.blueprint.listName}*\n` +
+        `• Enrolled Leads: *${res.enrolledCount}*\n` +
+        `• Sequence Steps: *${res.blueprint.steps.length}*\n\n` +
         `_OutFox background runner is now active!_`;
 
       const replyMarkup = {
         inline_keyboard: [
           [
-            { text: '📊 Campaign Status', callback_data: 'camp_status' },
+            { text: '📊 Campaign Status', callback_data: 'live_status' },
             { text: '⏸️ Pause Campaign', callback_data: 'camp_pause' },
           ],
         ],
@@ -1744,7 +2169,11 @@ async function handleCallback(botToken, chatId, callbackData) {
     return handleEnrichLead(botToken, chatId, publicId);
   }
 
-  // 10. Campaign Controls
+  // 10. Campaign Controls & Live Status
+  if (data === 'live_status') {
+    return renderLiveCampaignStatus(botToken, chatId);
+  }
+
   if (data === 'camp_status') {
     const all = await campaigns.getAll();
     const active = all.filter((c) => c.status === 'active');

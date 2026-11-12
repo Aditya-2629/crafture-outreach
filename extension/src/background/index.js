@@ -139,7 +139,12 @@ export const STALE_WITHDRAW_ALARM = 'outfox-stale-withdraw';
 export const SNOOZE_CHECK_ALARM = 'outfox-snooze-check';
 export const DRIVE_AUTOBACKUP_ALARM = 'outfox-drive-autobackup';
 
-chrome.alarms.create(CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
+// Clear legacy campaignTick alarm on startup so duplicate alarms never collide
+try {
+  chrome.alarms?.clear?.('campaignTick');
+} catch {}
+
+chrome.alarms.create(OUTFOX_CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
 chrome.alarms.create(QUEUE_TICK_ALARM, { periodInMinutes: QUEUE_TICK_MINUTES });
 chrome.alarms.create(STALE_WITHDRAW_ALARM, { periodInMinutes: 720 });
 chrome.alarms.create(SNOOZE_CHECK_ALARM, { periodInMinutes: 60 });
@@ -184,5 +189,12 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     .catch((e) => console.error('[Campaign tick error]', e));
 });
 
-chrome.runtime.onStartup.addListener(reconnectBridge);
-chrome.runtime.onInstalled.addListener(reconnectBridge);
+function onStartup() {
+  reconnectBridge();
+  try {
+    chrome.alarms?.clear?.('campaignTick');
+  } catch {}
+}
+
+chrome.runtime.onStartup.addListener(onStartup);
+chrome.runtime.onInstalled.addListener(onStartup);

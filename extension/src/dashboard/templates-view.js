@@ -511,6 +511,14 @@ export function openEditObjectionModal({ objection = null, onSave }) {
   });
 }
 
+function escapeHtml(str = '') {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function ensureTemplatesStyles() {
   const STYLE_ID = 'waalaxy-templates-view-css';
@@ -735,18 +743,18 @@ export async function renderTemplatesView(container, ctx = {}) {
                   <div class="template-card-head" style="align-items: flex-start;">
                     <div>
                       <span style="display:inline-block; font-size:10.5px; font-weight:800; background:#fff7ed; color:#ff6b00; border:1px solid #ffedd5; padding:2px 8px; border-radius:6px; margin-bottom:6px;">
-                        ${o.tag}
+                        ${escapeHtml(o.tag)}
                       </span>
-                      <h4 class="template-name" style="font-size:14px; font-weight:700; color:#14142b;">${o.title}</h4>
+                      <h4 class="template-name" style="font-size:14px; font-weight:700; color:#14142b;">${escapeHtml(o.title)}</h4>
                     </div>
                   </div>
                   <div style="margin-bottom:10px;">
                     <span style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Triggers:</span>
-                    <div style="font-size:11.5px; color:#64748b; font-style:italic; margin-top:2px;">${o.trigger}</div>
+                    <div style="font-size:11.5px; color:#64748b; font-style:italic; margin-top:2px;">${escapeHtml(o.trigger)}</div>
                   </div>
                   <div style="margin-bottom:14px;">
                     <span style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Base Response:</span>
-                    <p class="template-snippet" style="min-height:auto; margin:4px 0 0 0; font-size:12px; color:#334155;">${o.baseAnswer}</p>
+                    <p class="template-snippet" style="min-height:auto; margin:4px 0 0 0; font-size:12px; color:#334155;">${escapeHtml(o.baseAnswer)}</p>
                   </div>
                   <div class="template-card-footer">
                     <span class="template-char-badge">${o.baseAnswer.length} chars</span>
@@ -874,6 +882,199 @@ export async function renderTemplatesView(container, ctx = {}) {
           paint();
         }
       });
+    });
+
+    // 1. Add Objection Rule
+    container.querySelector('#btn-create-objection-main')?.addEventListener('click', () => {
+      openEditObjectionModal({
+        objection: null,
+        onSave: async (newObj) => {
+          try {
+            const res = await call(ACTIONS.OBJECTION_SAVE, { objection: newObj });
+            const saved = res?.saved || newObj;
+            objections.unshift(saved);
+            ctx.showToast?.('Objection rule saved!', 'success');
+            paint();
+          } catch (err) {
+            ctx.showToast?.(err?.message || 'Failed to save objection rule.', 'error');
+          }
+        },
+      });
+    });
+
+    // 2. Edit Objection Rule
+    container.querySelectorAll('.btn-edit-objection').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const target = objections.find((o) => o.id === id);
+        if (!target) return;
+
+        openEditObjectionModal({
+          objection: target,
+          onSave: async (updated) => {
+            try {
+              const res = await call(ACTIONS.OBJECTION_SAVE, { objection: updated });
+              const saved = res?.saved || updated;
+              const idx = objections.findIndex((o) => o.id === id);
+              if (idx !== -1) {
+                objections[idx] = saved;
+              } else {
+                objections.unshift(saved);
+              }
+              ctx.showToast?.('Objection rule updated!', 'success');
+              paint();
+            } catch (err) {
+              ctx.showToast?.(err?.message || 'Failed to update objection rule.', 'error');
+            }
+          },
+        });
+      });
+    });
+
+    // 3. Delete Objection Rule
+    container.querySelectorAll('.btn-del-objection').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const ok = await openUiConfirm({
+          title: 'Delete Objection Rule',
+          message: 'Are you sure you want to delete this objection playbook rule?',
+          confirmText: 'Delete',
+          confirmDanger: true,
+        });
+
+        if (ok) {
+          try {
+            await call(ACTIONS.OBJECTION_DELETE, { id });
+            objections = objections.filter((o) => o.id !== id);
+            ctx.showToast?.('Objection rule deleted.', 'success');
+            paint();
+          } catch (err) {
+            ctx.showToast?.(err?.message || 'Failed to delete objection rule.', 'error');
+          }
+        }
+      });
+    });
+
+    // 4. Save Candidate Resume URL
+    const btnSaveResume = container.querySelector('#btn-save-playbook-resume');
+    const inputResumeUrl = container.querySelector('#input-playbook-resume-url');
+
+    const handleSaveResume = async () => {
+      const url = (inputResumeUrl?.value || '').trim();
+
+      if (activeCandidate) {
+        activeCandidate.resumeUrl = url;
+      } else {
+        activeCandidate = {
+          name: 'Default Persona',
+          title: 'Data Professional',
+          resumeUrl: url,
+        };
+      }
+
+      try {
+        if (btnSaveResume) {
+          btnSaveResume.disabled = true;
+          btnSaveResume.textContent = 'Saving...';
+        }
+        const res = await call(ACTIONS.CANDIDATE_SAVE, { candidate: activeCandidate });
+        if (res?.saved) {
+          activeCandidate = res.saved;
+        }
+        ctx.showToast?.('Candidate resume URL saved!', 'success');
+      } catch (err) {
+        ctx.showToast?.(err?.message || 'Failed to save candidate resume URL.', 'error');
+      } finally {
+        if (btnSaveResume) {
+          btnSaveResume.disabled = false;
+          btnSaveResume.textContent = 'Save URL';
+        }
+      }
+    };
+
+    btnSaveResume?.addEventListener('click', handleSaveResume);
+    inputResumeUrl?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSaveResume();
+      }
+    });
+
+    // 5. Live AI Objection Matcher & Intent Tester
+    const btnRunTest = container.querySelector('#btn-run-objection-test');
+    const inputTestMsg = container.querySelector('#input-test-objection-msg');
+    const resultEl = container.querySelector('#objection-test-result');
+
+    const runObjectionTest = async () => {
+      const msg = inputTestMsg?.value?.trim();
+      if (!msg) {
+        ctx.showToast?.('Please enter a simulated inbound message to test.', 'warning');
+        inputTestMsg?.focus();
+        return;
+      }
+
+      if (resultEl) {
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = `
+          <div style="display:flex; align-items:center; gap:8px; color:#64748b; font-size:12.5px;">
+            <span style="display:inline-block; animation:spin 1s linear infinite;">⏳</span> Matching intent and adapting reply...
+          </div>
+        `;
+      }
+
+      try {
+        if (btnRunTest) btnRunTest.disabled = true;
+        const res = await call(ACTIONS.OBJECTION_MATCH_REPLY, {
+          message: msg,
+          fullName: 'Sarah',
+          company: 'Google',
+        });
+
+        if (!resultEl) return;
+        const confPercent = Math.round((res?.confidence ?? 0.85) * 100);
+        const tag = res?.tag || 'OBJECTION';
+        const title = res?.title || 'Matched Playbook Rule';
+        const reply = res?.personalizedReply || res?.reply || 'No reply generated.';
+
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = `
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:11px; font-weight:800; background:#fff7ed; color:#ff6b00; border:1px solid #fed7aa; padding:2px 8px; border-radius:6px;">
+                ${escapeHtml(tag)}
+              </span>
+              <span style="font-size:12.5px; font-weight:700; color:#14142b;">
+                ${escapeHtml(title)}
+              </span>
+            </div>
+            <span style="font-size:11.5px; font-weight:700; color:#15803d; background:#dcfce7; padding:2px 8px; border-radius:12px;">
+              ${confPercent}% match
+            </span>
+          </div>
+          <div style="font-size:11.5px; color:#64748b; margin-bottom:8px;">
+            Simulated Lead: <strong>Sarah</strong> · Company: <strong>Google</strong>
+          </div>
+          <div style="background:#ffffff; border:1px solid #fed7aa; border-radius:8px; padding:12px; font-size:12.5px; color:#1e293b; line-height:1.5; white-space:pre-wrap;">${escapeHtml(reply)}</div>
+        `;
+      } catch (err) {
+        if (resultEl) {
+          resultEl.innerHTML = `
+            <div style="color:#ef4444; font-size:12px; font-weight:600;">
+              Error matching objection: ${escapeHtml(err?.message || 'Unknown error')}
+            </div>
+          `;
+        }
+      } finally {
+        if (btnRunTest) btnRunTest.disabled = false;
+      }
+    };
+
+    btnRunTest?.addEventListener('click', runObjectionTest);
+    inputTestMsg?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        runObjectionTest();
+      }
     });
   }
 

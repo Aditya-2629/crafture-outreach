@@ -124,6 +124,16 @@ export const ACTIONS = Object.freeze({
   OBJECTION_MATCH_REPLY: 'objections.matchReply',
   LEAD_SNOOZE: 'lead.snooze',
   SNOOZED_GET: 'lead.snoozedGet',
+
+  GOOGLE_WORKSPACE_CONNECT: 'googleWorkspace.connect',
+  GOOGLE_WORKSPACE_STATUS: 'googleWorkspace.status',
+  GOOGLE_WORKSPACE_DISCONNECT: 'googleWorkspace.disconnect',
+  SHEETS_CRM_SYNC_NOW: 'sheetsCrm.syncNow',
+  BACKUP_EXPORT_JSON: 'backup.exportJson',
+  BACKUP_IMPORT_JSON: 'backup.importJson',
+  BACKUP_DRIVE_SAVE: 'backup.driveSave',
+  BACKUP_DRIVE_RESTORE: 'backup.driveRestore',
+  OUTREACH_MAILBOX_SWITCH: 'outreachMailbox.switch',
 });
 
 /* ================================================================== */
@@ -308,13 +318,18 @@ export const DEFAULT_CONFIG = {
   humanPacing: true,
   autoWithdraw: { enabled: true, olderThanDays: 14, maxPerRun: 15 },
   dedupeAcrossCampaigns: true,
-  humanPacing: true,
-  autoWithdraw: { enabled: true, olderThanDays: 14, maxPerRun: 15 },
-  dedupeAcrossCampaigns: true,
   ai: { provider: 'none' },
   enrichment: { provider: 'none' },
   bridge: { enabled: true, port: 47829, token: '8824d1f6b5220b57550a33f124e346f8' },
-  mailbox: { connected: false, email: '' },
+  mailbox: { connected: false, email: '', mode: 'workspace' },
+  googleWorkspace: {
+    connected: false,
+    email: '',
+    spreadsheetId: '',
+    spreadsheetUrl: '',
+    lastSyncAt: 0,
+    lastBackupAt: 0,
+  },
   telegram: {
     enabled: false,
     botToken: '',
@@ -631,6 +646,16 @@ const PARAM_SPECS = {
     optional: { days: 'number', note: 'string', fullName: 'string' },
   },
   [ACTIONS.SNOOZED_GET]: {},
+
+  [ACTIONS.GOOGLE_WORKSPACE_CONNECT]: { optional: { interactive: 'boolean' } },
+  [ACTIONS.GOOGLE_WORKSPACE_STATUS]: {},
+  [ACTIONS.GOOGLE_WORKSPACE_DISCONNECT]: {},
+  [ACTIONS.SHEETS_CRM_SYNC_NOW]: {},
+  [ACTIONS.BACKUP_EXPORT_JSON]: {},
+  [ACTIONS.BACKUP_IMPORT_JSON]: { optional: { snapshot: 'object' } },
+  [ACTIONS.BACKUP_DRIVE_SAVE]: {},
+  [ACTIONS.BACKUP_DRIVE_RESTORE]: {},
+  [ACTIONS.OUTREACH_MAILBOX_SWITCH]: { required: { mode: 'string' }, optional: { email: 'string' } },
 };
 
 function typeOf(value) {
@@ -814,13 +839,6 @@ export function clampConfig(cfg = {}) {
   out.humanPacing = toBoolean(input.humanPacing, d.humanPacing);
   out.dedupeAcrossCampaigns = toBoolean(input.dedupeAcrossCampaigns, d.dedupeAcrossCampaigns);
 
-  out.autoWithdraw = {
-    enabled: toBoolean(input.autoWithdraw?.enabled, d.autoWithdraw.enabled),
-    olderThanDays: clampInt(input.autoWithdraw?.olderThanDays, d.autoWithdraw.olderThanDays, 7, 60),
-    maxPerRun: clampInt(input.autoWithdraw?.maxPerRun, d.autoWithdraw.maxPerRun, 1, 50),
-  };
-  out.humanPacing = toBoolean(input.humanPacing, d.humanPacing);
-
   if (!AI_PROVIDERS.includes(out.ai.provider)) out.ai.provider = d.ai.provider;
   if (!ENRICHMENT_PROVIDERS.includes(out.enrichment.provider)) {
     out.enrichment.provider = d.enrichment.provider;
@@ -832,6 +850,18 @@ export function clampConfig(cfg = {}) {
   out.mailbox = {
     connected: Boolean(input.mailbox && input.mailbox.connected),
     email: (input.mailbox && input.mailbox.email) || '',
+    mode: ['workspace', 'custom_gmail', 'disabled'].includes(input.mailbox?.mode)
+      ? input.mailbox.mode
+      : 'workspace',
+  };
+
+  out.googleWorkspace = {
+    connected: Boolean(input.googleWorkspace && input.googleWorkspace.connected),
+    email: (input.googleWorkspace && input.googleWorkspace.email) || '',
+    spreadsheetId: (input.googleWorkspace && input.googleWorkspace.spreadsheetId) || '',
+    spreadsheetUrl: (input.googleWorkspace && input.googleWorkspace.spreadsheetUrl) || '',
+    lastSyncAt: typeof input.googleWorkspace?.lastSyncAt === 'number' ? input.googleWorkspace.lastSyncAt : 0,
+    lastBackupAt: typeof input.googleWorkspace?.lastBackupAt === 'number' ? input.googleWorkspace.lastBackupAt : 0,
   };
 
   if (input.webhookUrl !== undefined) out.webhookUrl = input.webhookUrl;

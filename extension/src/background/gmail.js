@@ -1,35 +1,72 @@
 /**
- * OutFox — Official Google Gmail API Integration.
+ * OutFox — Official Google Workspace & Decoupled Gmail Integration.
  * Uses chrome.identity.launchWebAuthFlow with standard OAuth 2.0 Web Client.
+ *
+ * Supports single Google sign-in for Workspace (Sheets CRM, Drive Backups, Default Mailbox)
+ * while allowing a decoupled outreach Gmail sender.
  */
 
 import { getConfig, setConfig } from '../lib/config.js';
 
-let cachedToken = null;
+export const WORKSPACE_SCOPES = [
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive.file',
+];
 
-export async function getGmailToken(interactive = false) {
-  if (cachedToken && !interactive) {
-    return cachedToken;
-  }
+export const OUTREACH_GMAIL_SCOPES = [
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/userinfo.email',
+];
 
+export const STORAGE_KEYS = {
+  WORKSPACE_TOKEN: 'outfox_google_workspace_token',
+  OUTREACH_TOKEN: 'outfox_outreach_gmail_token',
+};
+
+async function getStoredToken(key) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([key], (res) => {
+      const item = res?.[key];
+      if (item && item.token && typeof item.expiresAt === 'number' && item.expiresAt > Date.now()) {
+        return resolve(item);
+      }
+      resolve(null);
+    });
+  });
+}
+
+async function setStoredToken(key, data) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ [key]: data }, resolve);
+  });
+}
+
+async function clearStoredToken(key) {
+  return new Promise((resolve) => {
+    chrome.storage.local.remove([key], resolve);
+  });
+}
+
+async function launchGoogleOAuth({ scopes, interactive = false, prompt = 'select_account' }) {
   const manifest = chrome.runtime.getManifest();
   const clientId = (manifest.oauth2 && manifest.oauth2.client_id) || '272657974342-33vqnbq383euhl43tjimcede05ev23od.apps.googleusercontent.com';
-  const scopes = ((manifest.oauth2 && manifest.oauth2.scopes) || [
-    'https://www.googleapis.com/auth/gmail.send',
-    'https://www.googleapis.com/auth/userinfo.email',
-  ]).join(' ');
+  const scopeStr = (scopes || []).join(' ');
 
-  const redirectUri = typeof chrome.identity.getRedirectURL === 'function'
+  const redirectUri = typeof chrome.identity?.getRedirectURL === 'function'
     ? chrome.identity.getRedirectURL()
     : `https://${chrome.runtime.id}.chromiumapp.org/`;
 
-  const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+  const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'token',
     redirect_uri: redirectUri,
-    scope: scopes,
-    prompt: 'select_account',
-  }).toString();
+    scope: scopeStr,
+  });
+  if (prompt) params.set('prompt', prompt);
+
+  const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
 
   return new Promise((resolve, reject) => {
     if (!chrome.identity || typeof chrome.identity.launchWebAuthFlow !== 'function') {
@@ -48,20 +85,14 @@ export async function getGmailToken(interactive = false) {
           const errorMsg = hashParams.get('error') || urlObj.searchParams.get('error') || 'No access token returned';
           return reject(new Error(`Google OAuth notice: ${errorMsg}`));
         }
-        cachedToken = token;
-        resolve(token);
+        const expiresIn = parseInt(hashParams.get('expires_in') || '3600', 10);
+        // Refresh token 60s before actual expiry
+        const expiresAt = Date.now() + Math.max(300, expiresIn - 60) * 1000;
+        resolve({ token, expiresAt });
       } catch (err) {
         reject(new Error(`Failed to parse OAuth redirect: ${err.message}`));
       }
     });
-  });
-}
-
-export async function removeCachedToken(token) {
-  cachedToken = null;
-  return new Promise((resolve) => {
-    if (!token || !chrome.identity || typeof chrome.identity.removeCachedAuthToken !== 'function') return resolve();
-    chrome.identity.removeCachedAuthToken({ token }, () => resolve());
   });
 }
 
@@ -75,11 +106,217 @@ export async function fetchUserEmail(token) {
   return data.email;
 }
 
-export async function connectGmail(interactive = true) {
-  const token = await getGmailToken(interactive);
+export async function removeCachedToken(token) {
+  return new Promise((resolve) => {
+    if (!token || !chrome.identity || typeof chrome.identity.removeCachedAuthToken !== 'function') return resolve();
+    chrome.identity.removeCachedAuthToken({ token }, () => resolve());
+  });
+}
+
+/**
+ * Retrieves valid Google Workspace token, executing silent or interactive OAuth flow if needed.
+ */
+export async function getGoogleWorkspaceToken(interactive = false) {
+  const existing = await getStoredToken(STORAGE_KEYS.WORKSPACE_TOKEN);
+  if (existing?.token) return existing.token;
+
+  let authResult;
+  try {
+    authResult = await launchGoogleOAuth({ scopes: WORKSPACE_SCOPES, interactive: false, prompt: '' });
+  } catch (err) {
+    if (!interactive) throw new Error('Google Workspace sign-in required: ' + err.message);
+    authResult = await launchGoogleOAuth({ scopes: WORKSPACE_SCOPES, interactive: true, prompt: 'select_account' });
+  }
+
+  const email = await fetchUserEmail(authResult.token);
+  await setStoredToken(STORAGE_KEYS.WORKSPACE_TOKEN, {
+    token: authResult.token,
+    expiresAt: authResult.expiresAt,
+    email,
+  });
+  return authResult.token;
+}
+
+/**
+ * Connects Google Workspace account with all 4 scopes (Gmail, Userinfo, Sheets, Drive).
+ * Defaults cold outreach mailbox to this account unless user previously selected a custom Gmail.
+ */
+export async function connectGoogleWorkspace(interactive = true) {
+  const token = await getGoogleWorkspaceToken(interactive);
   const email = await fetchUserEmail(token);
-  await setConfig({ mailbox: { connected: true, email } });
+  const cfg = await getConfig();
+
+  const updates = {
+    googleWorkspace: {
+      connected: true,
+      email,
+    },
+  };
+
+  // If mailbox is unconfigured or set to workspace mode, default to this account
+  if (!cfg.mailbox?.mode || cfg.mailbox.mode === 'workspace' || !cfg.mailbox.connected) {
+    updates.mailbox = {
+      connected: true,
+      email,
+      mode: 'workspace',
+    };
+  }
+
+  await setConfig(updates);
   return { success: true, email };
+}
+
+export async function disconnectGoogleWorkspace() {
+  const item = await getStoredToken(STORAGE_KEYS.WORKSPACE_TOKEN);
+  if (item?.token) await removeCachedToken(item.token);
+  await clearStoredToken(STORAGE_KEYS.WORKSPACE_TOKEN);
+
+  const cfg = await getConfig();
+  const mailboxUpdates = cfg.mailbox?.mode === 'workspace'
+    ? { mailbox: { connected: false, email: '', mode: 'workspace' } }
+    : {};
+
+  await setConfig({
+    googleWorkspace: {
+      connected: false,
+      email: '',
+      spreadsheetId: '',
+      spreadsheetUrl: '',
+    },
+    ...mailboxUpdates,
+  });
+
+  return { disconnected: true };
+}
+
+/**
+ * Connects a separate Gmail specifically for cold outreach (decoupled sender).
+ */
+export async function connectGmail(interactive = true) {
+  const authResult = await launchGoogleOAuth({
+    scopes: OUTREACH_GMAIL_SCOPES,
+    interactive,
+    prompt: 'select_account',
+  });
+  const email = await fetchUserEmail(authResult.token);
+
+  await setStoredToken(STORAGE_KEYS.OUTREACH_TOKEN, {
+    token: authResult.token,
+    expiresAt: authResult.expiresAt,
+    email,
+  });
+
+  await setConfig({
+    mailbox: {
+      connected: true,
+      email,
+      mode: 'custom_gmail',
+    },
+  });
+
+  return { success: true, email };
+}
+
+export async function disconnectGmail() {
+  const item = await getStoredToken(STORAGE_KEYS.OUTREACH_TOKEN);
+  if (item?.token) await removeCachedToken(item.token);
+  await clearStoredToken(STORAGE_KEYS.OUTREACH_TOKEN);
+
+  await setConfig({
+    mailbox: {
+      connected: false,
+      email: '',
+      mode: 'disabled',
+    },
+  });
+
+  return { disconnected: true };
+}
+
+/**
+ * Switch outreach sender mode between 'workspace', 'custom_gmail', and 'disabled'.
+ */
+export async function switchOutreachMailbox({ mode, email } = {}) {
+  const validModes = ['workspace', 'custom_gmail', 'disabled'];
+  if (!validModes.includes(mode)) {
+    throw new Error(`Invalid outreach mailbox mode: ${mode}. Expected one of: ${validModes.join(', ')}`);
+  }
+
+  const cfg = await getConfig();
+
+  if (mode === 'workspace') {
+    const wsTokenRecord = await getStoredToken(STORAGE_KEYS.WORKSPACE_TOKEN);
+    const wsEmail = cfg.googleWorkspace?.email || wsTokenRecord?.email;
+    if (!wsEmail && !wsTokenRecord) {
+      throw new Error('Google Workspace is not connected. Connect Google Workspace first.');
+    }
+    await setConfig({
+      mailbox: {
+        connected: true,
+        email: wsEmail,
+        mode: 'workspace',
+      },
+    });
+  } else if (mode === 'custom_gmail') {
+    const customRecord = await getStoredToken(STORAGE_KEYS.OUTREACH_TOKEN);
+    if (!customRecord?.token) {
+      // Prompt user to connect custom Gmail
+      return connectGmail(true);
+    }
+    await setConfig({
+      mailbox: {
+        connected: true,
+        email: customRecord.email || email,
+        mode: 'custom_gmail',
+      },
+    });
+  } else if (mode === 'disabled') {
+    await setConfig({
+      mailbox: {
+        connected: false,
+        email: '',
+        mode: 'disabled',
+      },
+    });
+  }
+
+  const updated = await getConfig();
+  return { mailbox: updated.mailbox };
+}
+
+/**
+ * Returns access token for cold email outreach, routing according to outreachMailbox mode.
+ */
+export async function getGmailToken(interactive = false) {
+  const cfg = await getConfig();
+  const mode = cfg.mailbox?.mode || 'workspace';
+
+  if (mode === 'disabled' || (!cfg.mailbox?.connected && mode !== 'workspace')) {
+    throw new Error('Cold outreach mailbox is disabled or not connected.');
+  }
+
+  if (mode === 'custom_gmail') {
+    const existing = await getStoredToken(STORAGE_KEYS.OUTREACH_TOKEN);
+    if (existing?.token) return existing.token;
+
+    let authResult;
+    try {
+      authResult = await launchGoogleOAuth({ scopes: OUTREACH_GMAIL_SCOPES, interactive: false, prompt: '' });
+    } catch (err) {
+      if (!interactive) throw new Error('Outreach Gmail sign-in required: ' + err.message);
+      authResult = await launchGoogleOAuth({ scopes: OUTREACH_GMAIL_SCOPES, interactive: true, prompt: 'select_account' });
+    }
+    const email = await fetchUserEmail(authResult.token);
+    await setStoredToken(STORAGE_KEYS.OUTREACH_TOKEN, {
+      token: authResult.token,
+      expiresAt: authResult.expiresAt,
+      email,
+    });
+    return authResult.token;
+  }
+
+  // Default: workspace
+  return getGoogleWorkspaceToken(interactive);
 }
 
 function safeBase64Encode(str) {
@@ -114,9 +351,11 @@ export async function sendEmail({ to, subject, body }) {
   }
 
   const cfg = await getConfig();
+  const fromEmail = cfg.mailbox && cfg.mailbox.email ? cfg.mailbox.email : undefined;
+
   const raw = createRfc2822Message({
     to,
-    from: cfg.mailbox && cfg.mailbox.email ? cfg.mailbox.email : undefined,
+    from: fromEmail,
     subject: subject || '',
     body: body || '',
   });

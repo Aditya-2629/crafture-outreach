@@ -63,6 +63,15 @@ This file is the source of truth for the LinkedIn Toolkit v2 contract. Every lay
 | `gmail.disconnect` | `{}` | `{ disconnected: boolean }` |
 | `gmail.status` | `{}` | `{ connected: boolean, email: string }` |
 | `gmail.test` | `{ to?: string }` | `{ status: 'sent', to: string, messageId: string }` |
+| `googleWorkspace.connect` | `{ interactive?: boolean }` | `{ success: boolean, email: string, spreadsheetUrl?: string }` |
+| `googleWorkspace.status` | `{}` | `{ connected: boolean, email: string, spreadsheetId: string, spreadsheetUrl: string, lastSyncAt: number, lastBackupAt: number }` |
+| `googleWorkspace.disconnect` | `{}` | `{ disconnected: boolean }` |
+| `sheetsCrm.syncNow` | `{}` | `{ success: boolean, rowsSynced: number, spreadsheetUrl: string }` |
+| `backup.exportJson` | `{}` | `{ snapshot: object }` |
+| `backup.importJson` | `{ snapshot?: object }` | `{ success: boolean, keysRestored: number }` |
+| `backup.driveSave` | `{}` | `{ success: boolean, fileId: string, backedUpAt: number }` |
+| `backup.driveRestore` | `{}` | `{ success: boolean, keysRestored: number }` |
+| `outreachMailbox.switch` | `{ mode: 'workspace'|'custom_gmail'|'disabled', email?: string }` | `{ mailbox: object }` |
 
 ### Shared types
 

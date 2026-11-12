@@ -29,6 +29,7 @@ export async function setConfig(partial) {
     bridge: { ...current.bridge, ...(input.bridge || {}) },
     autoWithdraw: { ...(current.autoWithdraw || {}), ...(input.autoWithdraw || {}) },
     mailbox: { ...(current.mailbox || {}), ...(input.mailbox || {}) },
+    googleWorkspace: { ...(current.googleWorkspace || {}), ...(input.googleWorkspace || {}) },
     telegram: { ...(current.telegram || {}), ...(input.telegram || {}) },
   };
   const updated = clampConfig(merged);

@@ -414,7 +414,8 @@ export async function renderSettingsView(container, ctx = {}) {
     return `${displayH}:${String(m).padStart(2, '0')} ${ampm}`;
   }
 
-  const mailbox = config.mailbox || {};
+  let mailbox = config.mailbox || {};
+  let googleWorkspace = config.googleWorkspace || {};
   let emailAccounts = Array.isArray(storage.emailAccounts) ? storage.emailAccounts : [];
   if (mailbox.connected && mailbox.email && !emailAccounts.find((a) => a.email === mailbox.email)) {
     emailAccounts.unshift({
@@ -789,6 +790,63 @@ export async function renderSettingsView(container, ctx = {}) {
                 <p class="activity-sub-text">Connect and manage your synchronized email inboxes for cold outreach</p>
               </div>
 
+              <!-- Active Cold Outreach Sender Card -->
+              <div class="waalaxy-white-card" style="margin-bottom: 24px; border: 1.5px solid #ffedd5; background: linear-gradient(180deg, #ffffff 0%, #fffbf7 100%);">
+                <div class="card-header-with-icon" style="justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+                  <div style="display: flex; align-items: flex-start; gap: 12px;">
+                    <div class="card-black-icon-box" style="background: #fff7ed; color: #ff6b00; border: 1px solid #ffedd5;">${ICONS.email}</div>
+                    <div>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <h3 class="card-title-bold" style="margin: 0;">Active Cold Outreach Sender</h3>
+                        ${mailbox.connected ? `
+                          <span class="badge-status-running"><span class="live-dot-circle"></span> Active</span>
+                        ` : `
+                          <span class="live-activity-pill is-paused" style="font-size: 11px;">○ Sender Disabled</span>
+                        `}
+                      </div>
+                      <p class="card-subtitle-gray" style="margin-top: 4px;">Designated Google account used to dispatch cold email sequences and campaign replies.</p>
+                    </div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 11.5px; font-weight: 700; color: #64748b; background: #f1f5f9; padding: 4px 10px; border-radius: 8px;">
+                      Mode: <strong style="color: #ff6b00;">${mailbox.mode === 'custom_gmail' ? 'Custom Outreach Gmail' : mailbox.mode === 'disabled' ? 'Disabled' : 'Default Google Account'}</strong>
+                    </span>
+                  </div>
+                </div>
+
+                <div style="margin-top: 16px; padding: 14px 18px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <span style="width: 36px; height: 36px; border-radius: 50%; background: #fff7ed; color: #ff6b00; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800;">
+                      ✉️
+                    </span>
+                    <div>
+                      <div style="font-size: 13.5px; font-weight: 700; color: #14142b;">
+                        ${mailbox.email || 'No outreach sender selected'}
+                      </div>
+                      <div style="font-size: 11.5px; color: #64748b;">
+                        ${mailbox.connected ? (mailbox.mode === 'custom_gmail' ? 'Separate outreach Gmail mailbox' : `Connected via primary Google Workspace (${googleWorkspace.email || mailbox.email})`) : 'Outreach sender is disabled. Google Drive Backups and Sheets CRM remain active.'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    ${googleWorkspace.connected && mailbox.mode !== 'workspace' ? `
+                      <button type="button" class="btn-int-action" id="btn-use-default-workspace-mail" style="font-size: 11.5px; padding: 6px 12px;">
+                        Use Default (${googleWorkspace.email || 'Workspace'})
+                      </button>
+                    ` : ''}
+                    <button type="button" class="btn-int-action" id="btn-switch-custom-gmail" style="font-size: 11.5px; padding: 6px 12px;">
+                      🔄 Use Different Gmail for Outreach
+                    </button>
+                    ${mailbox.connected ? `
+                      <button type="button" class="btn-card-action" id="btn-disable-outreach-mail" style="font-size: 11.5px; padding: 6px 12px; color: #ef4444; border-color: #fecaca;" title="Removes outreach sender while keeping Google Workspace Drive/Sheets connected">
+                        Remove Outreach Mail
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              </div>
+
               <!-- Card 1: Accounts Table -->
               <div class="waalaxy-white-card">
                 <div class="card-header-with-icon">
@@ -908,21 +966,83 @@ export async function renderSettingsView(container, ctx = {}) {
               <h1 class="activity-main-title" style="margin-bottom:24px;">Integrations & CRM Sync</h1>
 
               <div class="integrations-cards-grid">
-                <!-- 1. Google Sheets CRM Sync -->
+                <!-- 1. Google Live CRM & Workspace -->
                 <div class="integration-item-card">
                   <div class="int-card-head">
                     <div class="int-card-head-left">
                       <span class="int-logo-ico" style="background:#0f9d58; color:#fff;">${ICONS.sheets}</span>
-                      <h3 class="int-card-title">Google Sheets Sync</h3>
+                      <h3 class="int-card-title">Google Live CRM & Workspace</h3>
                     </div>
-                    ${hasSheet
+                    ${googleWorkspace.connected
                       ? `<span class="badge-status-running"><span class="live-dot-circle"></span> Connected</span>`
-                      : `<span class="live-activity-pill is-paused" style="font-size:11px;">○ Not Configured</span>`}
+                      : `<span class="live-activity-pill is-paused" style="font-size:11px;">○ Not Connected</span>`}
                   </div>
-                  <p class="int-card-desc">Auto-append accepted leads, replied messages, and emails directly to a live Google Sheet in real-time.</p>
-                  <button type="button" class="btn-int-action ${hasSheet ? 'btn-int-active' : ''}" id="btn-setup-sheet-crm">
-                    ${hasSheet ? 'Manage Google Sheet ↗' : 'Setup Google Sheet ↗'}
-                  </button>
+                  <p class="int-card-desc" style="margin-bottom: 12px; min-height: 40px;">
+                    Auto-creates "OutFox Live CRM" Sheet with frozen headers and syncs campaign steps, invites, and replies in real-time.
+                  </p>
+                  ${googleWorkspace.connected ? `
+                    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:12px; color:#475569;">
+                      <div><strong>Account:</strong> ${googleWorkspace.email}</div>
+                      ${googleWorkspace.spreadsheetUrl ? `<div style="margin-top:4px;"><strong>Sheet:</strong> <a href="${googleWorkspace.spreadsheetUrl}" target="_blank" style="color:#ff6b00; text-decoration:none; font-weight:600;">OutFox Live CRM ↗</a></div>` : ''}
+                      <div style="margin-top:4px; font-size:11px; color:#94a3b8;">Last synced: ${googleWorkspace.lastSyncAt ? new Date(googleWorkspace.lastSyncAt).toLocaleString() : 'Never'}</div>
+                    </div>
+                  ` : ''}
+                  <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                    ${googleWorkspace.connected ? `
+                      <button type="button" class="btn-card-action" id="btn-disconnect-google-ws" style="font-size:11.5px; padding:6px 12px; color:#ef4444; border-color:#fecaca;">
+                        Disconnect
+                      </button>
+                      ${googleWorkspace.spreadsheetUrl ? `
+                        <a href="${googleWorkspace.spreadsheetUrl}" target="_blank" class="btn-int-action" style="font-size:11.5px; padding:6px 14px; text-decoration:none; display:inline-flex; align-items:center;">
+                          Open Live Sheet ↗
+                        </a>
+                      ` : ''}
+                      <button type="button" class="btn-int-action btn-int-active" id="btn-sync-all-leads-sheet" style="font-size:11.5px; padding:6px 14px;">
+                        ↻ Sync All Leads
+                      </button>
+                    ` : `
+                      <button type="button" class="btn-int-action btn-int-active" id="btn-connect-google-ws">
+                        Connect Google Account ↗
+                      </button>
+                    `}
+                  </div>
+                </div>
+
+                <!-- 2. Cloud & Local Data Backup -->
+                <div class="integration-item-card">
+                  <div class="int-card-head">
+                    <div class="int-card-head-left">
+                      <span class="int-logo-ico" style="background:#4285f4; color:#fff;">☁️</span>
+                      <h3 class="int-card-title">Cloud & Local Data Backup</h3>
+                    </div>
+                    ${googleWorkspace.connected
+                      ? `<span class="badge-status-running"><span class="live-dot-circle"></span> 24h Auto-Backup Ready</span>`
+                      : `<span class="live-activity-pill is-paused" style="font-size:11px;">○ Local Only</span>`}
+                  </div>
+                  <p class="int-card-desc" style="margin-bottom: 12px; min-height: 40px;">
+                    Safeguards campaigns, prospects, lists and templates. Daily 24h automated backup to "OutFox Backups" in Google Drive + instant local JSON snapshots.
+                  </p>
+                  <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:12px; color:#475569;">
+                    <div><strong>Cloud Storage:</strong> ${googleWorkspace.connected ? `Google Drive (${googleWorkspace.email})` : 'Connect Google Workspace for cloud backups'}</div>
+                    <div style="margin-top:4px; font-size:11px; color:#94a3b8;">Last Drive Backup: ${googleWorkspace.lastBackupAt ? new Date(googleWorkspace.lastBackupAt).toLocaleString() : 'Never'}</div>
+                  </div>
+                  <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                    ${googleWorkspace.connected ? `
+                      <button type="button" class="btn-int-action btn-int-active" id="btn-drive-backup-save" style="font-size:11.5px; padding:6px 12px;">
+                        ☁️ Backup to Drive
+                      </button>
+                      <button type="button" class="btn-int-action" id="btn-drive-backup-restore" style="font-size:11.5px; padding:6px 12px;">
+                        📥 Restore Drive
+                      </button>
+                    ` : ''}
+                    <button type="button" class="btn-int-action" id="btn-export-local-json" style="font-size:11.5px; padding:6px 12px;">
+                      💾 Export .json
+                    </button>
+                    <button type="button" class="btn-int-action" id="btn-import-local-json" style="font-size:11.5px; padding:6px 12px;">
+                      📂 Restore .json
+                    </button>
+                    <input type="file" id="input-import-backup-file" accept=".json" style="display:none;" />
+                  </div>
                 </div>
 
                 <!-- 2. AI Engine & Fallback Router -->
@@ -1324,6 +1444,45 @@ export async function renderSettingsView(container, ctx = {}) {
   }
 
   function wireEmailAccountsEvents() {
+    container.querySelector('#btn-use-default-workspace-mail')?.addEventListener('click', async () => {
+      try {
+        await call(ACTIONS.OUTREACH_MAILBOX_SWITCH, { mode: 'workspace' });
+        config = await call(ACTIONS.CONFIG_GET, {});
+        mailbox = config.mailbox || {};
+        googleWorkspace = config.googleWorkspace || {};
+        ctx.showToast?.('Switched outreach sender to default Google Workspace account.', 'success');
+        paint();
+      } catch (err) {
+        ctx.showToast?.(err.message || 'Failed to switch outreach sender', 'error');
+      }
+    });
+
+    container.querySelector('#btn-switch-custom-gmail')?.addEventListener('click', async () => {
+      try {
+        await call(ACTIONS.OUTREACH_MAILBOX_SWITCH, { mode: 'custom_gmail' });
+        config = await call(ACTIONS.CONFIG_GET, {});
+        mailbox = config.mailbox || {};
+        googleWorkspace = config.googleWorkspace || {};
+        ctx.showToast?.('Switched outreach sender to Custom Outreach Gmail.', 'success');
+        paint();
+      } catch (err) {
+        ctx.showToast?.(err.message || 'Failed to switch to Custom Gmail', 'error');
+      }
+    });
+
+    container.querySelector('#btn-disable-outreach-mail')?.addEventListener('click', async () => {
+      try {
+        await call(ACTIONS.OUTREACH_MAILBOX_SWITCH, { mode: 'disabled' });
+        config = await call(ACTIONS.CONFIG_GET, {});
+        mailbox = config.mailbox || {};
+        googleWorkspace = config.googleWorkspace || {};
+        ctx.showToast?.('Outreach sender removed. Google Workspace Drive/Sheets remain connected.', 'info');
+        paint();
+      } catch (err) {
+        ctx.showToast?.(err.message || 'Failed to disable outreach sender', 'error');
+      }
+    });
+
     container.querySelector('#btn-open-connect-modal')?.addEventListener('click', () => {
       openConnectEmailModal({
         onSuccess: (newAccount) => {
@@ -1411,7 +1570,143 @@ export async function renderSettingsView(container, ctx = {}) {
   }
 
   function wireIntegrationsEvents() {
-    // 1. Google Sheets CRM Sync
+    // 1. Google Live CRM & Workspace
+    container.querySelector('#btn-connect-google-ws')?.addEventListener('click', async () => {
+      try {
+        await call(ACTIONS.GOOGLE_WORKSPACE_CONNECT, { interactive: true });
+        config = await call(ACTIONS.CONFIG_GET, {});
+        googleWorkspace = config.googleWorkspace || {};
+        mailbox = config.mailbox || {};
+        ctx.showToast?.('Google Workspace connected successfully!', 'success');
+        paint();
+      } catch (err) {
+        ctx.showToast?.(err.message || 'Failed to connect Google Workspace', 'error');
+      }
+    });
+
+    container.querySelector('#btn-disconnect-google-ws')?.addEventListener('click', async () => {
+      const ok = await openUiConfirm({
+        title: 'Disconnect Google Workspace',
+        message: 'Are you sure you want to disconnect Google Workspace? This will stop Live Sheets CRM sync and Drive auto-backups.',
+        confirmText: 'Disconnect',
+        confirmDanger: true,
+      });
+      if (ok) {
+        try {
+          await call(ACTIONS.GOOGLE_WORKSPACE_DISCONNECT, {});
+          config = await call(ACTIONS.CONFIG_GET, {});
+          googleWorkspace = config.googleWorkspace || {};
+          mailbox = config.mailbox || {};
+          ctx.showToast?.('Google Workspace disconnected.', 'info');
+          paint();
+        } catch (err) {
+          ctx.showToast?.(err.message || 'Failed to disconnect', 'error');
+        }
+      }
+    });
+
+    container.querySelector('#btn-sync-all-leads-sheet')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '⏳ Syncing...';
+      btn.disabled = true;
+      try {
+        const res = await call(ACTIONS.SHEETS_CRM_SYNC_NOW, {});
+        ctx.showToast?.(`Synced ${res.rowsSynced || 0} leads to Google Sheet!`, 'success');
+        config = await call(ACTIONS.CONFIG_GET, {});
+        googleWorkspace = config.googleWorkspace || {};
+        paint();
+      } catch (err) {
+        ctx.showToast?.(err.message || 'Failed to sync leads to sheet', 'error');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
+    });
+
+    // 2. Cloud & Local Data Backup
+    container.querySelector('#btn-drive-backup-save')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '⏳ Backing up...';
+      btn.disabled = true;
+      try {
+        await call(ACTIONS.BACKUP_DRIVE_SAVE, {});
+        ctx.showToast?.('Saved snapshot to Google Drive (OutFox Backups/outfox-backup.json)!', 'success');
+        config = await call(ACTIONS.CONFIG_GET, {});
+        googleWorkspace = config.googleWorkspace || {};
+        paint();
+      } catch (err) {
+        ctx.showToast?.(err.message || 'Drive backup failed', 'error');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
+    });
+
+    container.querySelector('#btn-drive-backup-restore')?.addEventListener('click', async () => {
+      const ok = await openUiConfirm({
+        title: 'Restore from Google Drive',
+        message: 'Restore your OutFox data from the latest Google Drive backup? This will update local collections.',
+        confirmText: 'Restore from Drive',
+        confirmDanger: false,
+      });
+      if (ok) {
+        try {
+          const res = await call(ACTIONS.BACKUP_DRIVE_RESTORE, {});
+          ctx.showToast?.(`Restored ${res.keysRestored || 0} collections from Google Drive!`, 'success');
+          setTimeout(() => window.location.reload(), 1200);
+        } catch (err) {
+          ctx.showToast?.(err.message || 'Drive restore failed', 'error');
+        }
+      }
+    });
+
+    container.querySelector('#btn-export-local-json')?.addEventListener('click', async () => {
+      try {
+        const res = await call(ACTIONS.BACKUP_EXPORT_JSON, {});
+        const blob = new Blob([JSON.stringify(res.snapshot || {}, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `outfox-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        ctx.showToast?.('Local JSON backup downloaded!', 'success');
+      } catch (err) {
+        ctx.showToast?.(err.message || 'Failed to export JSON backup', 'error');
+      }
+    });
+
+    const fileInput = container.querySelector('#input-import-backup-file');
+    container.querySelector('#btn-import-local-json')?.addEventListener('click', () => {
+      fileInput?.click();
+    });
+
+    fileInput?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        try {
+          const json = JSON.parse(evt.target.result);
+          const ok = await openUiConfirm({
+            title: 'Import Backup Snapshot',
+            message: `Restore data from ${file.name}? Existing records will be updated.`,
+            confirmText: 'Restore JSON',
+            confirmDanger: false,
+          });
+          if (ok) {
+            const res = await call(ACTIONS.BACKUP_IMPORT_JSON, { snapshot: json });
+            ctx.showToast?.(`Restored ${res.keysRestored || 0} collections successfully!`, 'success');
+            setTimeout(() => window.location.reload(), 1200);
+          }
+        } catch (err) {
+          ctx.showToast?.('Invalid JSON backup file: ' + err.message, 'error');
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    // Legacy Sheet CRM Guide modal trigger (if present)
     container.querySelector('#btn-setup-sheet-crm')?.addEventListener('click', () => {
       openSheetCrmGuide((url) => {
         storage.googleSheetUrl = url;

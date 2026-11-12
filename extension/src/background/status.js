@@ -116,6 +116,7 @@ export const POPUP_ONLY_CONFIG_KEYS = Object.freeze([
   'dailyMessageCap',
   'dailyVisitCap',
   'dailySearchCap',
+  'dailyEmailCap',
 ]);
 
 /** `sk-abcd…wxyz` → `****wxyz`; unset stays unset. */

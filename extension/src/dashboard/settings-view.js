@@ -397,6 +397,7 @@ export async function renderSettingsView(container, ctx = {}) {
   let maxMessages = config.dailyMessageCap || 40;
   let maxVisits = config.dailyVisitCap || 120;
   let maxFollows = config.dailyFollowCap || 100;
+  let maxEmails = config.dailyEmailCap || 50;
   let accountPreset = config.accountPreset || 'free';
   let warmupEnabled = Boolean(config.warmup?.enabled);
   let humanPacing = config.humanPacing !== false;
@@ -678,6 +679,17 @@ export async function renderSettingsView(container, ctx = {}) {
                       <div class="quota-input-group">
                         <input type="number" id="input-quota-follows" class="quota-number-input" value="${maxFollows}" min="1" max="100" />
                         <span class="quota-max-label">/ 100</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="quota-input-card">
+                    <div class="q-card-icon" style="color: #ff6b00; background: #fff7ed; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">${ICONS.email}</div>
+                    <div class="q-card-content">
+                      <span class="q-card-label">COLD EMAILS</span>
+                      <div class="quota-input-group">
+                        <input type="number" id="input-quota-emails" class="quota-number-input" value="${maxEmails}" min="1" max="200" />
+                        <span class="quota-max-label">/ 200</span>
                       </div>
                     </div>
                   </div>
@@ -1246,10 +1258,10 @@ export async function renderSettingsView(container, ctx = {}) {
 
     // 4. Quota Presets & Controls
     const PRESET_RECOMMENDED = {
-      free: { dailyInviteCap: 25, weeklyInviteCap: 150, dailyMessageCap: 40, dailyVisitCap: 120 },
-      premium: { dailyInviteCap: 25, weeklyInviteCap: 150, dailyMessageCap: 60, dailyVisitCap: 120 },
-      salesnav: { dailyInviteCap: 30, weeklyInviteCap: 200, dailyMessageCap: 80, dailyVisitCap: 200 },
-      recruiter: { dailyInviteCap: 40, weeklyInviteCap: 250, dailyMessageCap: 100, dailyVisitCap: 300 },
+      free: { dailyInviteCap: 25, weeklyInviteCap: 150, dailyMessageCap: 40, dailyVisitCap: 120, dailyEmailCap: 50 },
+      premium: { dailyInviteCap: 25, weeklyInviteCap: 150, dailyMessageCap: 60, dailyVisitCap: 120, dailyEmailCap: 100 },
+      salesnav: { dailyInviteCap: 30, weeklyInviteCap: 200, dailyMessageCap: 80, dailyVisitCap: 200, dailyEmailCap: 150 },
+      recruiter: { dailyInviteCap: 40, weeklyInviteCap: 250, dailyMessageCap: 100, dailyVisitCap: 300, dailyEmailCap: 200 },
     };
 
     container.querySelector('#select-account-preset')?.addEventListener('change', (e) => {
@@ -1259,6 +1271,7 @@ export async function renderSettingsView(container, ctx = {}) {
         if (container.querySelector('#input-quota-weekly-invites')) container.querySelector('#input-quota-weekly-invites').value = rec.weeklyInviteCap;
         if (container.querySelector('#input-quota-messages')) container.querySelector('#input-quota-messages').value = rec.dailyMessageCap;
         if (container.querySelector('#input-quota-visits')) container.querySelector('#input-quota-visits').value = rec.dailyVisitCap;
+        if (container.querySelector('#input-quota-emails')) container.querySelector('#input-quota-emails').value = rec.dailyEmailCap;
       }
     });
 
@@ -1298,11 +1311,13 @@ export async function renderSettingsView(container, ctx = {}) {
       maxMessages = 40;
       maxVisits = 120;
       maxFollows = 50;
+      maxEmails = 50;
       if (container.querySelector('#input-quota-invites')) container.querySelector('#input-quota-invites').value = 25;
       if (container.querySelector('#input-quota-weekly-invites')) container.querySelector('#input-quota-weekly-invites').value = 150;
       if (container.querySelector('#input-quota-messages')) container.querySelector('#input-quota-messages').value = 40;
       if (container.querySelector('#input-quota-visits')) container.querySelector('#input-quota-visits').value = 120;
       if (container.querySelector('#input-quota-follows')) container.querySelector('#input-quota-follows').value = 50;
+      if (container.querySelector('#input-quota-emails')) container.querySelector('#input-quota-emails').value = 50;
       if (container.querySelector('#select-account-preset')) container.querySelector('#select-account-preset').value = 'free';
       saveConfig();
       ctx.showToast?.('Default quotas restored.', 'info');
@@ -1396,6 +1411,7 @@ export async function renderSettingsView(container, ctx = {}) {
       const qMsg = parseInt(container.querySelector('#input-quota-messages')?.value) || maxMessages;
       const qVis = parseInt(container.querySelector('#input-quota-visits')?.value) || maxVisits;
       const qFol = parseInt(container.querySelector('#input-quota-follows')?.value) || maxFollows;
+      const qEmail = parseInt(container.querySelector('#input-quota-emails')?.value) || maxEmails;
       const preset = container.querySelector('#select-account-preset')?.value || accountPreset;
       const hPacing = container.querySelector('#toggle-human-pacing')
         ? container.querySelector('#toggle-human-pacing').checked
@@ -1423,6 +1439,7 @@ export async function renderSettingsView(container, ctx = {}) {
         dailyMessageCap: qMsg,
         dailyVisitCap: qVis,
         dailyFollowCap: qFol,
+        dailyEmailCap: qEmail,
         humanPacing: hPacing,
         dedupeAcrossCampaigns: dedupeVal,
         autoWithdraw: {

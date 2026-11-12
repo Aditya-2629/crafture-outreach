@@ -19,6 +19,7 @@ import * as inbox from './inbox.js';
 import { isWithinBusinessHours } from './quota.js';
 import * as lists from './lists.js';
 import * as queue from './queue.js';
+import { enrichLead } from './enrich.js';
 
 // network.status must be registered for the 'accepted' branch to resolve.
 import './extract.js';
@@ -198,7 +199,7 @@ async function finish(campaign, enrollment) {
 /*  Campaign CRUD                                                     */
 /* ================================================================== */
 
-export async function create({ name, steps, listId, publicIds, settings, sheetWebhookUrl, sheetUrl }) {
+export async function create({ name, steps, listId, publicIds, settings, sheetWebhookUrl, sheetUrl, autoEnrichMissingEmail }) {
   const campaigns = await readCampaigns();
   const campaign = stamp({
     campaignId: newId('camp'),
@@ -208,6 +209,7 @@ export async function create({ name, steps, listId, publicIds, settings, sheetWe
     createdAt: Date.now(),
     settings: { stopOnReply: true, autopilot: false, ...(settings || {}) },
     variantCursor: 0,
+    autoEnrichMissingEmail: autoEnrichMissingEmail !== false,
     ...(sheetWebhookUrl ? { sheetWebhookUrl } : {}),
     ...(sheetUrl ? { sheetUrl } : {}),
   });
@@ -393,14 +395,13 @@ async function isConnected(publicId) {
     }
     // 2. Fallback to network status check
     const res = await handle(ACTIONS.NETWORK_STATUS, { publicIds: [publicId] }, 'campaign');
-    if (res?.ok && res.data?.statuses?.[publicId] === 'connected') {
-      return true;
+    if (res?.ok) {
+      return res.data?.statuses?.[publicId] === 'connected';
     }
   } catch (err) {
     console.warn('[isConnected check error]', err);
   }
-  // Default to true for direct message campaigns so 1st-degree connections are never falsely blocked
-  return true;
+  return false;
 }
 
 /** Which arm of a branch this person takes. */
@@ -533,13 +534,22 @@ async function stepParams(campaign, step, enrollment, routed = null) {
       if (step.useAi && !rawBody.trim()) rawBody = opener;
     }
     params.body = renderTemplate(rawBody, profile);
-    params.subject = renderTemplate(step.subject || 'Reaching out', profile);
+    params.subject = renderTemplate(step.subject || enrollment.gmailSubject || 'Reaching out', profile);
     params.email =
       step.email ||
       profile.email ||
       (profile.enrichment && profile.enrichment.email) ||
       profile.enrichmentEmail ||
       '';
+
+    // Gmail Threading chaining
+    if (step.replyInThread !== false && enrollment.gmailThreadId) {
+      params.threadId = enrollment.gmailThreadId;
+      if (enrollment.gmailLastMessageId) {
+        params.inReplyTo = enrollment.gmailLastMessageId;
+        params.references = enrollment.gmailLastMessageId;
+      }
+    }
   }
   if (step.type === 'like' || step.type === 'comment') {
     params.postUrl = step.postUrl || '';
@@ -760,29 +770,78 @@ export async function tick() {
         }
 
         // Non-Connection Message Guardrail:
-        // Before executing a message step, verify prospect is an active 1st-degree connection.
+        // Before executing an automated message step in a multi-step sequence containing an invite,
+        // verify prospect is an active 1st-degree connection.
         if (step.type === 'message') {
-          const connected = await isConnected(enrollment.publicId);
-          if (!connected) {
-            logDebug(
-              'warn',
-              'Runner',
-              `[Runner] Skipped messaging ${enrollment.publicId}: Not a 1st-degree connection yet. Connection request required.`,
-            );
-            enrollment.status = 'blocked_not_connected';
-            enrollment.error =
-              'Cannot message: Prospect is not a 1st-degree connection yet. Send a Connection Request (Invite) first.';
+          const hasInviteStep = campaign.steps?.some((s) => s.type === 'invite');
+          if (hasInviteStep && campaign.settings.autopilot) {
+            const connected = await isConnected(enrollment.publicId);
+            if (!connected) {
+              logDebug(
+                'warn',
+                'Runner',
+                `[Runner] Skipped messaging ${enrollment.publicId}: Not a 1st-degree connection yet. Connection request required.`,
+              );
+              enrollment.status = 'blocked_not_connected';
+              enrollment.error =
+                'Cannot message: Prospect is not a 1st-degree connection yet. Send a Connection Request (Invite) first.';
+              enrollment.updatedAt = Date.now();
+              dirty = true;
+              await emit(EVENTS.CAMPAIGN_STEP_DONE, {
+                campaignId: campaign.campaignId,
+                publicId: enrollment.publicId,
+                stepIndex: enrollment.stepIndex,
+                type: 'message',
+                status: 'skipped',
+                reason: 'not_first_degree',
+              });
+              break;
+            }
+          }
+        }
+
+        // Email Step Verification & Auto-Enrichment Guardrail:
+        if (step.type === 'email') {
+          let leadProfile = await getStoredProfile(enrollment.publicId);
+          let leadEmail =
+            step.email ||
+            (leadProfile && leadProfile.email) ||
+            (leadProfile && leadProfile.enrichment && leadProfile.enrichment.email) ||
+            (leadProfile && leadProfile.enrichmentEmail);
+
+          if (!leadEmail && campaign.autoEnrichMissingEmail !== false) {
+            logDebug('info', 'Runner', `[Auto-Enrich] No email found for ${enrollment.publicId}. Attempting waterfall enrichment via Vault...`);
+            try {
+              const enrichRes = await enrichLead(enrollment.publicId, {
+                fullName: leadProfile?.fullName || leadProfile?.name || enrollment.publicId,
+                company: leadProfile?.company || '',
+              });
+              if (enrichRes?.enriched?.email || enrichRes?.profile?.email) {
+                leadEmail = enrichRes.enriched?.email || enrichRes.profile?.email;
+                leadProfile = enrichRes.profile || (await getStoredProfile(enrollment.publicId));
+                logDebug('good', 'Runner', `[Auto-Enrich] Successfully enriched email for ${enrollment.publicId}: ${leadEmail}`);
+              }
+            } catch (enrichErr) {
+              logDebug('warn', 'Runner', `[Auto-Enrich] Enrichment failed for ${enrollment.publicId}: ${enrichErr?.message || enrichErr}`);
+            }
+          }
+
+          if (!leadEmail) {
+            logDebug('warn', 'Runner', `[Runner] Skipped email step for ${enrollment.publicId}: No email found (NO_EMAIL).`);
+            enrollment.status = 'email_skipped_no_email';
             enrollment.updatedAt = Date.now();
             dirty = true;
             await emit(EVENTS.CAMPAIGN_STEP_DONE, {
               campaignId: campaign.campaignId,
               publicId: enrollment.publicId,
               stepIndex: enrollment.stepIndex,
-              type: 'message',
+              type: 'email',
               status: 'skipped',
-              reason: 'not_first_degree',
+              reason: 'NO_EMAIL',
             });
-            break;
+            advance(campaign, enrollment);
+            if (isFinished(campaign, enrollment)) await finish(campaign, enrollment);
+            continue;
           }
         }
 
@@ -837,10 +896,10 @@ export async function tick() {
 
           logDebug('error', 'Runner', `Step failed: ${friendlyError}`);
 
-          // Bucket-isolated throttling for invites: do NOT halt the whole tick across all campaigns
-          if (step.type === 'invite' && (res.error?.code === ERROR.QUOTA_EXCEEDED || res.error?.code === ERROR.RATE_LIMITED)) {
-            haltedBuckets.add('invite');
-            logDebug('warn', 'Runner', `Invite bucket paused for this tick due to quota/rate-limit. Other enrollments (view, message, email) will continue.`);
+          // Bucket-isolated throttling for invites and emails: do NOT halt the whole tick across all campaigns
+          if ((step.type === 'invite' || step.type === 'email') && (res.error?.code === ERROR.QUOTA_EXCEEDED || res.error?.code === ERROR.RATE_LIMITED)) {
+            haltedBuckets.add(step.type);
+            logDebug('warn', 'Runner', `${step.type} bucket paused for this tick due to quota/rate-limit. Other enrollments will continue.`);
             break;
           }
 
@@ -892,7 +951,18 @@ export async function tick() {
             enrollment.lastRoutedAction = routed;
             console.log(`[Campaign] ${routed} for ${enrollment.publicId}`);
           }
+          if (step.type === 'email' && res.data) {
+            if (res.data.threadId) enrollment.gmailThreadId = res.data.threadId;
+            if (res.data.messageId) enrollment.gmailLastMessageId = res.data.messageId;
+            if (params.subject) enrollment.gmailSubject = params.subject;
+          }
           advance(campaign, enrollment);
+
+          if (step.type === 'email' && res.data?.status === 'sent') {
+            const emailJitterMs = Math.floor(Math.random() * (120000 - 45000 + 1)) + 45000;
+            logDebug('info', 'Runner', `[Gmail Pacing] Waiting ${(emailJitterMs / 1000).toFixed(1)}s randomized human jitter before next email...`);
+            await new Promise((r) => setTimeout(r, emailJitterMs));
+          }
         }
 
         await emit(EVENTS.CAMPAIGN_STEP_DONE, {

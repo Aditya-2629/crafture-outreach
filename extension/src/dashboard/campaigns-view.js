@@ -8,6 +8,7 @@ import { ACTIONS } from '../lib/actions.js';
 import { allProfiles } from '../lib/storage.js';
 import { openUiConfirm, openUiAlert, openUiSelectModal } from './modal-engine.js';
 import { ICONS } from '../ui/icons.js';
+import { getConfig } from '../lib/config.js';
 
 // Pre-built Waalaxy Campaign Templates (From Video Frame 11)
 export const CAMPAIGN_TEMPLATES = [
@@ -20,6 +21,83 @@ export const CAMPAIGN_TEMPLATES = [
     bestFor: 'Construct any customized multi-touch outreach flow with flexible steps.',
     icon: ICONS.settings,
     steps: [],
+  },
+  {
+    id: 'gmail_drip',
+    title: '3-Step Cold Email Drip',
+    badge: 'Gmail Only',
+    category: 'Gmail Only',
+    tags: ['Gmail Only', 'Email', 'Drip'],
+    flowText: '[Step 1: Cold Intro Email] → [Wait 3 Days] → [Step 2: Follow-up Thread] → [Wait 4 Days] → [Step 3: Break-up Email] → [CRM Sync]',
+    bestFor: 'Multi-touch standalone cold email outreach completely decoupled from LinkedIn, threaded in the same Gmail conversation.',
+    icon: ICONS.email,
+    steps: [
+      {
+        type: 'email',
+        subject: 'Quick question regarding {{company|your company}}',
+        body: "Hi {{firstName|there}},\n\nSaw what you're building at {{company|your team}} and wanted to reach out.\n\n{{ai_opener|We help teams streamline outreach and automate pipeline growth.}}\n\nDo you have 5 minutes this week for a brief chat?\n\nBest,\nAditya",
+        replyInThread: false,
+      },
+      { type: 'wait', waitMs: 259200000, delayLabel: 'Wait 3 days' },
+      {
+        type: 'email',
+        subject: 'Re: Quick question regarding {{company|your company}}',
+        body: "Hi {{firstName|there}},\n\nJust bumping this in case it got buried under your inbox. Would love to share how similar teams are handling outreach this quarter.\n\nLet me know if Tuesday or Thursday works better for you.\n\nBest,\nAditya",
+        replyInThread: true,
+      },
+      { type: 'wait', waitMs: 345600000, delayLabel: 'Wait 4 days' },
+      {
+        type: 'email',
+        subject: 'Re: Quick question regarding {{company|your company}}',
+        body: "Hi {{firstName|there}},\n\nI realize you're super busy, so I'll stop following up here. If timing ever aligns down the road, feel free to reach back out.\n\nWishing you and {{company|your team}} all the best!\n\nBest,\nAditya",
+        replyInThread: true,
+      },
+      { type: 'crm_sync' },
+    ],
+  },
+  {
+    id: 'gmail_recruiter',
+    title: 'Recruiter / Candidate Direct Pitch',
+    badge: 'Gmail Only',
+    category: 'Gmail Only',
+    tags: ['Gmail Only', 'Email', 'Recruiting'],
+    flowText: '[Step 1: Role Opportunity Pitch] → [Wait 3 Days] → [Step 2: Role Details Follow-up Thread] → [CRM Sync]',
+    bestFor: "Direct talent acquisition and candidate sourcing sent straight to candidates' inboxes with thread continuation.",
+    icon: ICONS.email,
+    steps: [
+      {
+        type: 'email',
+        subject: 'Exciting role opportunity for {{firstName|there}} at high-growth venture',
+        body: "Hi {{firstName|there}},\n\nI came across your profile and was impressed by your experience in {{headline|your domain}}.\n\nWe are currently sourcing key talent and thought your background would be an incredible fit for an upcoming leadership role.\n\nWould you be open to an exploratory 10-minute conversation this week?\n\nBest regards,\nAditya",
+        replyInThread: false,
+      },
+      { type: 'wait', waitMs: 259200000, delayLabel: 'Wait 3 days' },
+      {
+        type: 'email',
+        subject: 'Re: Exciting role opportunity for {{firstName|there}}',
+        body: "Hi {{firstName|there}},\n\nWanted to make sure you saw my note above. We're moving quickly to final rounds and I'd love to get your thoughts before closing the candidate pipeline.\n\nLet me know if you're available for a quick chat!\n\nBest,\nAditya",
+        replyInThread: true,
+      },
+      { type: 'crm_sync' },
+    ],
+  },
+  {
+    id: 'gmail_blank',
+    title: 'Blank Gmail Sequence',
+    badge: 'Gmail Only',
+    category: 'Gmail Only',
+    tags: ['Gmail Only', 'Custom', 'Email'],
+    flowText: '[Step 1: Cold Email] → [Add Step (+)]',
+    bestFor: 'Build a custom email-only sequence from scratch with custom steps and delays.',
+    icon: ICONS.email,
+    steps: [
+      {
+        type: 'email',
+        subject: 'Hi {{firstName|there}}',
+        body: "Hi {{firstName|there}},\n\n{{ai_opener|Wanted to connect regarding {{company|your company}}.}}\n\nBest,\nAditya",
+        replyInThread: false,
+      },
+    ],
   },
   {
     id: 'social_warmup',
@@ -180,6 +258,33 @@ export function formatDelayBadge(ms) {
 
 export function templateToPipeline(tpl) {
   if (!tpl || tpl.id === 'custom') return [];
+  if (tpl.id === 'gmail_drip') {
+    return [
+      { id: 'p_1', type: 'email', title: 'Cold Intro Email', sub: 'Step 1', icon: ICONS.email, delayMs: 0, subject: 'Quick question regarding {{company|your company}}', body: "Hi {{firstName|there}},\n\nSaw what you're building at {{company|your team}} and wanted to reach out.\n\n{{ai_opener|We help teams streamline outreach and automate pipeline growth.}}\n\nDo you have 5 minutes this week for a brief chat?\n\nBest,\nAditya", replyInThread: false },
+      { id: 'p_2', type: 'email', title: 'Follow-up Email', sub: 'Threaded Follow-up', icon: ICONS.email, delayMs: 259200000, subject: 'Re: Quick question regarding {{company|your company}}', body: "Hi {{firstName|there}},\n\nJust bumping this in case it got buried under your inbox. Would love to share how similar teams are handling outreach this quarter.\n\nLet me know if Tuesday or Thursday works better for you.\n\nBest,\nAditya", replyInThread: true },
+      { id: 'p_3', type: 'email', title: 'Break-up Email', sub: 'Final Check-in', icon: ICONS.email, delayMs: 345600000, subject: 'Re: Quick question regarding {{company|your company}}', body: "Hi {{firstName|there}},\n\nI realize you're super busy, so I'll stop following up here. If timing ever aligns down the road, feel free to reach back out.\n\nWishing you and {{company|your team}} all the best!\n\nBest,\nAditya", replyInThread: true },
+    ];
+  }
+  if (tpl.id === 'gmail_recruiter') {
+    return [
+      { id: 'p_1', type: 'email', title: 'Role Opportunity Pitch', sub: 'Step 1', icon: ICONS.email, delayMs: 0, subject: 'Exciting role opportunity for {{firstName|there}} at high-growth venture', body: "Hi {{firstName|there}},\n\nI came across your profile and was impressed by your experience in {{headline|your domain}}.\n\nWe are currently sourcing key talent and thought your background would be an incredible fit for an upcoming leadership role.\n\nWould you be open to an exploratory 10-minute conversation this week?\n\nBest regards,\nAditya", replyInThread: false },
+      { id: 'p_2', type: 'email', title: 'Role Follow-up', sub: 'Threaded Follow-up', icon: ICONS.email, delayMs: 259200000, subject: 'Re: Exciting role opportunity for {{firstName|there}}', body: "Hi {{firstName|there}},\n\nWanted to make sure you saw my note above. We're moving quickly to final rounds and I'd love to get your thoughts before closing the candidate pipeline.\n\nLet me know if you're available for a quick chat!\n\nBest,\nAditya", replyInThread: true },
+    ];
+  }
+  if (tpl.id === 'gmail_blank') {
+    return [
+      { id: 'p_1', type: 'email', title: 'Cold Email', sub: 'Step 1', icon: ICONS.email, delayMs: 0, subject: 'Hi {{firstName|there}}', body: "Hi {{firstName|there}},\n\n{{ai_opener|Wanted to connect regarding {{company|your company}}.}}\n\nBest,\nAditya", replyInThread: false },
+    ];
+  }
+  if (tpl.id === 'social_warmup') {
+    return [
+      { id: 'p_1', type: 'view', title: 'View Profile', sub: 'Warm Touch', icon: ICONS.visit, delayMs: 0 },
+      { id: 'p_2', type: 'like', title: 'Like Recent Post', sub: 'Warm Touch', icon: ICONS.lightning, delayMs: 0 },
+      { id: 'p_3', type: 'follow', title: 'Follow Profile', sub: 'Warm Touch', icon: ICONS.user, delayMs: 0 },
+      { id: 'p_4', type: 'invite', title: 'Invitation', sub: 'Custom Note', icon: ICONS.invitation, delayMs: 86400000, note: '{Hi|Hey} {{firstName}}, {loved your recent post|saw your work at {{company}}} — would love to connect!' },
+      { id: 'p_5', type: 'message', title: 'LinkedIn Message', sub: 'If Accepted', icon: ICONS.message, delayMs: 86400000, body: '{Hi|Hey} {{firstName}}, thanks for connecting! Looking forward to keeping in touch.' },
+    ];
+  }
   if (tpl.id === 'standard') {
     return [
       { id: 'p_1', type: 'view', title: 'View Profile', sub: 'Warm Touch', icon: ICONS.visit, delayMs: 0 },
@@ -267,7 +372,13 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
       if (step.type === 'view') steps.push({ type: 'view' });
       else if (step.type === 'endorse') steps.push({ type: 'endorse' });
       else if (step.type === 'message') steps.push({ type: 'message', body: step.body || 'Hi {{firstName|there}}!' });
-      else if (step.type === 'email') steps.push({ type: 'email', subject: step.subject || 'Quick question', body: step.body || 'Hi {{firstName|there}}...' });
+      else if (step.type === 'email') steps.push({
+        type: 'email',
+        subject: step.subject || 'Quick question',
+        body: step.body || 'Hi {{firstName|there}}...',
+        replyInThread: step.replyInThread !== false,
+        useAi: step.useAi ?? useAi,
+      });
       else if (step.type === 'wait') steps.push({ type: 'wait', waitMs: step.delayMs || 86400000 });
     }
     steps.push({ type: 'crm_sync' });
@@ -336,6 +447,8 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
       type: 'email',
       subject: emailStep.subject || 'Quick question for {{firstName|there}} regarding {{company|your team}}',
       body: emailStep.body || 'Hi {{firstName|there}},\n\nI sent you a quick connection request on LinkedIn earlier. Wanted to follow up directly to see if you had 5 minutes this week to chat?\n\nBest,\nAditya',
+      replyInThread: emailStep.replyInThread !== false,
+      useAi: emailStep.useAi ?? useAi,
     });
     elseBranch.push({ type: 'crm_sync' });
   }
@@ -365,7 +478,7 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
   return steps;
 }
 
-export function renderHorizontalFlow(pipelineSteps = [], prospectCount = 12, isInteractive = true) {
+export function renderHorizontalFlow(pipelineSteps = [], prospectCount = 12, isInteractive = true, activeStepIdx = 0) {
   let html = `
     <div class="horizontal-node-canvas">
       <!-- Prospects Source Node -->
@@ -393,7 +506,7 @@ export function renderHorizontalFlow(pipelineSteps = [], prospectCount = 12, isI
         </div>
       </div>
       <div class="flow-node-item">
-        <div class="flow-node-card">
+        <div class="flow-node-card ${idx === activeStepIdx ? 'is-active-step' : ''}" data-step-idx="${idx}" style="${isInteractive ? 'cursor: pointer;' : ''} ${idx === activeStepIdx ? 'border-color: #ff6b00; box-shadow: 0 0 0 2px rgba(255, 107, 0, 0.22);' : ''}">
           ${isInteractive ? `<button type="button" class="btn-delete-node" data-delete-idx="${idx}" title="Remove Step">✕</button>` : ''}
           <div class="node-icon-circle">${step.icon || ICONS.lightning}</div>
           <div class="node-text-group">
@@ -529,12 +642,14 @@ export async function renderCampaignsView(container, ctx = {}) {
   let campaigns = [];
   let lists = [];
   let profiles = [];
+  let activeSenderEmail = '';
 
   try {
-    const [cRes, lRes, pRes] = await Promise.all([
+    const [cRes, lRes, pRes, cfg] = await Promise.all([
       call(ACTIONS.CAMPAIGN_GET_ALL, {}).catch(() => []),
       call(ACTIONS.LIST_GET_ALL, {}).catch(() => []),
       allProfiles().catch(() => []),
+      getConfig().catch(() => ({})),
     ]);
     campaigns = Array.isArray(cRes) ? cRes : (cRes?.campaigns || []);
     const rawLists = Array.isArray(lRes) ? lRes : (lRes?.lists || []);
@@ -544,6 +659,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       listId: l.listId || l.id,
     }));
     profiles = Array.isArray(pRes) ? pRes : [];
+    activeSenderEmail = cfg?.mailbox?.email || cfg?.googleWorkspace?.email || '';
   } catch (e) {
     console.warn('[Campaigns View] Read error', e);
   }
@@ -561,6 +677,8 @@ export async function renderCampaignsView(container, ctx = {}) {
   let activeFilter = 'All';
   let selectedTemplate = CAMPAIGN_TEMPLATES[0]; // Custom by default or Standard
   let pipelineSteps = templateToPipeline(selectedTemplate);
+  let activeStepIdx = 0;
+  let autoEnrichMissingEmail = true;
 
   // Pick default list: first with leads, or 'all_prospects' if it has leads, or first list/empty
   let selectedListId = '';
@@ -939,7 +1057,7 @@ export async function renderCampaignsView(container, ctx = {}) {
   // STATE B: 3-Step Campaign Creation Wizard (Frames 11–13)
   // =========================================================================
   function renderWizard() {
-    const filterOptions = ['All', 'Custom', 'Invitation', 'Message', 'Visit', 'Email', 'CRM Sync'];
+    const filterOptions = ['All', 'Custom', 'Gmail Only', 'Invitation', 'Message', 'Visit', 'Email', 'CRM Sync'];
     const filteredTemplates = activeFilter === 'All'
       ? CAMPAIGN_TEMPLATES
       : CAMPAIGN_TEMPLATES.filter((t) => t.tags.includes(activeFilter) || t.category === activeFilter);
@@ -949,13 +1067,20 @@ export async function renderCampaignsView(container, ctx = {}) {
 
     container.innerHTML = `
       <div class="wizard-full-view">
-        <!-- Top Wizard Header with Breadcrumbs -->
-        <div class="wizard-top-header">
+        <!-- Top Wizard Header with Breadcrumbs & Sender Badge -->
+        <div class="wizard-top-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div class="wizard-head-left">
             <button type="button" class="btn-back-link" id="btn-cancel-wizard">
               ← Back to Campaigns
             </button>
             <h2 class="view-main-title">Create a Campaign</h2>
+          </div>
+
+          <div class="wizard-head-center">
+            <div style="display: flex; align-items: center; gap: 6px; background: #fff7ed; border: 1px solid #ffedd5; padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #ff6b00; font-weight: 700;">
+              <span>📧 Outreach Sender:</span>
+              <span style="font-weight: 600; color: #9a3412;">${activeSenderEmail || 'Google Workspace / Gmail'}</span>
+            </div>
           </div>
 
           <!-- Breadcrumbs (Frames 11-13) -->
@@ -1092,9 +1217,26 @@ export async function renderCampaignsView(container, ctx = {}) {
                     </span>
                   ` : `
                     <span style="font-size: 11.5px; color: var(--text-muted); display: block; margin-top: 4px;">
-                      Anti-detection pacing will distribute connection requests within your daily safety limit (25/day).
+                      Anti-detection pacing will distribute connection requests and emails safely within daily quotas.
                     </span>
                   `}
+                </div>
+
+                <!-- Vault Auto-enrichment toggle card -->
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 14px 16px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 12px; margin-top: 16px;">
+                  <div style="display: flex; gap: 12px; align-items: flex-start;">
+                    <span style="font-size: 20px; line-height: 1;">⚡</span>
+                    <div>
+                      <strong style="font-size: 13.5px; color: #9a3412; display: block; margin-bottom: 3px;">Auto-enrich missing emails via Vault</strong>
+                      <span style="font-size: 12px; color: #c2410c; line-height: 1.4; display: block;">
+                        If an enrolled prospect doesn't have an email address, OutFox will automatically waterfall-enrich them via Vault before sending email steps.
+                      </span>
+                    </div>
+                  </div>
+                  <label class="toggle-switch" style="flex-shrink: 0; margin-left: 12px; margin-top: 2px;">
+                    <input type="checkbox" id="wizard-auto-enrich-toggle" ${autoEnrichMissingEmail !== false ? 'checked' : ''} />
+                    <span class="slider"></span>
+                  </label>
                 </div>
               </div>
 
@@ -1111,14 +1253,14 @@ export async function renderCampaignsView(container, ctx = {}) {
               : ''
           }
 
-          <!-- STEP 3: SEQUENCE FLOW CANVAS & MESSAGE EDITOR -->
+          <!-- STEP 3: SEQUENCE FLOW CANVAS & DYNAMIC STEP EDITOR -->
           ${
             wizardStep === 3
               ? `
             <div class="wizard-step-container">
               <div class="step-headline-group">
                 <h3 class="step-title">Interactive Sequence Flow & Outreach Copy</h3>
-                <p class="step-subtitle">Fully customize delays, delete steps (✕), or insert custom touchpoints (+). Changes save directly into the campaign runner.</p>
+                <p class="step-subtitle">Fully customize delays, delete steps (✕), or insert custom touchpoints (+). Click any step to edit its content.</p>
               </div>
 
               ${(() => {
@@ -1129,7 +1271,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       <span class="warning-icon">${ICONS.warning}</span>
                       <div class="warning-text">
                         <strong>Caution: Step 1 is Direct Message</strong>
-                        <p>LinkedIn only allows direct messages to existing 1st-degree connections. If importing leads from LinkedIn Search, use a sequence starting with <strong>Invite (Connection Request)</strong>.</p>
+                        <p>LinkedIn only allows direct messages to existing 1st-degree connections. If importing leads from LinkedIn Search, use a sequence starting with <strong>Invite (Connection Request)</strong> or <strong>Cold Email</strong>.</p>
                       </div>
                     </div>
                   `;
@@ -1137,62 +1279,192 @@ export async function renderCampaignsView(container, ctx = {}) {
                 return '';
               })()}
 
-              <!-- Waalaxy Horizontal Visual Node Flow Canvas (Interactive Pipeline Editor) -->
+              <!-- Horizontal Visual Node Flow Canvas -->
               <div class="waalaxy-card flow-canvas-card">
-                <div class="canvas-header-label">HORIZONTAL VISUAL SEQUENCE PIPELINE (CLICK DELAYS OR [+] TO CUSTOMIZE)</div>
-                ${renderHorizontalFlow(pipelineSteps, prospectCount, true)}
+                <div class="canvas-header-label">HORIZONTAL VISUAL SEQUENCE PIPELINE (CLICK ANY STEP TO EDIT, OR [+] TO INSERT)</div>
+                ${renderHorizontalFlow(pipelineSteps, prospectCount, true, activeStepIdx)}
               </div>
 
-              <!-- Message Editor Drawer -->
-              <div class="waalaxy-card message-editor-card" style="margin-top: 20px;">
-                <div class="editor-head">
-                  <div class="editor-title-row">
-                    <span class="editor-icon">${ICONS.invitation}</span>
-                    <span class="editor-title">Connection Request Note</span>
+              <!-- Dynamic Step Content Editor -->
+              ${(() => {
+                if (pipelineSteps.length === 0) {
+                  return `
+                    <div class="waalaxy-card" style="margin-top: 20px; text-align: center; padding: 30px;">
+                      <p style="color: var(--text-muted); font-size: 14px;">Your sequence has no action steps. Click <strong>[+]</strong> above to insert a step.</p>
+                    </div>
+                  `;
+                }
+
+                if (activeStepIdx >= pipelineSteps.length) {
+                  activeStepIdx = Math.max(0, pipelineSteps.length - 1);
+                }
+                const curStep = pipelineSteps[activeStepIdx];
+
+                if (curStep.type === 'email') {
+                  return `
+                    <div class="waalaxy-card message-editor-card" style="margin-top: 20px;">
+                      <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
+                        <div class="editor-title-row" style="display: flex; align-items: center; gap: 10px;">
+                          <span class="editor-icon" style="color: #ff6b00;">${ICONS.email}</span>
+                          <div>
+                            <span class="editor-title" style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${curStep.title || 'Cold Email'}</span>
+                            <span style="font-size: 12px; color: var(--text-muted); display: block;">Step ${activeStepIdx + 1} of ${pipelineSteps.length} (Click any node above to edit that step)</span>
+                          </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px; background: #fff7ed; border: 1px solid #ffedd5; padding: 4px 10px; border-radius: 12px; font-size: 12px; color: #ff6b00; font-weight: 600;">
+                          <span>📧 Sender:</span>
+                          <strong>${activeSenderEmail || 'Google Workspace / Gmail'}</strong>
+                        </div>
+                      </div>
+
+                      <div class="form-group" style="margin-bottom: 14px;">
+                        <label style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: flex; justify-content: space-between;">
+                          <span>Subject Line</span>
+                          <span style="font-size: 11.5px; color: var(--text-muted); font-weight: normal;">Supports {{variables}} & Spintax</span>
+                        </label>
+                        <input type="text" id="wizard-email-subject" class="form-input" value="${curStep.subject || ''}" placeholder="e.g. Quick question regarding {{company|your company}}" />
+                      </div>
+
+                      <div class="variable-chips-row" style="flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+                        <span style="font-size: 11.5px; font-weight: 600; color: #64748b; margin-right: 4px;">Insert Tag:</span>
+                        <button type="button" class="variable-chip" data-tag="{{firstName}}">+ {{firstName}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{lastName}}">+ {{lastName}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{fullName}}">+ {{fullName}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{company}}">+ {{company}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{jobTitle}}">+ {{jobTitle}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{headline}}">+ {{headline}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{email}}">+ {{email}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{ai_opener}}">+ {{ai_opener}} (AI)</button>
+                      </div>
+
+                      <div class="form-group" style="margin-bottom: 14px;">
+                        <label style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: block;">
+                          Email Body
+                        </label>
+                        <textarea id="wizard-email-body" class="form-input editor-textarea" rows="7" placeholder="Hi {{firstName|there}},&#10;&#10;...">${curStep.body || ''}</textarea>
+                      </div>
+
+                      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 14px; padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                          <div>
+                            <strong style="font-size: 13px; color: var(--text-primary); display: block;">Reply in same Gmail thread</strong>
+                            <span style="font-size: 12px; color: var(--text-muted);">When enabled, this email is sent as a threaded follow-up reply in the prospect's existing Gmail conversation.</span>
+                          </div>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="wizard-email-threading" ${curStep.replyInThread !== false ? 'checked' : ''} />
+                            <span class="slider"></span>
+                          </label>
+                        </div>
+
+                        <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+                          <div>
+                            <strong style="font-size: 13px; color: var(--text-primary); display: block;">${ICONS.sparkles} AI Personalized Opener ({{ai_opener}})</strong>
+                            <span style="font-size: 12px; color: var(--text-muted);">Use Gemini / Groq to write a personalized opening line for each lead.</span>
+                          </div>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="wizard-ai-toggle" ${useAiHook ? 'checked' : ''} />
+                            <span class="slider"></span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="editor-foot-actions" style="margin-top: 20px;">
+                        <button type="button" class="btn-pill btn-secondary" id="btn-step3-back">← Back</button>
+                        <button type="button" class="btn-pill btn-primary btn-launch-big" id="btn-launch-campaign">
+                          ${ICONS.rocket} Launch Campaign Now
+                        </button>
+                      </div>
+                    </div>
+                  `;
+                }
+
+                if (curStep.type === 'message') {
+                  return `
+                    <div class="waalaxy-card message-editor-card" style="margin-top: 20px;">
+                      <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
+                        <div class="editor-title-row" style="display: flex; align-items: center; gap: 10px;">
+                          <span class="editor-icon" style="color: #ff6b00;">${ICONS.message}</span>
+                          <div>
+                            <span class="editor-title" style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${curStep.title || 'LinkedIn Message'}</span>
+                            <span style="font-size: 12px; color: var(--text-muted); display: block;">Step ${activeStepIdx + 1} of ${pipelineSteps.length} (Click any node above to edit that step)</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="variable-chips-row" style="flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+                        <span style="font-size: 11.5px; font-weight: 600; color: #64748b; margin-right: 4px;">Insert Tag:</span>
+                        <button type="button" class="variable-chip" data-tag="{{firstName}}">+ {{firstName}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{lastName}}">+ {{lastName}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{fullName}}">+ {{fullName}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{company}}">+ {{company}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{jobTitle}}">+ {{jobTitle}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{headline}}">+ {{headline}}</button>
+                        <button type="button" class="variable-chip" data-tag="{{ai_opener}}">+ {{ai_opener}} (AI)</button>
+                      </div>
+
+                      <div class="form-group" style="margin-bottom: 14px;">
+                        <label style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: block;">
+                          Message Body
+                        </label>
+                        <textarea id="wizard-message-body" class="form-input editor-textarea" rows="5" placeholder="Hi {{firstName|there}},&#10;&#10;...">${curStep.body || ''}</textarea>
+                      </div>
+
+                      <div class="editor-foot-actions" style="margin-top: 20px;">
+                        <button type="button" class="btn-pill btn-secondary" id="btn-step3-back">← Back</button>
+                        <button type="button" class="btn-pill btn-primary btn-launch-big" id="btn-launch-campaign">
+                          ${ICONS.rocket} Launch Campaign Now
+                        </button>
+                      </div>
+                    </div>
+                  `;
+                }
+
+                // Default / Invite step
+                const noteValue = curStep.note !== undefined ? curStep.note : customNote;
+                return `
+                  <div class="waalaxy-card message-editor-card" style="margin-top: 20px;">
+                    <div class="editor-head">
+                      <div class="editor-title-row">
+                        <span class="editor-icon">${ICONS.invitation}</span>
+                        <span class="editor-title">Connection Request Note</span>
+                      </div>
+                      <span class="char-counter" id="note-char-counter">${noteValue.length} / 200</span>
+                    </div>
+
+                    <div class="variable-chips-row" style="flex-wrap: wrap; gap: 6px;">
+                      <span style="font-size: 11.5px; font-weight: 600; color: #64748b; margin-right: 4px;">Insert Tag:</span>
+                      <button type="button" class="variable-chip" data-tag="{{firstName}}">+ {{firstName}}</button>
+                      <button type="button" class="variable-chip" data-tag="{{lastName}}">+ {{lastName}}</button>
+                      <button type="button" class="variable-chip" data-tag="{{fullName}}">+ {{fullName}}</button>
+                      <button type="button" class="variable-chip" data-tag="{{company}}">+ {{company}}</button>
+                      <button type="button" class="variable-chip" data-tag="{{jobTitle}}">+ {{jobTitle}}</button>
+                      <button type="button" class="variable-chip" data-tag="{{headline}}">+ {{headline}}</button>
+                      <button type="button" class="variable-chip" data-tag="{{email}}">+ {{email}}</button>
+                      <button type="button" class="variable-chip" data-tag="{{ai_opener}}">+ {{ai_opener}} (AI)</button>
+                    </div>
+
+                    <textarea id="wizard-note-textarea" class="form-input editor-textarea" rows="4" maxlength="200">${noteValue}</textarea>
+
+                    <div class="ai-toggle-box">
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="wizard-ai-toggle" ${useAiHook ? 'checked' : ''} />
+                        <span class="slider"></span>
+                      </label>
+                      <div class="ai-toggle-text">
+                        <span class="ai-toggle-title">${ICONS.sparkles} Use Groq/Gemini AI to generate unique personalized hook for each lead</span>
+                        <span class="ai-toggle-sub">Dynamically inspects prospect headline and company to craft a contextual opening icebreaker.</span>
+                      </div>
+                    </div>
+
+                    <div class="editor-foot-actions">
+                      <button type="button" class="btn-pill btn-secondary" id="btn-step3-back">← Back</button>
+                      <button type="button" class="btn-pill btn-primary btn-launch-big" id="btn-launch-campaign">
+                        ${ICONS.rocket} Launch Campaign Now
+                      </button>
+                    </div>
                   </div>
-                  <span class="char-counter" id="note-char-counter">${customNote.length} / 200</span>
-                </div>
-
-                <!-- Variable insertion chips -->
-                <div class="variable-chips-row" style="flex-wrap: wrap; gap: 6px;">
-                  <span style="font-size: 11.5px; font-weight: 600; color: #64748b; margin-right: 4px;">Insert Tag:</span>
-                  <button type="button" class="variable-chip" data-tag="{{firstName}}">+ {{firstName}}</button>
-                  <button type="button" class="variable-chip" data-tag="{{lastName}}">+ {{lastName}}</button>
-                  <button type="button" class="variable-chip" data-tag="{{fullName}}">+ {{fullName}}</button>
-                  <button type="button" class="variable-chip" data-tag="{{company}}">+ {{company}}</button>
-                  <button type="button" class="variable-chip" data-tag="{{jobTitle}}">+ {{jobTitle}}</button>
-                  <button type="button" class="variable-chip" data-tag="{{headline}}">+ {{headline}}</button>
-                  <button type="button" class="variable-chip" data-tag="{{location}}">+ {{location}}</button>
-                  <button type="button" class="variable-chip" data-tag="{{industry}}">+ {{industry}}</button>
-                  <button type="button" class="variable-chip" data-tag="{{email}}">+ {{email}}</button>
-                  <button type="button" class="variable-chip" data-tag="{{icebreaker}}">+ {{icebreaker}} (AI)</button>
-                  <button type="button" class="variable-chip" data-tag="{{mutualCount}}">+ {{mutualCount}}</button>
-                </div>
-
-                <textarea id="wizard-note-textarea" class="form-input editor-textarea" rows="4" maxlength="200">${customNote}</textarea>
-
-                <!-- AI Personalization Toggle -->
-                <div class="ai-toggle-box">
-                  <label class="toggle-switch">
-                    <input type="checkbox" id="wizard-ai-toggle" ${useAiHook ? 'checked' : ''} />
-                    <span class="slider"></span>
-                  </label>
-                  <div class="ai-toggle-text">
-                    <span class="ai-toggle-title">${ICONS.sparkles} Use Groq/Gemini AI to generate unique personalized hook for each lead</span>
-                    <span class="ai-toggle-sub">Dynamically inspects prospect headline and company to craft a contextual opening icebreaker.</span>
-                  </div>
-                </div>
-
-                <!-- Launch Button -->
-                <div class="editor-foot-actions">
-                  <button type="button" class="btn-pill btn-secondary" id="btn-step3-back">
-                    ← Back
-                  </button>
-                  <button type="button" class="btn-pill btn-primary btn-launch-big" id="btn-launch-campaign">
-                    ${ICONS.rocket} Launch Campaign Now
-                  </button>
-                </div>
-              </div>
+                `;
+              })()}
             </div>
           `
               : ''
@@ -1225,6 +1497,7 @@ export async function renderCampaignsView(container, ctx = {}) {
           campaignName = `${found.title} #${campaigns.length + 1}`;
           customNote = found.steps?.find((s) => s.type === 'invite')?.note || 'Hi {{firstName|there}} — would love to connect!';
           pipelineSteps = templateToPipeline(found);
+          activeStepIdx = 0;
           wizardStep = 2;
           renderWizard();
         }
@@ -1246,6 +1519,10 @@ export async function renderCampaignsView(container, ctx = {}) {
       renderWizard();
     });
 
+    container.querySelector('#wizard-auto-enrich-toggle')?.addEventListener('change', (e) => {
+      autoEnrichMissingEmail = Boolean(e.target.checked);
+    });
+
     container.querySelector('#btn-step2-next')?.addEventListener('click', () => {
       const nameInput = container.querySelector('#wizard-input-campname');
       if (nameInput && nameInput.value.trim()) campaignName = nameInput.value.trim();
@@ -1265,6 +1542,33 @@ export async function renderCampaignsView(container, ctx = {}) {
     if (wizardStep === 3) {
       setupFlowCanvasEvents();
 
+      // Email Step Inputs
+      container.querySelector('#wizard-email-subject')?.addEventListener('input', (e) => {
+        if (pipelineSteps[activeStepIdx]) {
+          pipelineSteps[activeStepIdx].subject = e.target.value;
+        }
+      });
+
+      container.querySelector('#wizard-email-body')?.addEventListener('input', (e) => {
+        if (pipelineSteps[activeStepIdx]) {
+          pipelineSteps[activeStepIdx].body = e.target.value;
+        }
+      });
+
+      container.querySelector('#wizard-email-threading')?.addEventListener('change', (e) => {
+        if (pipelineSteps[activeStepIdx]) {
+          pipelineSteps[activeStepIdx].replyInThread = Boolean(e.target.checked);
+        }
+      });
+
+      // Message Step Inputs
+      container.querySelector('#wizard-message-body')?.addEventListener('input', (e) => {
+        if (pipelineSteps[activeStepIdx]) {
+          pipelineSteps[activeStepIdx].body = e.target.value;
+        }
+      });
+
+      // Invite Step Inputs
       const textarea = container.querySelector('#wizard-note-textarea');
       const counter = container.querySelector('#note-char-counter');
 
@@ -1272,6 +1576,9 @@ export async function renderCampaignsView(container, ctx = {}) {
         customNote = textarea.value;
         const inviteStep = pipelineSteps.find((s) => s.type === 'invite');
         if (inviteStep) inviteStep.note = customNote;
+        if (pipelineSteps[activeStepIdx] && pipelineSteps[activeStepIdx].type === 'invite') {
+          pipelineSteps[activeStepIdx].note = customNote;
+        }
 
         if (counter) {
           counter.textContent = `${textarea.value.length} / 200`;
@@ -1283,19 +1590,26 @@ export async function renderCampaignsView(container, ctx = {}) {
       container.querySelectorAll('.variable-chip').forEach((chip) => {
         chip.addEventListener('click', () => {
           const tag = chip.dataset.tag;
-          if (textarea && tag) {
-            const start = textarea.selectionStart || textarea.value.length;
-            const end = textarea.selectionEnd || textarea.value.length;
-            textarea.value = textarea.value.substring(0, start) + tag + textarea.value.substring(end);
-            customNote = textarea.value;
-            const inviteStep = pipelineSteps.find((s) => s.type === 'invite');
-            if (inviteStep) inviteStep.note = customNote;
-
-            textarea.focus();
-            textarea.selectionStart = textarea.selectionEnd = start + tag.length;
+          const target =
+            container.querySelector('#wizard-email-body') ||
+            container.querySelector('#wizard-note-textarea') ||
+            container.querySelector('#wizard-message-body');
+          if (target && tag) {
+            const start = target.selectionStart || target.value.length;
+            const end = target.selectionEnd || target.value.length;
+            target.value = target.value.substring(0, start) + tag + target.value.substring(end);
+            if (pipelineSteps[activeStepIdx]) {
+              if (pipelineSteps[activeStepIdx].type === 'email') pipelineSteps[activeStepIdx].body = target.value;
+              else if (pipelineSteps[activeStepIdx].type === 'invite') {
+                customNote = target.value;
+                pipelineSteps[activeStepIdx].note = target.value;
+              } else if (pipelineSteps[activeStepIdx].type === 'message') pipelineSteps[activeStepIdx].body = target.value;
+            }
+            target.focus();
+            target.selectionStart = target.selectionEnd = start + tag.length;
             if (counter) {
-              counter.textContent = `${textarea.value.length} / 200`;
-              counter.classList.toggle('is-warning', textarea.value.length > 180);
+              counter.textContent = `${target.value.length} / 200`;
+              counter.classList.toggle('is-warning', target.value.length > 180);
             }
           }
         });
@@ -1354,6 +1668,7 @@ export async function renderCampaignsView(container, ctx = {}) {
             steps: contractSteps,
             listId: selectedListId !== 'all_prospects' ? selectedListId : undefined,
             publicIds: publicIdsToEnroll.length > 0 ? publicIdsToEnroll : undefined,
+            autoEnrichMissingEmail: Boolean(autoEnrichMissingEmail),
             syncGoogleSheets: true,
           });
 
@@ -1372,7 +1687,7 @@ export async function renderCampaignsView(container, ctx = {}) {
   }
 
   // =========================================================================
-  // Canvas Interactive Event Handlers (Delete, Insert, Delay Picker)
+  // Canvas Interactive Event Handlers (Delete, Insert, Delay Picker, Select)
   // =========================================================================
   function setupFlowCanvasEvents() {
     const canvasCard = container.querySelector('.flow-canvas-card');
@@ -1389,10 +1704,22 @@ export async function renderCampaignsView(container, ctx = {}) {
       closeAnyPopover();
       const canvasInner = canvasCard.querySelector('.horizontal-node-canvas');
       if (canvasInner) {
-        canvasInner.outerHTML = renderHorizontalFlow(pipelineSteps, getSelectedListProspectCount(), true);
+        canvasInner.outerHTML = renderHorizontalFlow(pipelineSteps, getSelectedListProspectCount(), true, activeStepIdx);
         setupFlowCanvasEvents();
       }
     }
+
+    // Node Selection Click (Click node to open its editor drawer)
+    canvasCard.querySelectorAll('.flow-node-card').forEach((card) => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.btn-delete-node') || e.target.closest('.btn-insert-node')) return;
+        const sIdx = parseInt(card.dataset.stepIdx, 10);
+        if (!isNaN(sIdx) && sIdx >= 0 && sIdx < pipelineSteps.length) {
+          activeStepIdx = sIdx;
+          renderWizard();
+        }
+      });
+    });
 
     // Step Deletion (✕ Button)
     canvasCard.querySelectorAll('.btn-delete-node').forEach((btn) => {
@@ -1402,7 +1729,10 @@ export async function renderCampaignsView(container, ctx = {}) {
         const deleteIdx = parseInt(btn.dataset.deleteIdx, 10);
         if (!isNaN(deleteIdx) && deleteIdx >= 0 && deleteIdx < pipelineSteps.length) {
           pipelineSteps.splice(deleteIdx, 1);
-          refreshCanvas();
+          if (activeStepIdx >= pipelineSteps.length) {
+            activeStepIdx = Math.max(0, pipelineSteps.length - 1);
+          }
+          renderWizard();
         }
       });
     });
@@ -1490,8 +1820,9 @@ export async function renderCampaignsView(container, ctx = {}) {
                 id: 's_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
               };
               pipelineSteps.splice(insertIdx, 0, newStep);
+              activeStepIdx = insertIdx;
+              renderWizard();
             }
-            refreshCanvas();
           });
         });
       });

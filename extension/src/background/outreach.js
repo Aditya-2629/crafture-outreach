@@ -33,6 +33,7 @@ export const QUOTA_KIND = Object.freeze({
   [ACTIONS.OUTREACH_LIKE]: 'visit',
   [ACTIONS.OUTREACH_COMMENT]: 'visit',
   [ACTIONS.OUTREACH_ENDORSE]: 'visit',
+  [ACTIONS.OUTREACH_EMAIL]: 'email',
 });
 
 /** Origins whose writes go straight to LinkedIn. */
@@ -285,10 +286,11 @@ export async function sendOutreachEmail(params = {}, origin = 'popup') {
     return { status: 'dryRun', wouldSend: { action: ACTIONS.OUTREACH_EMAIL, params } };
   }
 
-  const { publicId, subject, body } = params;
+  const { publicId, subject, body, threadId, inReplyTo, references } = params;
   const profile = publicId ? await getStoredProfile(publicId) : null;
   const recipientEmail =
     params.email ||
+    params.to ||
     (profile && profile.email) ||
     (profile && profile.enrichment && profile.enrichment.email) ||
     (profile && profile.enrichmentEmail);
@@ -301,14 +303,35 @@ export async function sendOutreachEmail(params = {}, origin = 'popup') {
     };
   }
 
-  const result = await sendEmail({ to: recipientEmail, subject, body });
+  await quota.reserve('email');
+
+  let result;
+  try {
+    result = await sendEmail({
+      to: recipientEmail,
+      subject,
+      body,
+      threadId,
+      inReplyTo,
+      references,
+    });
+  } catch (err) {
+    await quota.release('email');
+    throw err;
+  }
 
   await logAction({
     action: ACTIONS.OUTREACH_EMAIL,
     publicId: publicId || '',
     origin,
     channel: 'gmail',
-    result: { status: 'sent', messageId: result.messageId, to: recipientEmail, sentAt: Date.now() },
+    result: {
+      status: 'sent',
+      messageId: result.messageId,
+      threadId: result.threadId,
+      to: recipientEmail,
+      sentAt: Date.now(),
+    },
   });
 
   await emit(EVENTS.EMAIL_SENT, {
@@ -317,10 +340,18 @@ export async function sendOutreachEmail(params = {}, origin = 'popup') {
     subject,
     status: 'sent',
     channel: 'gmail',
+    messageId: result.messageId,
+    threadId: result.threadId,
     ...(params.campaignId ? { campaignId: params.campaignId } : {}),
   });
 
-  return { status: 'sent', to: recipientEmail, messageId: result.messageId, sentAt: Date.now() };
+  return {
+    status: 'sent',
+    to: recipientEmail,
+    messageId: result.messageId,
+    threadId: result.threadId,
+    sentAt: Date.now(),
+  };
 }
 
 register(ACTIONS.OUTREACH_EMAIL, (params, ctx) => sendOutreachEmail(params, ctx.origin));

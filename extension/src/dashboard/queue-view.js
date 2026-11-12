@@ -12,7 +12,7 @@ import { openUiConfirm, openUiAlert } from './modal-engine.js';
 
 let selectedQueueIds = new Set();
 let activeCampaignFilter = 'all';
-let activeTypeFilters = new Set(['Invitation', 'Message', 'Visit', 'Follow']);
+let activeTypeFilters = new Set(['Invitation', 'Message', 'Visit', 'Follow', 'Email']);
 
 function ensureQueueStyles() {
   const STYLE_ID = 'waalaxy-queue-view-css';
@@ -111,6 +111,7 @@ export async function renderQueueView(container, ctx = {}) {
   const inviteQuota = quotas.invite || {};
   const messageQuota = quotas.message || {};
   const visitQuota = quotas.view || quotas.visit || {};
+  const emailQuota = quotas.email || {};
 
   const inviteUsed = inviteQuota.dailyUsed ?? inviteQuota.usedToday ?? 0;
   const inviteDailyCap = inviteQuota.dailyCap ?? inviteQuota.max ?? 25;
@@ -123,10 +124,14 @@ export async function renderQueueView(container, ctx = {}) {
   const visitUsed = visitQuota.dailyUsed ?? visitQuota.usedToday ?? 0;
   const visitDailyCap = visitQuota.dailyCap ?? visitQuota.max ?? 80;
 
+  const emailUsed = emailQuota.dailyUsed ?? emailQuota.usedToday ?? 0;
+  const emailDailyCap = emailQuota.dailyCap ?? emailQuota.max ?? (configRes?.dailyEmailCap || 50);
+
   const invitesLeft = Math.max(0, inviteDailyCap - inviteUsed);
   const weeklyInvitesLeft = Math.max(0, inviteWeeklyCap - inviteWeeklyUsed);
   const messagesLeft = Math.max(0, messageDailyCap - messageUsed);
   const visitsLeft = Math.max(0, visitDailyCap - visitUsed);
+  const emailsLeft = Math.max(0, emailDailyCap - emailUsed);
 
   const isWeeklyInviteQuotaReached = invitesLeft === 0 || weeklyInvitesLeft === 0;
   const campaigns = Array.isArray(allStorage.campaigns) ? allStorage.campaigns : [];
@@ -151,6 +156,9 @@ export async function renderQueueView(container, ctx = {}) {
         } else if (currentStep.type === 'follow') {
           actionType = 'Follow';
           actionIcon = ICONS.follow;
+        } else if (currentStep.type === 'email') {
+          actionType = 'Email';
+          actionIcon = ICONS.email;
         }
 
         let statusType = 'scheduled';
@@ -162,6 +170,7 @@ export async function renderQueueView(container, ctx = {}) {
           (actionType === 'Invitation' && isWeeklyInviteQuotaReached) ||
           (actionType === 'Message' && messagesLeft === 0) ||
           (actionType === 'Visit' && visitsLeft === 0) ||
+          (actionType === 'Email' && emailsLeft === 0) ||
           (e.error && e.error.includes('Daily quota reached'))
         ) {
           statusType = 'postponed';
@@ -242,7 +251,7 @@ export async function renderQueueView(container, ctx = {}) {
                 Action type ⌵
               </button>
               <div class="action-type-menu hidden" id="action-type-menu">
-                ${['Invitation', 'Message', 'Visit', 'Follow'].map((t) => `
+                ${['Invitation', 'Message', 'Visit', 'Follow', 'Email'].map((t) => `
                   <label class="action-checkbox-item">
                     <input type="checkbox" class="chk-action-filter" value="${t}" ${activeTypeFilters.has(t) ? 'checked' : ''} />
                     <span>${t}</span>
@@ -399,6 +408,25 @@ export async function renderQueueView(container, ctx = {}) {
                 <div class="quota-bar-fill fill-visits" style="width: ${Math.round(((visitUsed) / (visitDailyCap || 80)) * 100)}%;"></div>
               </div>
               <div class="quota-count-line">${visitUsed} / ${visitDailyCap} visited today</div>
+            </div>
+          </div>
+
+          <div class="quotas-channel-section" style="margin-top: 18px;">
+            <div class="channel-heading">Cold Email (Gmail)</div>
+
+            <div class="quota-progress-card ${emailsLeft === 0 ? 'is-warning' : ''}">
+              <div class="quota-card-top">
+                <div class="quota-icon-wrap" style="background:#fff7ed; color:#ff6b00; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">${ICONS.email}</div>
+                <div class="quota-meta">
+                  <span class="quota-metric-name">COLD EMAILS</span>
+                  <span class="quota-metric-val"><strong>${emailsLeft}</strong> left today</span>
+                </div>
+                <span class="quota-info-icon" title="Daily cold email outreach cap">${ICONS.info}</span>
+              </div>
+              <div class="quota-bar-track">
+                <div class="quota-bar-fill" style="background:#ff6b00; width: ${Math.round(((emailUsed) / (emailDailyCap || 50)) * 100)}%;"></div>
+              </div>
+              <div class="quota-count-line">${emailUsed} / ${emailDailyCap} sent today</div>
             </div>
           </div>
         </aside>

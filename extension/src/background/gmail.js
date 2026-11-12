@@ -326,23 +326,28 @@ function safeBase64Encode(str) {
   return Buffer.from(str, 'utf-8').toString('base64');
 }
 
-export function createRfc2822Message({ to, from, subject, body }) {
-  const utf8Subject = `=?utf-8?B?${safeBase64Encode(subject || '')}?=`;
-  const emailLines = [
+export function createRfc2822Message({ to, from, subject, body, inReplyTo, references, threadId }) {
+  let finalSubject = subject || '';
+  if (threadId && !finalSubject.toLowerCase().startsWith('re:')) {
+    finalSubject = `Re: ${finalSubject}`;
+  }
+  const utf8Subject = `=?utf-8?B?${safeBase64Encode(finalSubject)}?=`;
+  const headers = [
     `To: ${to}`,
-    from ? `From: ${from}` : '',
+    from ? `From: ${from}` : null,
     `Subject: ${utf8Subject}`,
+    inReplyTo ? `In-Reply-To: ${inReplyTo}` : null,
+    references ? `References: ${references}` : (inReplyTo ? `References: ${inReplyTo}` : null),
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: 7bit',
-    '',
-    body || '',
   ].filter(Boolean).join('\r\n');
 
-  return safeBase64Encode(emailLines).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const fullMessage = `${headers}\r\n\r\n${body || ''}`;
+  return safeBase64Encode(fullMessage).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-export async function sendEmail({ to, subject, body }) {
+export async function sendEmail({ to, subject, body, threadId, inReplyTo, references }) {
   if (!to) throw new Error('Recipient email address is required.');
 
   let token;
@@ -360,12 +365,20 @@ export async function sendEmail({ to, subject, body }) {
     from: fromEmail,
     subject: subject || '',
     body: body || '',
+    threadId,
+    inReplyTo,
+    references,
   });
+
+  const sendPayload = { raw };
+  if (threadId) {
+    sendPayload.threadId = threadId;
+  }
 
   const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ raw }),
+    body: JSON.stringify(sendPayload),
   });
 
   if (!res.ok) {
@@ -374,5 +387,13 @@ export async function sendEmail({ to, subject, body }) {
   }
 
   const data = await res.json();
-  return { status: 'sent', messageId: data.id, to, sentAt: Date.now() };
+  return {
+    ok: true,
+    status: 'sent',
+    messageId: data.id,
+    threadId: data.threadId || threadId || data.id,
+    sentFrom: fromEmail,
+    to,
+    sentAt: Date.now(),
+  };
 }

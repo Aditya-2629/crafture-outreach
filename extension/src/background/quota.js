@@ -20,17 +20,17 @@ import { emit } from './events.js';
 /*  Constants                                                         */
 /* ================================================================== */
 
-export const KINDS = Object.freeze(['invite', 'message', 'visit', 'search']);
+export const KINDS = Object.freeze(['invite', 'message', 'visit', 'search', 'email']);
 
 /** Buckets that represent an action LinkedIn attributes to a human. */
-const WRITE_KINDS = new Set(['invite', 'message', 'visit']);
+const WRITE_KINDS = new Set(['invite', 'message', 'visit', 'email']);
 
 /** Per-day ceilings by account type. Always still under HARD_CAPS. */
 export const PRESETS = Object.freeze({
-  free: { invite: 25, message: 40, visit: 120, search: 300 },
-  premium: { invite: 25, message: 60, visit: 120, search: 500 },
-  salesnav: { invite: 30, message: 80, visit: 200, search: 800 },
-  recruiter: { invite: 40, message: 100, visit: 300, search: 1000 },
+  free: { invite: 25, message: 40, visit: 120, search: 300, email: 50 },
+  premium: { invite: 25, message: 60, visit: 120, search: 500, email: 100 },
+  salesnav: { invite: 30, message: 80, visit: 200, search: 800, email: 150 },
+  recruiter: { invite: 40, message: 100, visit: 300, search: 1000, email: 200 },
 });
 
 const CONFIG_CAP_KEY = {
@@ -38,6 +38,7 @@ const CONFIG_CAP_KEY = {
   message: 'dailyMessageCap',
   visit: 'dailyVisitCap',
   search: 'dailySearchCap',
+  email: 'dailyEmailCap',
 };
 
 const HARD_CAP_FOR = {
@@ -45,6 +46,7 @@ const HARD_CAP_FOR = {
   message: HARD_CAPS.dailyMessageCap,
   visit: HARD_CAPS.dailyVisitCap,
   search: HARD_CAPS.dailySearchCap,
+  email: HARD_CAPS.dailyEmailCap,
 };
 
 const MINUTE = 60 * 1000;
@@ -111,7 +113,7 @@ function nextWeekAt(now = new Date()) {
 }
 
 function emptyCounts() {
-  return { invite: 0, message: 0, visit: 0, search: 0 };
+  return { invite: 0, message: 0, visit: 0, search: 0, email: 0 };
 }
 
 /**
@@ -136,7 +138,7 @@ async function readState(now = new Date()) {
         : emptyCounts(),
     weeklyInvites: stored.weekKey === week ? (stored.weeklyInvites || 0) : 0,
     backoffUntil: stored.backoffUntil || 0,
-    bucketBackoffUntil: { invite: 0, message: 0, visit: 0, search: 0, ...(stored.bucketBackoffUntil || {}) },
+    bucketBackoffUntil: { invite: 0, message: 0, visit: 0, search: 0, email: 0, ...(stored.bucketBackoffUntil || {}) },
     challenge: stored.challenge || null,
   };
   return state;
@@ -298,7 +300,7 @@ export async function noteBucketBackoff(kind, ms = 24 * HOUR) {
   return withKeyLock(K.QUOTA, async () => {
     const current = await readState(new Date(now));
     if (!current.bucketBackoffUntil) {
-      current.bucketBackoffUntil = { invite: 0, message: 0, visit: 0, search: 0 };
+      current.bucketBackoffUntil = { invite: 0, message: 0, visit: 0, search: 0, email: 0 };
     }
     current.bucketBackoffUntil[kind] = Math.max(current.bucketBackoffUntil[kind] || 0, now + ms);
     return writeState(current);

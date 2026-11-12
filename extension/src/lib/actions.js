@@ -186,6 +186,7 @@ export const HARD_CAPS = Object.freeze({
   dailyMessageCap: 150,
   dailyVisitCap: 500,
   dailySearchCap: 1000,
+  dailyEmailCap: 200,
   weeklyInviteCap: 250,
 });
 
@@ -306,6 +307,7 @@ export const DEFAULT_CONFIG = {
   dailyMessageCap: 40,
   dailyVisitCap: 120,
   dailySearchCap: 500,
+  dailyEmailCap: 50,
   businessHoursOnly: true,
   businessStart: 9,
   businessEnd: 19,
@@ -506,7 +508,17 @@ const PARAM_SPECS = {
   },
   [ACTIONS.OUTREACH_EMAIL]: {
     required: { subject: 'string', body: 'string' },
-    optional: { publicId: 'string', email: 'string', to: 'string', dryRun: 'boolean' },
+    optional: {
+      publicId: 'string',
+      email: 'string',
+      to: 'string',
+      dryRun: 'boolean',
+      threadId: 'string',
+      inReplyTo: 'string',
+      references: 'string',
+      campaignId: 'string',
+      stepIndex: 'number',
+    },
   },
   [ACTIONS.OUTREACH_ENDORSE]: {
     required: { publicId: 'string' },
@@ -562,6 +574,8 @@ const PARAM_SPECS = {
       settings: 'object',
       sheetWebhookUrl: 'string',
       sheetUrl: 'string',
+      autoEnrichMissingEmail: 'boolean',
+      syncGoogleSheets: 'boolean',
     },
   },
   [ACTIONS.CAMPAIGN_GET_ALL]: {},
@@ -804,6 +818,7 @@ export function clampConfig(cfg = {}) {
     ),
     dailyVisitCap: clampInt(input.dailyVisitCap, d.dailyVisitCap, 0, HARD_CAPS.dailyVisitCap),
     dailySearchCap: clampInt(input.dailySearchCap, d.dailySearchCap, 0, HARD_CAPS.dailySearchCap),
+    dailyEmailCap: clampInt(input.dailyEmailCap, d.dailyEmailCap, 0, HARD_CAPS.dailyEmailCap),
     businessHoursOnly: toBoolean(input.businessHoursOnly, d.businessHoursOnly),
     businessStart: clampInt(input.businessStart, d.businessStart, 0, 23),
     businessEnd: clampInt(input.businessEnd, d.businessEnd, 0, 24),

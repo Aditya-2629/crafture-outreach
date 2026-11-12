@@ -11,6 +11,8 @@ import * as voyager from './voyager.js';
 
 export const HUNTER_BASE = 'https://api.hunter.io/v2/email-finder';
 export const APOLLO_BASE = 'https://api.apollo.io/v1/people/match';
+export const VAULT_BASE = 'https://vault.api.crafture.space/api/enrich/waterfall';
+export const VAULT_API_KEY = '007_haiSecret';
 
 /** A domain to look a person up against, from the company or their profile. */
 export function domainFor(profile = {}, company = {}) {
@@ -119,8 +121,49 @@ export function patternGenerateEmail({ firstName, lastName, domain }) {
   };
 }
 
+export async function executeVault({ firstName, lastName, fullName, domain, company, linkedinUrl }) {
+  try {
+    const payload = {
+      firstName: firstName || undefined,
+      lastName: lastName || undefined,
+      fullName: fullName || undefined,
+      domain: domain || undefined,
+      company: company || undefined,
+      linkedinUrl: linkedinUrl || undefined,
+    };
+
+    const res = await fetch(VAULT_BASE, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': VAULT_API_KEY,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    const result = data?.data || data?.person || data || {};
+    const email = result.email || data.email;
+    if (!email) return null;
+
+    const out = {
+      provider: 'vault',
+      email,
+      confidence: typeof result.confidence === 'number' ? result.confidence : 0.95,
+    };
+    if (result.phone || data.phone) {
+      out.phone = result.phone || data.phone;
+    }
+    return out;
+  } catch (err) {
+    console.warn('[enrich] Vault error:', err?.message || err);
+    return null;
+  }
+}
+
 /**
- * Execute Waterfall lookup: Apollo -> Hunter -> Pattern Generator
+ * Execute Waterfall lookup: Vault -> Apollo -> Hunter -> Pattern Generator
  */
 export async function lookupEmailWaterfall(profile = {}, company = {}, extra = {}) {
   const cfg = await getConfig();
@@ -133,9 +176,24 @@ export async function lookupEmailWaterfall(profile = {}, company = {}, extra = {
   const last = profile.lastName || String(profile.fullName || '').split(' ').slice(1).join(' ') || '';
   const domain = extra.domain || domainFor(profile, company);
   const organizationName = extra.company || company.name || profile.company || '';
-  const linkedinUrl = profile.url || (profile.publicId ? `https://www.linkedin.com/in/${profile.publicId}` : '');
+  const linkedinUrl =
+    profile.url ||
+    (profile.publicId && !profile.publicId.startsWith('email:') && !profile.publicId.startsWith('lead_')
+      ? `https://www.linkedin.com/in/${profile.publicId}`
+      : '');
 
-  // 1. Try Apollo.io Match
+  // 1. Try Vault API Waterfall (Primary)
+  const vaultRes = await executeVault({
+    firstName: first,
+    lastName: last,
+    fullName: profile.fullName || extra.fullName,
+    domain,
+    company: organizationName,
+    linkedinUrl,
+  });
+  if (vaultRes && vaultRes.email) return vaultRes;
+
+  // 2. Try Apollo.io Match
   if (apolloKey) {
     const apolloRes = await executeApollo({
       apiKey: apolloKey,
@@ -148,7 +206,7 @@ export async function lookupEmailWaterfall(profile = {}, company = {}, extra = {
     if (apolloRes && apolloRes.email) return apolloRes;
   }
 
-  // 2. Try Hunter.io Email Finder
+  // 3. Try Hunter.io Email Finder
   if (hunterKey && domain) {
     const hunterRes = await executeHunter({
       domain,
@@ -160,7 +218,7 @@ export async function lookupEmailWaterfall(profile = {}, company = {}, extra = {
     if (hunterRes && hunterRes.email) return hunterRes;
   }
 
-  // 3. Pattern Generator Fallback
+  // 4. Pattern Generator Fallback
   if (domain && first && last) {
     const patternRes = patternGenerateEmail({ firstName: first, lastName: last, domain });
     if (patternRes) return patternRes;
@@ -173,6 +231,25 @@ export async function lookupEmailWaterfall(profile = {}, company = {}, extra = {
  * Legacy interface for pack generation compatibility
  */
 export async function lookupEmail(profile, company) {
+  const cfg = await getConfig();
+  const settings = cfg.enrichment || {};
+  if (!settings.provider || settings.provider === 'none') {
+    return { provider: 'none' };
+  }
+  if (settings.provider === 'hunter') {
+    const hunterKey = settings.hunterApiKey || settings.apiKey;
+    const domain = domainFor(profile, company);
+    const first = profile.firstName || String(profile.fullName || '').split(' ')[0] || '';
+    const last = profile.lastName || String(profile.fullName || '').split(' ').slice(1).join(' ') || '';
+    const res = await executeHunter({
+      domain,
+      firstName: first,
+      lastName: last,
+      fullName: profile.fullName,
+      apiKey: hunterKey,
+    });
+    return res || { provider: 'hunter' };
+  }
   return lookupEmailWaterfall(profile, company);
 }
 

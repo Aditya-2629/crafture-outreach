@@ -334,16 +334,24 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
         let url = getVal(columnMapping.linkedinUrl) || '';
 
         let publicId = url ? url.replace(/.*\/in\//, '').replace(/\/.*/, '').replace(/[^a-zA-Z0-9_-]/g, '') : '';
-        if (!publicId) publicId = `lead_${Date.now()}_${i}`;
+        if (!publicId) {
+          if (email && email.trim()) {
+            publicId = 'email:' + email.toLowerCase().trim();
+          } else {
+            publicId = `lead_${Date.now()}_${i}`;
+          }
+        }
 
         finalLeads.push({
           publicId,
           name,
           fullName: name,
+          firstName: fn || (name ? name.split(' ')[0] : ''),
+          lastName: ln || (name ? name.split(' ').slice(1).join(' ') : ''),
           headline,
           company,
           email,
-          url: url || `https://www.linkedin.com/in/${publicId}/`,
+          url: url || (email ? `mailto:${email}` : `https://www.linkedin.com/in/${publicId}/`),
           addedAt: Date.now()
         });
       });
@@ -371,6 +379,25 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
       }
 
       const storagePayload = { [storageKey]: existing };
+
+      // Persist individual profiles into profile store
+      finalLeads.forEach((lead) => {
+        const profileKey = `profile:${lead.publicId}`;
+        const existingProfile = allData[profileKey] || {};
+        storagePayload[profileKey] = {
+          ...existingProfile,
+          publicId: lead.publicId,
+          name: lead.name,
+          fullName: lead.fullName || lead.name,
+          firstName: lead.firstName || (lead.name ? lead.name.split(' ')[0] : ''),
+          lastName: lead.lastName || (lead.name ? lead.name.split(' ').slice(1).join(' ') : ''),
+          headline: lead.headline,
+          company: lead.company,
+          email: lead.email || existingProfile.email || '',
+          url: lead.url,
+          updatedAt: Date.now(),
+        };
+      });
 
       // Handle duplicate moving from other lists if requested
       if (moveDuplicates) {

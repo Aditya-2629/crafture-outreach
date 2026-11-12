@@ -277,6 +277,22 @@ export async function renderInboxView(container, ctx = {}) {
 
               <!-- Message Composer -->
               <div style="padding:16px 20px; border-top:1px solid #e2e8f0; background:#fff; display:flex; flex-direction:column; gap:10px;">
+                <!-- Smart Objection & Closer Bar -->
+                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <button type="button" id="btn-inbox-ai-playbook" style="display:inline-flex; align-items:center; gap:5px; background:#fff7ed; border:1px solid #fed7aa; color:#ea580c; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;" title="Analyze inbound message & apply personalized Objection Playbook response">
+                      ✨ AI Playbook Reply
+                    </button>
+                    <button type="button" id="btn-inbox-insert-resume" style="display:inline-flex; align-items:center; gap:5px; background:#f8fafc; border:1px solid #e2e8f0; color:#475569; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;" title="Insert active candidate resume link">
+                      📄 Insert Resume
+                    </button>
+                    <button type="button" id="btn-inbox-snooze-30" style="display:inline-flex; align-items:center; gap:5px; background:#f8fafc; border:1px solid #e2e8f0; color:#475569; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;" title="Snooze lead for 30 days">
+                      ⏰ Snooze 30d
+                    </button>
+                  </div>
+                  <span id="inbox-intent-badge" style="display:none; font-size:11px; font-weight:700; background:#f1f5f9; color:#64748b; padding:2px 8px; border-radius:12px;"></span>
+                </div>
+
                 <textarea id="inbox-reply-text" rows="2" placeholder="Write a reply to ${selectedThread.senderName}..." style="width:100%; padding:10px 14px; border:1.5px solid #cbd5e1; border-radius:10px; font-size:13px; outline:none; resize:none; font-family:inherit; box-sizing:border-box; transition:border-color 0.2s;"></textarea>
                 <div style="display:flex; align-items:center; justify-content:space-between;">
                   <span style="font-size:11px; color:#94a3b8;">Shift + Enter for new line</span>
@@ -339,6 +355,74 @@ export async function renderInboxView(container, ctx = {}) {
     if (stream) {
       stream.scrollTop = stream.scrollHeight;
     }
+
+    // Smart Closer Actions: AI Playbook, Resume Link & 30d Snooze
+    container.querySelector('#btn-inbox-ai-playbook')?.addEventListener('click', async () => {
+      const activeMsgs = activeMessages || [];
+      const inboundMsgs = activeMsgs.filter((m) => !m.isMe);
+      const lastInbound = inboundMsgs[inboundMsgs.length - 1];
+      const replyTextarea = container.querySelector('#inbox-reply-text');
+      const intentBadge = container.querySelector('#inbox-intent-badge');
+
+      const messageToAnalyze = lastInbound?.body || 'Hi, can you share more details or your resume?';
+      if (replyTextarea) {
+        replyTextarea.placeholder = 'Analyzing objection intent with OutFox AI...';
+      }
+
+      try {
+        const res = await call(ACTIONS.OBJECTION_MATCH_REPLY, {
+          message: messageToAnalyze,
+          publicId: selectedThread.publicId,
+          fullName: selectedThread.senderName,
+        });
+
+        if (replyTextarea && res.personalizedReply) {
+          replyTextarea.value = res.personalizedReply;
+          replyTextarea.focus();
+        }
+        if (intentBadge && res.tag) {
+          intentBadge.style.display = 'inline-block';
+          intentBadge.textContent = `🏷️ ${res.tag}`;
+        }
+        ctx.showToast?.(`AI Playbook: ${res.title}`, 'success');
+      } catch (err) {
+        ctx.showToast?.(`AI Playbook error: ${err.message}`, 'error');
+      }
+    });
+
+    container.querySelector('#btn-inbox-insert-resume')?.addEventListener('click', async () => {
+      try {
+        const res = await call(ACTIONS.CANDIDATES_GET, {});
+        const resumeUrl = res?.active?.resumeUrl || res?.active?.resumeLink;
+        if (!resumeUrl) {
+          ctx.showToast?.('No resume URL set on active candidate. Configure it in Templates ➔ Objections Playbook.', 'warn');
+          return;
+        }
+        const replyTextarea = container.querySelector('#inbox-reply-text');
+        if (replyTextarea) {
+          const current = replyTextarea.value.trim();
+          replyTextarea.value = current ? `${current}\n\nResume: ${resumeUrl}` : `Here is my updated resume: ${resumeUrl}`;
+          replyTextarea.focus();
+        }
+        ctx.showToast?.('Resume link inserted!', 'info');
+      } catch (err) {
+        ctx.showToast?.(`Failed to load resume: ${err.message}`, 'error');
+      }
+    });
+
+    container.querySelector('#btn-inbox-snooze-30')?.addEventListener('click', async () => {
+      try {
+        await call(ACTIONS.LEAD_SNOOZE, {
+          publicId: selectedThread.publicId,
+          fullName: selectedThread.senderName,
+          days: 30,
+          note: 'Snoozed from Inbox',
+        });
+        ctx.showToast?.(`⏰ Snoozed ${selectedThread.senderName} for 30 days!`, 'success');
+      } catch (err) {
+        ctx.showToast?.(`Failed to snooze lead: ${err.message}`, 'error');
+      }
+    });
 
     // Keydown Shift+Enter vs Enter in reply textarea
     const replyTextarea = container.querySelector('#inbox-reply-text');

@@ -23,6 +23,7 @@ import { snapshotAll } from './quota.js';
 import { addToBlacklist, addCompanyToBlacklist, getStoredProfile, get, set } from '../lib/storage.js';
 import { getActiveCandidate, setActiveCandidate, getAllCandidates } from './candidates.js';
 import { enrichLead } from './enrich.js';
+import { matchAndAdaptObjection, snoozeLead, popDueSnoozes } from './objections.js';
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
 let isPolling = false;
@@ -1735,6 +1736,48 @@ async function handleCallback(botToken, chatId, callbackData) {
       return sendTelegramMessage(botToken, chatId, `❌ Failed to block company: ${err.message}`);
     }
   }
+
+  // 17. Send 1-Tap Resume Link
+  if (data.startsWith('reply_resume:')) {
+    const publicId = data.replace('reply_resume:', '').trim();
+    const activeCand = await getActiveCandidate().catch(() => null);
+    const resumeUrl = activeCand?.resumeUrl || activeCand?.resumeLink || '';
+    if (!resumeUrl) {
+      return sendTelegramMessage(
+        botToken,
+        chatId,
+        `⚠️ *No Resume URL Configured:*\nPlease set the resume URL in OutFox Dashboard ➔ *Templates ➔ Objections Playbook*.`
+      );
+    }
+    const cal = activeCand?.bookingLink ? ` You can also pick a 10-min slot on my calendar if helpful: ${activeCand.bookingLink}` : '';
+    const body = `Hi! Here is a direct link to my resume: ${resumeUrl} .${cal}`;
+    try {
+      await voyager.sendMessage({ publicId, body });
+      return sendTelegramMessage(
+        botToken,
+        chatId,
+        `📄 *Resume Link Delivered!*\nSuccessfully sent resume link to \`${publicId}\` on LinkedIn.`
+      );
+    } catch (err) {
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to send resume link: ${err.message}`);
+    }
+  }
+
+  // 18. Snooze 30 Days
+  if (data.startsWith('snooze_30:')) {
+    const publicId = data.replace('snooze_30:', '').trim();
+    try {
+      const snoozed = await snoozeLead({ publicId, days: 30, note: 'Snoozed from Telegram' });
+      const wakeDate = new Date(snoozed.wakeAt).toLocaleDateString();
+      return sendTelegramMessage(
+        botToken,
+        chatId,
+        `⏰ *Lead Snoozed for 30 Days!*\n\`${publicId}\` will be snoozed until *${wakeDate}*.\n\nYou will receive a reminder when it is time to follow up!`
+      );
+    } catch (err) {
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to snooze lead: ${err.message}`);
+    }
+  }
 }
 
 export function stopTelegramPoller() {
@@ -1843,6 +1886,31 @@ onEvent(async (name, payload = {}) => {
         at: now,
       });
 
+      let company = payload.company || payload.companyName;
+      if (!company) {
+        const stored = await getStoredProfile(publicId).catch(() => null);
+        company = stored?.company || stored?.companyName;
+      }
+
+      // Analyze Intent & Match Objection Playbook
+      const match = await matchAndAdaptObjection(bodyText, {
+        publicId,
+        fullName: payload.fullName || payload.name,
+        company,
+      }).catch(() => null);
+
+      let draftButton = null;
+      let playbookSection = '';
+
+      if (match && match.personalizedReply) {
+        const draftId = 'd_' + Math.random().toString(36).slice(2, 9);
+        pendingDrafts.set(draftId, { publicId, text: match.personalizedReply, at: now });
+        draftButton = [{ text: '✨ Send AI Playbook Reply Now', callback_data: `send_draft:${draftId}` }];
+        playbookSection =
+          `\n🏷️ *Detected Intent:* \`${match.tag}\` (${match.title})\n` +
+          `🤖 *AI Playbook Suggested Reply:*\n"${match.personalizedReply}"\n`;
+      }
+
       const sentimentLabel =
         sentiment === 'positive' || name === EVENTS.POSITIVE_REPLY
           ? 'High Interest / Ready to Connect!'
@@ -1854,30 +1922,28 @@ onEvent(async (name, payload = {}) => {
         `🔗 [Open LinkedIn Profile](https://linkedin.com/in/${publicId})\n` +
         `✨ *AI Sentiment:* ${sentimentLabel}\n\n` +
         `💬 *Inbound Reply:*\n` +
-        `"${bodyText}"`;
+        `"${bodyText}"\n` +
+        playbookSection;
 
-      const replyMarkup = {
-        inline_keyboard: [
-          [{ text: '📅 Send 10-Min Booking Link', callback_data: `reply_cal:${publicId}` }],
-          [
-            { text: '✨ AI Draft Reply', callback_data: `reply_ai:${publicId}` },
-            { text: '📧 Find Email (Apollo)', callback_data: `enrich:${publicId}` },
-          ],
-          [{ text: '🚫 Do Not Contact', callback_data: `blacklist:${publicId}` }],
-        ],
-      };
-
-      let company = payload.company || payload.companyName;
-      if (!company) {
-        const stored = await getStoredProfile(publicId).catch(() => null);
-        company = stored?.company || stored?.companyName;
-      }
+      const keyboard = [];
+      if (draftButton) keyboard.push(draftButton);
+      keyboard.push([
+        { text: '📄 Send Resume Link', callback_data: `reply_resume:${publicId}` },
+        { text: '📅 Send Booking Link', callback_data: `reply_cal:${publicId}` },
+      ]);
+      keyboard.push([
+        { text: '⏰ Snooze 30 Days', callback_data: `snooze_30:${publicId}` },
+        { text: '📧 Find Email', callback_data: `enrich:${publicId}` },
+      ]);
+      keyboard.push([
+        { text: '🔄 Regenerate AI', callback_data: `reply_ai:${publicId}` },
+        { text: '🚫 Do Not Contact', callback_data: `blacklist:${publicId}` },
+      ]);
       if (company) {
-        replyMarkup.inline_keyboard.push([
-          { text: `🏢 Block Company (${company})`, callback_data: `block_co:${company}` },
-        ]);
+        keyboard.push([{ text: `🏢 Block Company (${company})`, callback_data: `block_co:${company}` }]);
       }
 
+      const replyMarkup = { inline_keyboard: keyboard };
       await sendTelegramAlert(alertMsg, { reply_markup: replyMarkup });
     }
 
@@ -2002,3 +2068,35 @@ getConfig().then((cfg) => {
 register(ACTIONS.TELEGRAM_STATUS, () => getTelegramStatus());
 register(ACTIONS.TELEGRAM_TEST, (params) => testTelegram(params));
 register(ACTIONS.TELEGRAM_SAVE, (params) => saveTelegram(params));
+
+export async function checkSnoozedReminders() {
+  try {
+    const cfg = await getConfig();
+    const tg = cfg.telegram || {};
+    if (!tg.enabled || !tg.botToken || !tg.chatId) return;
+
+    const dueLeads = await popDueSnoozes();
+    if (!dueLeads || dueLeads.length === 0) return;
+
+    for (const lead of dueLeads) {
+      const alertMsg =
+        `⏰ *30-DAY SNOOZE REMINDER — TIME TO FOLLOW UP!*\n\n` +
+        `👤 *Lead:* \`${lead.publicId}\`\n` +
+        `📝 *Note:* ${lead.note || '30-day circle back'}\n` +
+        `🔗 [Open LinkedIn Profile](https://linkedin.com/in/${lead.publicId})\n\n` +
+        `_The 30-day cooling period has completed. Re-engage this lead now!_`;
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [{ text: '✨ Draft Reconnect AI Message', callback_data: `reply_ai:${lead.publicId}` }],
+          [{ text: '📅 Send Booking Link', callback_data: `reply_cal:${lead.publicId}` }],
+          [{ text: '⏰ Snooze Another 30 Days', callback_data: `snooze_30:${lead.publicId}` }],
+        ],
+      };
+
+      await sendTelegramAlert(alertMsg, { reply_markup: replyMarkup });
+    }
+  } catch (err) {
+    console.warn('[checkSnoozedReminders error]', err.message);
+  }
+}

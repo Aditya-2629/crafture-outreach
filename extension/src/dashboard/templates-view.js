@@ -3,6 +3,8 @@
  * Fully working Emoji Picker, Image Uploader, File Attachment, and GIF Selector.
  */
 
+import { call } from '../ui/api.js';
+import { ACTIONS } from '../lib/actions.js';
 import { openUiConfirm } from './modal-engine.js';
 import { ICONS } from '../ui/icons.js';
 import { resolveSpintax } from '../lib/template.js';
@@ -427,6 +429,88 @@ export function openEditMessageModal({ template = null, category = 'message', on
   renderModal();
 }
 
+export function openEditObjectionModal({ objection = null, onSave }) {
+  ensureTemplatesStyles();
+  const existing = document.getElementById('modal-edit-objection-backdrop');
+  if (existing) existing.remove();
+
+  const isNew = !objection;
+  let tag = objection?.tag || 'CUSTOM_TAG';
+  let title = objection?.title || '';
+  let trigger = objection?.trigger || '';
+  let baseAnswer = objection?.baseAnswer || '';
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'modal-edit-objection-backdrop';
+  backdrop.className = 'edit-msg-modal-backdrop';
+
+  backdrop.innerHTML = `
+    <div class="edit-msg-modal-card" style="width: 580px; max-width: 95vw;">
+      <div class="edit-msg-modal-head">
+        <h2 class="edit-msg-title">${isNew ? 'Add Objection Rule' : 'Edit Objection Rule'}</h2>
+        <button type="button" class="btn-close-modal" id="btn-close-obj-modal">${ICONS.x}</button>
+      </div>
+
+      <div style="padding: 24px 28px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px;">
+          <div>
+            <label class="edit-msg-label">Tag / Intent</label>
+            <input type="text" id="input-obj-tag" class="input-text-model" value="${tag}" placeholder="e.g. TECH_STACK" style="text-transform:uppercase;" />
+          </div>
+          <div>
+            <label class="edit-msg-label">Rule Title</label>
+            <input type="text" id="input-obj-title" class="input-text-model" value="${title}" placeholder="e.g. Questions about Python or SQL stack" />
+          </div>
+        </div>
+
+        <div>
+          <label class="edit-msg-label">Trigger Phrases (comma-separated)</label>
+          <input type="text" id="input-obj-trigger" class="input-text-model" value="${trigger}" placeholder="e.g. python, sql, snowflake, tableau, what tools" />
+        </div>
+
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label class="edit-msg-label" style="margin: 0;">Base Answer Template</label>
+            <span style="font-size: 11px; color: #94a3b8;">Use {{firstName}}, {{company}}, {{resumeLink}}, {{bookingLink}}</span>
+          </div>
+          <textarea id="textarea-obj-answer" class="input-text-model" style="height: 120px; resize: vertical; line-height: 1.45;">${baseAnswer}</textarea>
+        </div>
+      </div>
+
+      <div class="edit-msg-modal-foot">
+        <button type="button" class="btn-modal-ghost" id="btn-cancel-obj-modal">Cancel</button>
+        <button type="button" class="btn-modal-primary" id="btn-save-obj-modal">Save Rule</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  backdrop.querySelector('#btn-close-obj-modal')?.addEventListener('click', () => backdrop.remove());
+  backdrop.querySelector('#btn-cancel-obj-modal')?.addEventListener('click', () => backdrop.remove());
+
+  backdrop.querySelector('#btn-save-obj-modal')?.addEventListener('click', () => {
+    const newTag = backdrop.querySelector('#input-obj-tag')?.value?.trim() || 'CUSTOM';
+    const newTitle = backdrop.querySelector('#input-obj-title')?.value?.trim();
+    const newTrigger = backdrop.querySelector('#input-obj-trigger')?.value?.trim();
+    const newAnswer = backdrop.querySelector('#textarea-obj-answer')?.value?.trim();
+
+    if (!newTitle || !newAnswer) {
+      alert('Please fill in Title and Base Answer.');
+      return;
+    }
+
+    backdrop.remove();
+    onSave({
+      id: objection?.id || `obj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      tag: newTag.toUpperCase().replace(/[^A-Z0-9_]/g, '_'),
+      title: newTitle,
+      trigger: newTrigger,
+      baseAnswer: newAnswer,
+    });
+  });
+}
+
 
 function ensureTemplatesStyles() {
   const STYLE_ID = 'waalaxy-templates-view-css';
@@ -531,7 +615,23 @@ export async function renderTemplatesView(container, ctx = {}) {
   ensureTemplatesStyles();
   if (!container) return;
 
-  const storage = await new Promise((r) => chrome.storage.local.get(['messageTemplates'], r));
+  let storage = {};
+  let objections = [];
+  let activeCandidate = null;
+
+  try {
+    const [sRes, oRes, cRes] = await Promise.all([
+      new Promise((r) => chrome.storage.local.get(['messageTemplates'], r)),
+      call(ACTIONS.OBJECTIONS_GET, {}).catch(() => ({ objections: [] })),
+      call(ACTIONS.CANDIDATES_GET, {}).catch(() => ({ active: null })),
+    ]);
+    storage = sRes || {};
+    objections = Array.isArray(oRes?.objections) ? oRes.objections : [];
+    activeCandidate = cRes?.active || null;
+  } catch (err) {
+    console.warn('[TemplatesView load error]', err);
+  }
+
   let templates = Array.isArray(storage.messageTemplates) ? storage.messageTemplates : [];
 
   function paint() {
@@ -563,56 +663,150 @@ export async function renderTemplatesView(container, ctx = {}) {
               <span class="cat-label">Email</span>
             </button>
           </div>
+
+          <div class="templates-sidebar-group">
+            <div class="group-label">AI CLOSER</div>
+            <button type="button" class="template-nav-btn ${activeCategory === 'objections' ? 'is-active' : ''}" data-cat="objections">
+              <span class="cat-icon">🛡️</span>
+              <span class="cat-label">Objections Playbook</span>
+            </button>
+          </div>
         </aside>
 
         <main class="templates-main-canvas">
-          <div class="templates-head-bar">
-            <div>
-              <h1 class="main-page-title">Messages management</h1>
-              <div class="category-heading-row">
-                <span class="cat-main-name">${activeCategory === 'invitation' ? 'Invitation' : activeCategory === 'email' ? 'Email' : 'Message'}</span>
-                <span class="badge-total-count">${filtered.length}</span>
+          ${activeCategory === 'objections' ? `
+            <div class="templates-head-bar">
+              <div>
+                <h1 class="main-page-title">Objections Playbook</h1>
+                <div class="category-heading-row">
+                  <span class="cat-main-name">Autonomous Objection Handling & Closes</span>
+                  <span class="badge-total-count">${objections.length} Rules</span>
+                </div>
+              </div>
+
+              <button type="button" class="btn-primary-create" id="btn-create-objection-main">
+                + Add Objection Rule
+              </button>
+            </div>
+
+            <!-- Active Candidate Resume Asset Bar -->
+            <div style="background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:18px 22px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.02); display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px;">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <span style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:10px; background:#fff7ed; color:#ff6b00; font-size:18px;">
+                  📄
+                </span>
+                <div>
+                  <h3 style="margin:0; font-size:14px; font-weight:700; color:#14142b;">
+                    Active Candidate Resume URL
+                    <span style="font-size:11px; background:#f1f5f9; color:#64748b; padding:2px 8px; border-radius:10px; font-weight:600; margin-left:6px;">${activeCandidate?.name || 'Default Persona'}</span>
+                  </h3>
+                  <p style="margin:4px 0 0 0; font-size:12px; color:#64748b;">Link to PDF or Google Drive resume dispatched when leads ask for CV or profile.</p>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px; flex:1; max-width:480px;">
+                <input type="text" id="input-playbook-resume-url" value="${activeCandidate?.resumeUrl || ''}" placeholder="https://drive.google.com/file/d/your-resume/view" style="flex:1; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; outline:none;" />
+                <button type="button" id="btn-save-playbook-resume" class="btn-primary-create" style="padding:8px 16px; font-size:12px; border-radius:8px; white-space:nowrap;">
+                  Save URL
+                </button>
               </div>
             </div>
 
-            <button type="button" class="btn-primary-create" id="btn-create-template-main">
-              + Create a template
-            </button>
-          </div>
-
-          <div class="templates-body-content">
-            ${filtered.length === 0 ? `
-              <div class="templates-empty-state">
-                <div class="outfox-logo-illustration-wrap" style="margin-bottom: 16px;">
-                  <img src="../../icons/icon128.png" width="84" height="84" style="border-radius: 22px; box-shadow: 0 10px 28px rgba(255, 107, 0, 0.28); display: inline-block;" alt="OutFox" />
-                </div>
-                <h3 class="empty-title">No templates</h3>
-                <p class="empty-sub">Save high-converting message snippets to reuse across all outreach sequences.</p>
-                <button type="button" class="btn-create-template-blue" id="btn-empty-create-template" style="background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);">
-                  Create a template
+            <!-- Live Interactive AI Tester -->
+            <div style="background:#ffffff; border:1px solid #fed7aa; border-radius:14px; padding:18px 22px; margin-bottom:24px; box-shadow:0 4px 14px rgba(255,107,0,0.05);">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                <span style="font-size:16px;">⚡</span>
+                <h3 style="margin:0; font-size:13.5px; font-weight:700; color:#14142b;">Live AI Objection Matcher & Intent Tester</h3>
+              </div>
+              <p style="margin:0 0 12px 0; font-size:12px; color:#64748b;">Type any simulated inbound message to test how OutFox matches the intent against your playbook rules and adapts the response.</p>
+              <div style="display:flex; gap:10px; align-items:center;">
+                <input type="text" id="input-test-objection-msg" placeholder="e.g. Could you shoot over your resume or CV?" style="flex:1; padding:9px 14px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; outline:none;" />
+                <button type="button" id="btn-run-objection-test" class="btn-primary-create" style="padding:9px 18px; font-size:12.5px; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+                  ✨ Test Match
                 </button>
               </div>
-            ` : `
-              <div class="templates-grid">
-                ${filtered.map((t) => `
-                  <div class="template-item-card">
-                    <div class="template-card-head">
-                      <h4 class="template-name">${t.name}</h4>
-                      <span class="template-type-badge">${t.type}</span>
-                    </div>
-                    <p class="template-snippet">${t.content}</p>
-                    <div class="template-card-footer">
-                      <span class="template-char-badge">${t.content.length} chars</span>
-                      <div class="template-actions">
-                        <button type="button" class="btn-card-action btn-edit-tmpl" data-id="${t.id}">${ICONS.edit} Edit</button>
-                        <button type="button" class="btn-card-action btn-del-tmpl" data-id="${t.id}" title="Delete">${ICONS.trash}</button>
-                      </div>
+              <div id="objection-test-result" style="display:none; margin-top:14px; padding:14px; background:#fff7ed; border:1px solid #ffedd5; border-radius:10px;">
+              </div>
+            </div>
+
+            <!-- Playbook Rules Grid -->
+            <div class="templates-grid">
+              ${objections.map((o) => `
+                <div class="template-item-card" style="border-left: 4px solid #ff6b00;">
+                  <div class="template-card-head" style="align-items: flex-start;">
+                    <div>
+                      <span style="display:inline-block; font-size:10.5px; font-weight:800; background:#fff7ed; color:#ff6b00; border:1px solid #ffedd5; padding:2px 8px; border-radius:6px; margin-bottom:6px;">
+                        ${o.tag}
+                      </span>
+                      <h4 class="template-name" style="font-size:14px; font-weight:700; color:#14142b;">${o.title}</h4>
                     </div>
                   </div>
-                `).join('')}
+                  <div style="margin-bottom:10px;">
+                    <span style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Triggers:</span>
+                    <div style="font-size:11.5px; color:#64748b; font-style:italic; margin-top:2px;">${o.trigger}</div>
+                  </div>
+                  <div style="margin-bottom:14px;">
+                    <span style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Base Response:</span>
+                    <p class="template-snippet" style="min-height:auto; margin:4px 0 0 0; font-size:12px; color:#334155;">${o.baseAnswer}</p>
+                  </div>
+                  <div class="template-card-footer">
+                    <span class="template-char-badge">${o.baseAnswer.length} chars</span>
+                    <div class="template-actions">
+                      <button type="button" class="btn-card-action btn-edit-objection" data-id="${o.id}">${ICONS.edit} Edit</button>
+                      <button type="button" class="btn-card-action btn-del-objection" data-id="${o.id}" title="Delete">${ICONS.trash}</button>
+                    </div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : `
+            <div class="templates-head-bar">
+              <div>
+                <h1 class="main-page-title">Messages management</h1>
+                <div class="category-heading-row">
+                  <span class="cat-main-name">${activeCategory === 'invitation' ? 'Invitation' : activeCategory === 'email' ? 'Email' : 'Message'}</span>
+                  <span class="badge-total-count">${filtered.length}</span>
+                </div>
               </div>
-            `}
-          </div>
+
+              <button type="button" class="btn-primary-create" id="btn-create-template-main">
+                + Create a template
+              </button>
+            </div>
+
+            <div class="templates-body-content">
+              ${filtered.length === 0 ? `
+                <div class="templates-empty-state">
+                  <div class="outfox-logo-illustration-wrap" style="margin-bottom: 16px;">
+                    <img src="../../icons/icon128.png" width="84" height="84" style="border-radius: 22px; box-shadow: 0 10px 28px rgba(255, 107, 0, 0.28); display: inline-block;" alt="OutFox" />
+                  </div>
+                  <h3 class="empty-title">No templates</h3>
+                  <p class="empty-sub">Save high-converting message snippets to reuse across all outreach sequences.</p>
+                  <button type="button" class="btn-create-template-blue" id="btn-empty-create-template" style="background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);">
+                    Create a template
+                  </button>
+                </div>
+              ` : `
+                <div class="templates-grid">
+                  ${filtered.map((t) => `
+                    <div class="template-item-card">
+                      <div class="template-card-head">
+                        <h4 class="template-name">${t.name}</h4>
+                        <span class="template-type-badge">${t.type}</span>
+                      </div>
+                      <p class="template-snippet">${t.content}</p>
+                      <div class="template-card-footer">
+                        <span class="template-char-badge">${t.content.length} chars</span>
+                        <div class="template-actions">
+                          <button type="button" class="btn-card-action btn-edit-tmpl" data-id="${t.id}">${ICONS.edit} Edit</button>
+                          <button type="button" class="btn-card-action btn-del-tmpl" data-id="${t.id}" title="Delete">${ICONS.trash}</button>
+                        </div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+            </div>
+          `}
         </main>
       </div>
     `;
@@ -680,6 +874,150 @@ export async function renderTemplatesView(container, ctx = {}) {
           paint();
         }
       });
+    });
+
+    // Objections Playbook events
+    container.querySelector('#btn-create-objection-main')?.addEventListener('click', () => {
+      openEditObjectionModal({
+        objection: null,
+        onSave: async (newObj) => {
+          try {
+            await call(ACTIONS.OBJECTION_SAVE, { objection: newObj });
+            const idx = objections.findIndex((o) => o.id === newObj.id);
+            if (idx !== -1) objections[idx] = newObj;
+            else objections.unshift(newObj);
+            ctx.showToast?.('Objection rule saved!', 'success');
+            paint();
+          } catch (e) {
+            ctx.showToast?.(e.message || 'Failed to save objection', 'error');
+          }
+        },
+      });
+    });
+
+    container.querySelectorAll('.btn-edit-objection').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const obj = objections.find((o) => o.id === id);
+        if (!obj) return;
+        openEditObjectionModal({
+          objection: obj,
+          onSave: async (updated) => {
+            try {
+              await call(ACTIONS.OBJECTION_SAVE, { objection: updated });
+              const idx = objections.findIndex((o) => o.id === id);
+              if (idx !== -1) objections[idx] = updated;
+              ctx.showToast?.('Objection rule updated!', 'success');
+              paint();
+            } catch (e) {
+              ctx.showToast?.(e.message || 'Failed to update objection', 'error');
+            }
+          },
+        });
+      });
+    });
+
+    container.querySelectorAll('.btn-del-objection').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const ok = await openUiConfirm({
+          title: 'Delete Objection Rule',
+          message: 'Are you sure you want to delete this objection handling rule?',
+          confirmText: 'Delete',
+          confirmDanger: true,
+        });
+        if (ok) {
+          try {
+            await call(ACTIONS.OBJECTION_DELETE, { id });
+            objections = objections.filter((o) => o.id !== id);
+            ctx.showToast?.('Objection rule deleted.', 'success');
+            paint();
+          } catch (e) {
+            ctx.showToast?.(e.message || 'Failed to delete objection', 'error');
+          }
+        }
+      });
+    });
+
+    const saveResumeBtn = container.querySelector('#btn-save-playbook-resume');
+    saveResumeBtn?.addEventListener('click', async () => {
+      const url = container.querySelector('#input-playbook-resume-url')?.value?.trim() || '';
+      if (!activeCandidate) {
+        activeCandidate = { id: 'default', name: 'Default Candidate' };
+      }
+      activeCandidate.resumeUrl = url;
+      try {
+        await call(ACTIONS.CANDIDATE_SAVE, { candidate: activeCandidate });
+        ctx.showToast?.('Resume URL saved to active candidate!', 'success');
+      } catch (e) {
+        ctx.showToast?.(e.message || 'Failed to save resume URL', 'error');
+      }
+    });
+
+    const testBtn = container.querySelector('#btn-run-objection-test');
+    const testInput = container.querySelector('#input-test-objection-msg');
+    const testResultEl = container.querySelector('#objection-test-result');
+
+    const runTest = async () => {
+      const message = testInput?.value?.trim();
+      if (!message) {
+        ctx.showToast?.('Enter a simulated message to test.', 'warning');
+        return;
+      }
+      if (!testResultEl) return;
+      testResultEl.style.display = 'block';
+      testResultEl.innerHTML = `
+        <div style="font-size:12px; color:#ff6b00; font-weight:600; display:flex; align-items:center; gap:6px;">
+          <span class="spinner" style="display:inline-block; width:12px; height:12px; border:2px solid #ff6b00; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite;"></span>
+          Analyzing intent and generating AI response...
+        </div>
+      `;
+      try {
+        const res = await call(ACTIONS.OBJECTION_MATCH_REPLY, {
+          message,
+          prospect: { firstName: 'Sarah', company: 'Google' },
+          resumeLink: activeCandidate?.resumeUrl || 'https://drive.google.com/your-resume',
+          bookingLink: activeCandidate?.calendarUrl || 'https://calendly.com/your-name',
+        });
+        if (!res || !res.matched) {
+          testResultEl.innerHTML = `
+            <div style="font-size:12px; color:#64748b; font-weight:600;">
+              No matching objection rule found for this message.
+            </div>
+          `;
+          return;
+        }
+        testResultEl.innerHTML = `
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:10.5px; font-weight:800; background:#ff6b00; color:#fff; padding:2px 8px; border-radius:6px;">
+                ${res.tag || 'MATCHED'}
+              </span>
+              <span style="font-size:12.5px; font-weight:700; color:#14142b;">${res.title || ''}</span>
+            </div>
+            <span style="font-size:11px; font-weight:700; color:#059669; background:#ecfdf5; padding:2px 8px; border-radius:6px;">
+              Confidence: ${Math.round((res.confidence || 0.9) * 100)}%
+            </span>
+          </div>
+          <div style="background:#fff; border:1px solid #fed7aa; border-radius:8px; padding:10px 12px; font-size:12.5px; color:#1e293b; line-height:1.45;">
+            ${res.reply || ''}
+          </div>
+        `;
+      } catch (err) {
+        testResultEl.innerHTML = `
+          <div style="font-size:12px; color:#dc2626; font-weight:600;">
+            Error: ${err.message || 'Failed to match objection.'}
+          </div>
+        `;
+      }
+    };
+
+    testBtn?.addEventListener('click', runTest);
+    testInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        runTest();
+      }
     });
   }
 

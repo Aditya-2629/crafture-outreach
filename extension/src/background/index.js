@@ -34,6 +34,8 @@ import './stats.js';
 import './candidates.js';
 import './enrich.js';
 import './telegram.js';
+import './objections.js';
+import { checkSnoozedReminders } from './telegram.js';
 
 import { ensureConnected, onAlarm, startKeepalive } from './bridge.js';
 
@@ -131,14 +133,21 @@ function reconnectBridge() {
 }
 
 export const STALE_WITHDRAW_ALARM = 'outfox-stale-withdraw';
+export const SNOOZE_CHECK_ALARM = 'outfox-snooze-check';
 
 chrome.alarms.create(CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
 chrome.alarms.create(QUEUE_TICK_ALARM, { periodInMinutes: QUEUE_TICK_MINUTES });
 chrome.alarms.create(STALE_WITHDRAW_ALARM, { periodInMinutes: 720 });
+chrome.alarms.create(SNOOZE_CHECK_ALARM, { periodInMinutes: 60 });
 startKeepalive();
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   onAlarm(alarm).catch(() => {});
+
+  if (alarm.name === SNOOZE_CHECK_ALARM) {
+    checkSnoozedReminders().catch(() => {});
+    return;
+  }
 
   if (alarm.name === STALE_WITHDRAW_ALARM) {
     const cfg = await getConfig();

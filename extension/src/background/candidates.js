@@ -15,6 +15,7 @@ export const DEFAULT_CANDIDATES = [
     targetRoles: ['Data Analyst', 'Business Analyst', 'BI Developer', 'Analytics Engineer'],
     targetLocations: ['Austin, Texas', 'Dallas, Texas', 'Remote USA'],
     bookingLink: 'https://calendly.com/aditya-analyst/15min',
+    resumeUrl: 'https://drive.google.com/file/d/aditya-resume/view',
     skills: ['SQL', 'Python', 'Tableau', 'Power BI', 'Snowflake'],
     pitchTemplate:
       'Hi {{firstName}}, noticed you lead analytics/engineering at {{company}}. I am a Data Analyst with experience in SQL, Python & Tableau open to roles in Austin/Remote. Would love to connect!',
@@ -95,6 +96,7 @@ export async function saveCandidate(candidateData) {
     targetRoles: Array.isArray(candidateData.targetRoles) ? candidateData.targetRoles : ['Data Analyst'],
     targetLocations: Array.isArray(candidateData.targetLocations) ? candidateData.targetLocations : ['United States'],
     bookingLink: candidateData.bookingLink || 'https://calendly.com',
+    resumeUrl: candidateData.resumeUrl !== undefined ? String(candidateData.resumeUrl).trim() : (existingIdx >= 0 ? all[existingIdx].resumeUrl : '') || '',
     skills: Array.isArray(candidateData.skills) ? candidateData.skills : [],
     pitchTemplate: candidateData.pitchTemplate || 'Hi {{firstName}}, would love to connect!',
     followupTemplate: candidateData.followupTemplate || 'Hey {{firstName}}, glad to connect!',

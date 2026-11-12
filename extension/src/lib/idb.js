@@ -126,3 +126,4 @@ export async function idbCount(storeName) {
     }
   });
 }
+

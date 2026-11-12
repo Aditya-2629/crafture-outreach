@@ -117,6 +117,13 @@ export const ACTIONS = Object.freeze({
   CANDIDATE_SAVE: 'candidates.save',
   CANDIDATE_DELETE: 'candidates.delete',
   ENRICH_LEAD: 'enrich.lead',
+
+  OBJECTIONS_GET: 'objections.get',
+  OBJECTION_SAVE: 'objections.save',
+  OBJECTION_DELETE: 'objections.delete',
+  OBJECTION_MATCH_REPLY: 'objections.matchReply',
+  LEAD_SNOOZE: 'lead.snooze',
+  SNOOZED_GET: 'lead.snoozedGet',
 });
 
 /* ================================================================== */
@@ -298,6 +305,9 @@ export const DEFAULT_CONFIG = {
   autopilot: false,
   accountPreset: 'free',
   warmup: { enabled: false, days: 14 },
+  humanPacing: true,
+  autoWithdraw: { enabled: true, olderThanDays: 14, maxPerRun: 15 },
+  dedupeAcrossCampaigns: true,
   humanPacing: true,
   autoWithdraw: { enabled: true, olderThanDays: 14, maxPerRun: 15 },
   dedupeAcrossCampaigns: true,
@@ -608,6 +618,19 @@ const PARAM_SPECS = {
   [ACTIONS.CANDIDATE_SAVE]: { required: { candidate: 'object' } },
   [ACTIONS.CANDIDATE_DELETE]: { required: { id: 'string' } },
   [ACTIONS.ENRICH_LEAD]: { required: { publicId: 'string' } },
+
+  [ACTIONS.OBJECTIONS_GET]: {},
+  [ACTIONS.OBJECTION_SAVE]: { required: { objection: 'object' } },
+  [ACTIONS.OBJECTION_DELETE]: { required: { id: 'string' } },
+  [ACTIONS.OBJECTION_MATCH_REPLY]: {
+    required: { message: 'string' },
+    optional: { publicId: 'string', fullName: 'string', company: 'string' },
+  },
+  [ACTIONS.LEAD_SNOOZE]: {
+    required: { publicId: 'string' },
+    optional: { days: 'number', note: 'string', fullName: 'string' },
+  },
+  [ACTIONS.SNOOZED_GET]: {},
 };
 
 function typeOf(value) {
@@ -790,6 +813,13 @@ export function clampConfig(cfg = {}) {
   };
   out.humanPacing = toBoolean(input.humanPacing, d.humanPacing);
   out.dedupeAcrossCampaigns = toBoolean(input.dedupeAcrossCampaigns, d.dedupeAcrossCampaigns);
+
+  out.autoWithdraw = {
+    enabled: toBoolean(input.autoWithdraw?.enabled, d.autoWithdraw.enabled),
+    olderThanDays: clampInt(input.autoWithdraw?.olderThanDays, d.autoWithdraw.olderThanDays, 7, 60),
+    maxPerRun: clampInt(input.autoWithdraw?.maxPerRun, d.autoWithdraw.maxPerRun, 1, 50),
+  };
+  out.humanPacing = toBoolean(input.humanPacing, d.humanPacing);
 
   if (!AI_PROVIDERS.includes(out.ai.provider)) out.ai.provider = d.ai.provider;
   if (!ENRICHMENT_PROVIDERS.includes(out.enrichment.provider)) {

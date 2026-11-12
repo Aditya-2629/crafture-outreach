@@ -78,6 +78,7 @@ export const ACTIONS = Object.freeze({
   CAMPAIGN_RESUME: 'campaign.resume',
   CAMPAIGN_DELETE: 'campaign.delete',
   CAMPAIGN_TICK: 'campaign.tick',
+  CAMPAIGN_LIVE_STATUS: 'campaign.liveStatus',
 
   QUEUE_LIST: 'queue.list',
   QUEUE_APPROVE: 'queue.approve',
@@ -175,6 +176,7 @@ export const EVENTS = Object.freeze({
   RESEARCH_COMPLETED: 'research_completed',
   UNFOLLOW_PROGRESS: 'unfollow_progress',
   EMAIL_SENT: 'email_sent',
+  CAMPAIGN_LIVE_UPDATE: 'campaign_live_update',
 });
 
 /* ================================================================== */
@@ -585,6 +587,7 @@ const PARAM_SPECS = {
   [ACTIONS.CAMPAIGN_RESUME]: { required: { campaignId: 'string' } },
   [ACTIONS.CAMPAIGN_DELETE]: { required: { campaignId: 'string' } },
   [ACTIONS.CAMPAIGN_TICK]: {},
+  [ACTIONS.CAMPAIGN_LIVE_STATUS]: { optional: { campaignId: 'string' } },
 
   [ACTIONS.QUEUE_LIST]: {
     optional: { status: 'string' },

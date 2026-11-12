@@ -753,4 +753,34 @@ describe('v1 migration', () => {
     const again = await campaigns.readCampaigns();
     expect(again[0].steps).toHaveLength(5);
   });
+
+  it('provides real-time per-lead live status via getCampaignLiveStatus and campaign.liveStatus', async () => {
+    const created = await makeCampaign([
+      { type: 'view' },
+      { type: 'invite', note: 'Hi {{firstName}}' },
+      { type: 'email', subject: 'Intro', body: 'Hi' },
+    ]);
+
+    const liveRes = await handle(ACTIONS.CAMPAIGN_LIVE_STATUS, { campaignId: created.campaignId });
+    expect(liveRes.ok).toBe(true);
+    expect(liveRes.data.campaignId).toBe(created.campaignId);
+    expect(liveRes.data.totalSteps).toBe(3);
+    expect(liveRes.data.summary).toMatchObject({
+      total: 1,
+      active: 1,
+      completed: 0,
+      replied: 0,
+      failed: 0,
+    });
+    expect(liveRes.data.leads).toHaveLength(1);
+    expect(liveRes.data.leads[0]).toMatchObject({
+      publicId: 'adalovelace',
+      fullName: 'Ada Lovelace',
+      company: 'Analytical Engines',
+      status: 'active',
+      stepNumber: 1,
+      totalSteps: 3,
+      currentStepLabel: 'Step 1/3: View Profile',
+    });
+  });
 });

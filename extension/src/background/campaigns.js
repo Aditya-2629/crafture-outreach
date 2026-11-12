@@ -382,6 +382,121 @@ async function withStats(campaign) {
   return { ...campaign, leadsCount: stats.enrolled, stats };
 }
 
+/**
+ * Real-time campaign and per-lead live status.
+ * Joins campaign.enrollments with stored profiles, computes step labels,
+ * countdown timers, and aggregate summary counts.
+ */
+export async function getCampaignLiveStatus(campaignId) {
+  const allCampaigns = await readCampaigns();
+
+  if (!campaignId) {
+    const active = allCampaigns.filter((c) => c.status === 'active' || c.status === 'running');
+    const results = await Promise.all(active.map((c) => getCampaignLiveStatus(c.campaignId)));
+    return { campaigns: results };
+  }
+
+  const campaign = allCampaigns.find((c) => c.campaignId === campaignId || c.id === campaignId);
+  if (!campaign) {
+    throw new EngineError(ERROR.NOT_FOUND, `Campaign ${campaignId} not found.`);
+  }
+
+  const enrollments = await readEnrollments(campaign.campaignId);
+  const now = Date.now();
+  const totalSteps = campaign.steps?.length || 0;
+
+  const STEP_TYPE_LABELS = {
+    invite: 'Connection Request',
+    email: 'Send Email',
+    message: 'Direct Message',
+    view: 'View Profile',
+    follow: 'Follow Profile',
+    like: 'Like Post',
+    comment: 'Comment on Post',
+    inmail: 'Send InMail',
+    wait: 'Delay Wait',
+    branch: 'Check Condition',
+    endorse: 'Endorse Skills',
+  };
+
+  const leads = await Promise.all(
+    enrollments.map(async (enr) => {
+      const profile = await getStoredProfile(enr.publicId).catch(() => null);
+      const stepIndex = enr.stepIndex || 0;
+      const step = campaign.steps?.[stepIndex];
+      const stepNumber = stepIndex + 1;
+
+      let currentStepLabel = '';
+      if (enr.status === 'completed' || (enr.accepted && stepIndex >= totalSteps && totalSteps > 0)) {
+        currentStepLabel = `Completed (${totalSteps}/${totalSteps})`;
+      } else if (step) {
+        const typeLabel = STEP_TYPE_LABELS[step.type] || (step.type ? step.type.toUpperCase() : 'Action');
+        currentStepLabel = `Step ${stepNumber}/${totalSteps}: ${typeLabel}`;
+      } else {
+        currentStepLabel = totalSteps > 0 ? `Step ${stepNumber}/${totalSteps}` : 'No steps';
+      }
+
+      let status = enr.status || 'active';
+      if (status === 'active') {
+        if (enr.nextAt && enr.nextAt > now) {
+          status = 'waiting';
+        } else if (isTickRunning) {
+          status = 'running';
+        }
+      } else if (
+        status === 'stopped' ||
+        status === 'failed' ||
+        status === 'blocked_not_connected' ||
+        status === 'email_skipped_no_email'
+      ) {
+        status = 'failed';
+      }
+
+      return {
+        publicId: enr.publicId,
+        fullName: profile?.fullName || profile?.name || enr.publicId,
+        company: profile?.company || '',
+        email:
+          enr.email ||
+          profile?.email ||
+          (profile?.enrichment && profile?.enrichment.email) ||
+          profile?.enrichmentEmail ||
+          '',
+        status, // 'active' | 'waiting' | 'running' | 'completed' | 'replied' | 'failed' | 'paused'
+        rawStatus: enr.status || 'active',
+        currentStepLabel,
+        stepNumber,
+        totalSteps,
+        nextRunAt: enr.nextAt || 0,
+        lastError: enr.error || enr.lastError || '',
+        lastActionAt: enr.lastActionAt || enr.enrolledAt || 0,
+        accepted: Boolean(enr.accepted),
+        replied: enr.status === 'replied',
+      };
+    }),
+  );
+
+  const summary = {
+    total: leads.length,
+    active: leads.filter((l) => l.status === 'active' || l.status === 'running').length,
+    waiting: leads.filter((l) => l.status === 'waiting').length,
+    completed: leads.filter((l) => l.status === 'completed').length,
+    replied: leads.filter((l) => l.status === 'replied').length,
+    failed: leads.filter((l) => l.status === 'failed').length,
+    paused: leads.filter((l) => l.status === 'paused' || campaign.status === 'paused').length,
+    currentlyRunning: isTickRunning ? 1 : 0,
+  };
+
+  return {
+    campaignId: campaign.campaignId,
+    campaignName: campaign.name,
+    campaignStatus: campaign.status,
+    totalSteps,
+    summary,
+    leads,
+  };
+}
+
 /* ================================================================== */
 /*  Step execution                                                    */
 /* ================================================================== */
@@ -978,7 +1093,10 @@ export async function tick() {
       }
     }
 
-    if (dirty) await writeEnrollments(campaign.campaignId, enrollments);
+    if (dirty) {
+      await writeEnrollments(campaign.campaignId, enrollments);
+      emit(EVENTS.CAMPAIGN_LIVE_UPDATE, { campaignId: campaign.campaignId }).catch(() => {});
+    }
 
     // stepParams advances variantCursor in memory; without this the rotation
     // restarts at A on every tick and everyone gets the same variant.
@@ -1032,6 +1150,7 @@ register(ACTIONS.CAMPAIGN_PAUSE, ({ campaignId }) => setStatus(campaignId, 'paus
 register(ACTIONS.CAMPAIGN_RESUME, ({ campaignId }) => setStatus(campaignId, 'active'));
 register(ACTIONS.CAMPAIGN_DELETE, ({ campaignId }) => del(campaignId));
 register(ACTIONS.CAMPAIGN_TICK, () => tick());
+register(ACTIONS.CAMPAIGN_LIVE_STATUS, async ({ campaignId }) => getCampaignLiveStatus(campaignId));
 
 register(ACTIONS.BLACKLIST_GET, async () => ({ blacklist: await getBlacklist() }));
 register(ACTIONS.BLACKLIST_ADD, async ({ publicId }) => ({ blacklist: await addToBlacklist(publicId) }));

@@ -624,6 +624,247 @@ function ensureCampaignsStyles() {
       flex-direction: column;
       gap: 3px;
     }
+
+    /* Live Status Drawer */
+    .camp-drawer-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(2px);
+      z-index: 99990;
+      display: flex;
+      justify-content: flex-end;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .camp-drawer-backdrop.is-open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .camp-drawer {
+      width: 820px;
+      max-width: 92vw;
+      height: 100%;
+      background: #ffffff;
+      box-shadow: -10px 0 35px rgba(0, 0, 0, 0.15);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .camp-drawer-backdrop.is-open .camp-drawer {
+      transform: translateX(0);
+    }
+    .camp-drawer-head {
+      padding: 18px 24px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #ffffff;
+    }
+    .camp-drawer-head-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .camp-drawer-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0;
+    }
+    .camp-drawer-subtitle {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 2px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .camp-drawer-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-drawer-close {
+      background: #f1f5f9;
+      border: none;
+      color: #64748b;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    .btn-drawer-close:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    .camp-drawer-toolbar {
+      padding: 12px 24px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .drawer-pills-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .drawer-filter-pill {
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: #475569;
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .drawer-filter-pill:hover {
+      border-color: #ff6b00;
+      color: #ff6b00;
+    }
+    .drawer-filter-pill.is-active {
+      background: #ff6b00;
+      color: #ffffff;
+      border-color: #ff6b00;
+      box-shadow: 0 2px 6px rgba(255, 107, 0, 0.2);
+    }
+    .drawer-search-wrap {
+      display: flex;
+      align-items: center;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 0 10px;
+      width: 190px;
+    }
+    .drawer-search-wrap input {
+      border: none;
+      outline: none;
+      font-size: 12px;
+      padding: 6px 4px;
+      width: 100%;
+      background: transparent;
+    }
+    .camp-drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+    }
+    .drawer-leads-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    .drawer-leads-table th {
+      background: #f8fafc;
+      color: #64748b;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.03em;
+      padding: 10px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: left;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .drawer-leads-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+    }
+    .drawer-leads-table tr:hover td {
+      background: #fffaf5;
+    }
+    .lead-meta-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .lead-name-row {
+      font-weight: 600;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .lead-company-sub {
+      font-size: 11.5px;
+      color: #64748b;
+    }
+    .badge-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-status-active { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+    .badge-status-running { background: #fff7ed; color: #ea580c; border: 1px solid #fed7aa; }
+    .badge-status-waiting { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; }
+    .badge-status-completed { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
+    .badge-status-replied { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+    .badge-status-failed { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .badge-status-paused { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+    .btn-camp-live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #fff7ed;
+      color: #ff6b00;
+      border: 1px solid #ffedd5;
+      padding: 3px 9px;
+      border-radius: 9999px;
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .btn-camp-live-badge:hover {
+      background: #ff6b00;
+      color: #ffffff;
+      border-color: #ff6b00;
+    }
+    .btn-camp-card-live {
+      background: #fff7ed;
+      border: 1px solid #ffedd5;
+      color: #ff6b00;
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+    .btn-camp-card-live:hover {
+      background: #ff6b00;
+      color: #ffffff;
+      border-color: #ff6b00;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -798,10 +1039,16 @@ export async function renderCampaignsView(container, ctx = {}) {
                 <div class="camp-card-meta">
                   <span class="camp-card-name">${camp.name}</span>
                   <div class="camp-card-badges-row">
-                    <span class="camp-leads-pill">${leads} leads</span>
+                    <button type="button" class="btn-camp-live-badge btn-trigger-live-drawer" data-id="${id}" title="Click to view live prospects status">
+                      ⚡ ${leads} leads · Live Status
+                    </button>
                     <span class="camp-status-dot ${statusClass}" title="Status: ${camp.status || 'running'}"></span>
                   </div>
                 </div>
+
+                <button type="button" class="btn-camp-card-live btn-trigger-live-drawer" data-id="${id}" title="View live lead progress">
+                  ⚡ Live Status
+                </button>
 
                 <button type="button" class="btn-camp-3dots" data-dots-id="${id}" title="Campaign actions">
                   ${ICONS.moreHorizontal}
@@ -809,6 +1056,9 @@ export async function renderCampaignsView(container, ctx = {}) {
 
                 <!-- 3-Dots Dropdown Menu (Screenshot 3) -->
                 <div class="camp-3dots-menu" id="camp-menu-${id}">
+                  <div class="camp-menu-item" data-action="live_status" data-id="${id}">
+                    <span style="color:#ff6b00;">⚡</span> View Live Leads Status
+                  </div>
                   <div class="camp-menu-item" data-action="edit" data-id="${id}">
                     <span>${ICONS.edit}</span> Edit my campaign
                   </div>
@@ -844,6 +1094,48 @@ export async function renderCampaignsView(container, ctx = {}) {
             <button type="button" class="btn-close-modal" id="btn-close-flow-modal">✕</button>
           </div>
           <div class="modal-body" id="flow-modal-body"></div>
+        </div>
+      </div>
+
+      <!-- Live Campaign Status Drawer -->
+      <div class="camp-drawer-backdrop" id="camp-live-drawer-backdrop">
+        <div class="camp-drawer" id="camp-live-drawer">
+          <div class="camp-drawer-head">
+            <div class="camp-drawer-head-info">
+              <div class="planet-avatar" style="width:36px; height:36px; color:#ff6b00;">
+                <div class="planet-ring"></div>
+                ⚡
+              </div>
+              <div>
+                <h3 class="camp-drawer-title" id="drawer-camp-name">Live Campaign Status</h3>
+                <div class="camp-drawer-subtitle" id="drawer-camp-subtitle">Real-time prospect progress</div>
+              </div>
+            </div>
+            <div class="camp-drawer-actions">
+              <button type="button" class="btn-pill btn-secondary btn-sm" id="btn-drawer-tick" style="font-size: 11.5px; padding: 5px 12px;">
+                ⚡ Run Step Now
+              </button>
+              <button type="button" class="btn-pill btn-secondary btn-sm" id="btn-drawer-refresh" style="font-size: 11.5px; padding: 5px 10px;">
+                🔄 Refresh
+              </button>
+              <button type="button" class="btn-drawer-close" id="btn-drawer-close">✕</button>
+            </div>
+          </div>
+          <div class="camp-drawer-toolbar">
+            <div class="drawer-pills-bar" id="drawer-filter-pills">
+              <!-- Filter pills dynamically populated -->
+            </div>
+            <div class="drawer-search-wrap">
+              <span style="color:#94a3b8; display:flex;">${ICONS.search}</span>
+              <input type="text" id="input-drawer-search" placeholder="Filter leads..." />
+            </div>
+          </div>
+          <div class="camp-drawer-body" id="drawer-table-wrap">
+            <div class="view-loading-state" style="padding: 40px 0;">
+              <div class="spinner"></div>
+              <span>Fetching live prospect status...</span>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -912,7 +1204,9 @@ export async function renderCampaignsView(container, ctx = {}) {
         const camp = campaigns.find((c) => (c.campaignId || c.id) === id);
         if (!camp) return;
 
-        if (action === 'edit') {
+        if (action === 'live_status') {
+          openLiveLeadsDrawer(id);
+        } else if (action === 'edit') {
           wizardTemplate = {
             id: camp.campaignId,
             title: camp.name,
@@ -999,9 +1293,17 @@ export async function renderCampaignsView(container, ctx = {}) {
       });
     });
 
+    container.querySelectorAll('.btn-trigger-live-drawer').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        if (id) openLiveLeadsDrawer(id);
+      });
+    });
+
     container.querySelectorAll('.waalaxy-camp-card').forEach((card) => {
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.btn-camp-3dots') || e.target.closest('.camp-3dots-menu')) return;
+        if (e.target.closest('.btn-camp-3dots') || e.target.closest('.camp-3dots-menu') || e.target.closest('.btn-trigger-live-drawer')) return;
         const id = card.dataset.campId;
         const camp = campaigns.find((c) => (c.campaignId || c.id) === id);
         if (camp) {
@@ -1051,6 +1353,295 @@ export async function renderCampaignsView(container, ctx = {}) {
     container.querySelector('#btn-close-flow-modal')?.addEventListener('click', () => {
       container.querySelector('#flow-modal')?.classList.add('hidden');
     });
+
+    // =========================================================================
+    // Live Leads Drawer Logic & Events
+    // =========================================================================
+    let drawerCampId = null;
+    let drawerFilter = 'all';
+    let drawerSearchQuery = '';
+    let drawerInterval = null;
+    let cachedLiveData = null;
+
+    function formatTimeAgo(ts) {
+      if (!ts) return '';
+      const diff = Date.now() - Number(ts);
+      if (diff < 60000) return 'just now';
+      if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+      if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+      return `${Math.floor(diff / 86400000)}d ago`;
+    }
+
+    function formatCountdown(ts, status) {
+      if (status === 'completed' || status === 'replied') return '—';
+      if (!ts || ts <= Date.now()) {
+        return status === 'active' || status === 'running'
+          ? '<span style="color:#ff6b00; font-weight:700;">Due now</span>'
+          : '—';
+      }
+      const diff = ts - Date.now();
+      if (diff < 60000) return '<span style="color:#7c3aed; font-weight:600;">in <1m</span>';
+      if (diff < 3600000) return `<span style="color:#7c3aed; font-weight:600;">in ${Math.round(diff / 60000)}m</span>`;
+      if (diff < 86400000) return `<span style="color:#7c3aed; font-weight:600;">in ${(diff / 3600000).toFixed(1)}h</span>`;
+      return `<span style="color:#7c3aed; font-weight:600;">in ${Math.round(diff / 86400000)}d</span>`;
+    }
+
+    async function openLiveLeadsDrawer(campaignId) {
+      drawerCampId = campaignId;
+      drawerFilter = 'all';
+      drawerSearchQuery = '';
+
+      const backdrop = container.querySelector('#camp-live-drawer-backdrop');
+      if (!backdrop) return;
+      backdrop.classList.add('is-open');
+
+      renderDrawerLoading();
+      await fetchAndRenderDrawer();
+
+      if (drawerInterval) clearInterval(drawerInterval);
+      drawerInterval = setInterval(async () => {
+        const liveBackdrop = container.querySelector('#camp-live-drawer-backdrop');
+        if (!liveBackdrop || !liveBackdrop.classList.contains('is-open')) {
+          clearInterval(drawerInterval);
+          drawerInterval = null;
+          return;
+        }
+        await fetchAndRenderDrawer(true);
+      }, 5000);
+    }
+
+    function closeLiveLeadsDrawer() {
+      if (drawerInterval) {
+        clearInterval(drawerInterval);
+        drawerInterval = null;
+      }
+      const backdrop = container.querySelector('#camp-live-drawer-backdrop');
+      if (backdrop) backdrop.classList.remove('is-open');
+    }
+
+    function renderDrawerLoading() {
+      const nameEl = container.querySelector('#drawer-camp-name');
+      const subEl = container.querySelector('#drawer-camp-subtitle');
+      const tableWrap = container.querySelector('#drawer-table-wrap');
+      if (nameEl) nameEl.textContent = 'Loading live status...';
+      if (subEl) subEl.textContent = 'Connecting to background sequence engine';
+      if (tableWrap) {
+        tableWrap.innerHTML = `
+          <div class="view-loading-state" style="padding: 40px 0;">
+            <div class="spinner"></div>
+            <span>Fetching live prospect status...</span>
+          </div>
+        `;
+      }
+    }
+
+    async function fetchAndRenderDrawer(isSilent = false) {
+      if (!drawerCampId) return;
+      try {
+        const res = await call(ACTIONS.CAMPAIGN_LIVE_STATUS, { campaignId: drawerCampId });
+        const data = res?.ok ? res.data : (res?.leads ? res : null);
+        if (!data) return;
+        cachedLiveData = data;
+        renderDrawerContent(data, isSilent);
+      } catch (err) {
+        console.warn('[LiveDrawer] Fetch error:', err);
+      }
+    }
+
+    function renderDrawerContent(data, isSilent = false) {
+      const nameEl = container.querySelector('#drawer-camp-name');
+      const subEl = container.querySelector('#drawer-camp-subtitle');
+      const pillsBar = container.querySelector('#drawer-filter-pills');
+
+      if (nameEl) nameEl.textContent = data.campaignName || 'Campaign Live Status';
+      if (subEl) {
+        const isPaused = data.campaignStatus === 'paused';
+        const statusPill = isPaused ? '⏸️ Paused' : '⚡ Running';
+        subEl.innerHTML = `${statusPill} &bull; ${data.summary?.total || 0} enrolled prospects &bull; Auto-refreshing every 5s`;
+      }
+
+      const s = data.summary || {};
+      const pills = [
+        { id: 'all', label: `All (${s.total || 0})` },
+        { id: 'active', label: `Active / Running (${(s.active || 0) + (s.currentlyRunning || 0)})` },
+        { id: 'waiting', label: `Waiting (${s.waiting || 0})` },
+        { id: 'replied', label: `Replied (${s.replied || 0})` },
+        { id: 'completed', label: `Completed (${s.completed || 0})` },
+        { id: 'failed', label: `Failed (${s.failed || 0})` },
+      ];
+
+      if (pillsBar) {
+        pillsBar.innerHTML = pills
+          .map(
+            (p) =>
+              `<button type="button" class="drawer-filter-pill ${drawerFilter === p.id ? 'is-active' : ''}" data-filter="${p.id}">${p.label}</button>`,
+          )
+          .join('');
+
+        pillsBar.querySelectorAll('.drawer-filter-pill').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            drawerFilter = btn.dataset.filter;
+            pillsBar.querySelectorAll('.drawer-filter-pill').forEach((b) => b.classList.remove('is-active'));
+            btn.classList.add('is-active');
+            renderFilteredLeadsTable(data.leads || []);
+          });
+        });
+      }
+
+      renderFilteredLeadsTable(data.leads || []);
+    }
+
+    function renderFilteredLeadsTable(allLeads = []) {
+      const tableWrap = container.querySelector('#drawer-table-wrap');
+      if (!tableWrap) return;
+
+      let filtered = allLeads;
+
+      if (drawerFilter === 'active') {
+        filtered = filtered.filter((l) => l.status === 'active' || l.status === 'running');
+      } else if (drawerFilter === 'waiting') {
+        filtered = filtered.filter((l) => l.status === 'waiting');
+      } else if (drawerFilter === 'replied') {
+        filtered = filtered.filter((l) => l.status === 'replied');
+      } else if (drawerFilter === 'completed') {
+        filtered = filtered.filter((l) => l.status === 'completed');
+      } else if (drawerFilter === 'failed') {
+        filtered = filtered.filter((l) => l.status === 'failed');
+      }
+
+      if (drawerSearchQuery.trim()) {
+        const q = drawerSearchQuery.toLowerCase();
+        filtered = filtered.filter(
+          (l) =>
+            (l.fullName && l.fullName.toLowerCase().includes(q)) ||
+            (l.company && l.company.toLowerCase().includes(q)) ||
+            (l.email && l.email.toLowerCase().includes(q)) ||
+            (l.publicId && l.publicId.toLowerCase().includes(q)),
+        );
+      }
+
+      if (filtered.length === 0) {
+        tableWrap.innerHTML = `
+          <div style="padding: 48px 24px; text-align: center; color: #64748b;">
+            <div style="font-size: 28px; margin-bottom: 8px;">🔍</div>
+            <div style="font-weight: 700; color: #1e293b; margin-bottom: 4px;">No prospects found</div>
+            <div style="font-size: 12.5px;">No leads match the selected filter "${drawerFilter}".</div>
+          </div>
+        `;
+        return;
+      }
+
+      tableWrap.innerHTML = `
+        <table class="drawer-leads-table">
+          <thead>
+            <tr>
+              <th>Prospect</th>
+              <th>Current Step</th>
+              <th>Live Status</th>
+              <th>Next Run</th>
+              <th>Last Result / Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered
+              .map((lead) => {
+                const status = lead.status || 'active';
+                const badgeClass = `badge-status-${status}`;
+                const countdown = formatCountdown(lead.nextRunAt, status);
+
+                let lastResultHtml = '<span style="color:#94a3b8; font-size:11.5px;">Not started</span>';
+                if (lead.lastError) {
+                  const shortErr = lead.lastError.length > 30 ? lead.lastError.slice(0, 30) + '...' : lead.lastError;
+                  lastResultHtml = `<span style="color:#ef4444; font-size:11.5px; font-weight:600;" title="${lead.lastError}">⚠️ ${shortErr}</span>`;
+                } else if (lead.replied) {
+                  lastResultHtml = `<span style="color:#16a34a; font-weight:600; font-size:11.5px;">💬 Replied</span>`;
+                } else if (lead.lastActionAt) {
+                  lastResultHtml = `<span style="color:#64748b; font-size:11.5px;">${formatTimeAgo(lead.lastActionAt)}</span>`;
+                }
+
+                return `
+                  <tr>
+                    <td>
+                      <div class="lead-meta-cell">
+                        <div class="lead-name-row">
+                          <span>${lead.fullName}</span>
+                          ${lead.email ? `<span style="font-size:11px; color:#ff6b00; cursor:pointer;" title="${lead.email}">✉️</span>` : ''}
+                        </div>
+                        <div class="lead-company-sub">${lead.company || lead.publicId}</div>
+                      </div>
+                    </td>
+                    <td>
+                      <span style="font-weight:600; color:#1e293b; font-size:12px;">${lead.currentStepLabel}</span>
+                    </td>
+                    <td>
+                      <span class="badge-status ${badgeClass}">${status.toUpperCase()}</span>
+                    </td>
+                    <td>
+                      <span style="font-size:12px;">${countdown}</span>
+                    </td>
+                    <td>
+                      ${lastResultHtml}
+                    </td>
+                  </tr>
+                `;
+              })
+              .join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    container.querySelector('#btn-drawer-close')?.addEventListener('click', closeLiveLeadsDrawer);
+    container.querySelector('#camp-live-drawer-backdrop')?.addEventListener('click', (e) => {
+      if (e.target === container.querySelector('#camp-live-drawer-backdrop')) {
+        closeLiveLeadsDrawer();
+      }
+    });
+
+    container.querySelector('#btn-drawer-refresh')?.addEventListener('click', async () => {
+      await fetchAndRenderDrawer();
+      ctx.showToast?.('Refreshed live prospects status', 'info');
+    });
+
+    container.querySelector('#btn-drawer-tick')?.addEventListener('click', async () => {
+      const btn = container.querySelector('#btn-drawer-tick');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `⚡ Running...`;
+        try {
+          await call(ACTIONS.CAMPAIGN_TICK, {});
+          ctx.showToast?.('Step triggered! Refreshing live status...', 'success');
+          await fetchAndRenderDrawer();
+        } catch (err) {
+          ctx.showToast?.(`Tick error: ${err.message}`, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = `⚡ Run Step Now`;
+        }
+      }
+    });
+
+    const drawerSearch = container.querySelector('#input-drawer-search');
+    if (drawerSearch) {
+      drawerSearch.addEventListener('input', (e) => {
+        drawerSearchQuery = e.target.value;
+        if (cachedLiveData) renderFilteredLeadsTable(cachedLiveData.leads || []);
+      });
+    }
+
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+        chrome.runtime.onMessage.addListener((msg) => {
+          if (msg?.type === 'EVENT' && (msg.event === 'campaign_step_done' || msg.event === 'campaign_live_update')) {
+            if (drawerCampId && (!msg.payload?.campaignId || msg.payload.campaignId === drawerCampId)) {
+              fetchAndRenderDrawer(true);
+            }
+          }
+        });
+      }
+    } catch {
+      /* runtime message listener is best-effort */
+    }
   }
 
   // =========================================================================

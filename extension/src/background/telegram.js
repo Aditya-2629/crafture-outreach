@@ -571,6 +571,22 @@ const AI_TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_campaign_live_status',
+      description: 'Get real-time per-lead progress, status counts (waiting, active, completed, replied, failed), countdown timers, and remaining quotas for campaigns.',
+      parameters: {
+        type: 'object',
+        properties: {
+          campaignNameOrId: {
+            type: 'string',
+            description: 'Optional campaign name or ID. If omitted, returns live status for active campaigns.',
+          },
+        },
+      },
+    },
+  },
 ];
 
 // 📋 Blueprint Synthesizer (Auto-recovery & standardized sequence generator)
@@ -825,6 +841,29 @@ async function executeTool(name, args = {}) {
       total: all.length,
       active: all.filter((c) => c.status === 'active').length,
       paused: all.filter((c) => c.status === 'paused').length,
+    };
+  }
+
+  if (name === 'get_campaign_live_status') {
+    const all = await campaigns.getAll();
+    let target = null;
+    if (args.campaignNameOrId) {
+      const q = String(args.campaignNameOrId).toLowerCase().trim();
+      target = all.find(
+        (c) =>
+          c.campaignId === args.campaignNameOrId ||
+          (c.name && c.name.toLowerCase() === q) ||
+          (c.name && c.name.toLowerCase().includes(q)),
+      );
+    }
+    if (!target) {
+      target = all.find((c) => c.status === 'active' || c.status === 'running') || all[0];
+    }
+
+    return {
+      type: 'live_status',
+      targetCampaignId: target?.campaignId || null,
+      targetCampaignName: target?.name || null,
     };
   }
 
@@ -1132,6 +1171,113 @@ async function renderDailyStats(botToken, chatId) {
   return sendTelegramMessage(botToken, chatId, pulseMsg, { reply_markup: replyMarkup });
 }
 
+// ⚡ Real-Time Per-Lead Campaign Status Generator
+async function renderLiveCampaignStatus(botToken, chatId, targetCampaignId = null) {
+  const [allCamps, quotas] = await Promise.all([
+    campaigns.getAll().catch(() => []),
+    snapshotAll().catch(() => ({})),
+  ]);
+
+  const activeCamps = allCamps.filter((c) => c.status === 'active' || c.status === 'running');
+  const target = targetCampaignId
+    ? allCamps.find((c) => c.campaignId === targetCampaignId)
+    : activeCamps[0] || allCamps[0];
+
+  if (!target) {
+    const emptyMsg =
+      `ℹ️ *No Campaigns Found:*\n\n` +
+      `OutFox me abhi koi campaign active ya configured nahi hai.\n\n` +
+      `_Type_ \`design campaign for [list]\` _to start a new sequence._`;
+    return sendTelegramMessage(botToken, chatId, emptyMsg);
+  }
+
+  const liveRes = await campaigns.getCampaignLiveStatus(target.campaignId).catch(() => null);
+  if (!liveRes) {
+    return sendTelegramMessage(botToken, chatId, `⚠️ Failed to fetch live status for campaign "${target.name}".`);
+  }
+
+  const s = liveRes.summary || {};
+  const campNameEscaped = String(liveRes.campaignName || target.name || 'Campaign').replace(/[_*`]/g, ' ');
+  const statusUpper = String(liveRes.campaignStatus || target.status || 'ACTIVE').toUpperCase();
+  const statusEmoji = statusUpper === 'ACTIVE' || statusUpper === 'RUNNING' ? '🟢' : '⏸️';
+
+  const invLeft = Math.max(0, (quotas.invite?.dailyCap || 20) - (quotas.invite?.dailyUsed || 0));
+  const msgLeft = Math.max(0, (quotas.message?.dailyCap || 20) - (quotas.message?.dailyUsed || 0));
+  const emailLeft = Math.max(0, (quotas.email?.dailyCap || 50) - (quotas.email?.dailyUsed || 0));
+
+  let msg = `⚡ *LIVE CAMPAIGN STATUS:*\n\n`;
+  msg += `${statusEmoji} *${campNameEscaped}* (\`${statusUpper}\`)\n`;
+  msg += `👥 *Total Leads Enrolled:* *${s.total || 0}*\n\n`;
+
+  msg += `📊 *Lead Status Breakdown:*\n`;
+  msg += `• ⏳ *Waiting:* ${s.waiting || 0}\n`;
+  msg += `• 🏃 *Active / Running:* ${s.active || 0}\n`;
+  msg += `• 💬 *Replied:* ${s.replied || 0}\n`;
+  msg += `• ✅ *Completed:* ${s.completed || 0}\n`;
+  if (s.failed > 0) msg += `• ⚠️ *Failed / Issues:* ${s.failed}\n`;
+  msg += `\n`;
+
+  msg += `🛡️ *Today's Quota Remaining:*\n`;
+  msg += `• Invites: *${invLeft} left* (${quotas.invite?.dailyUsed || 0}/${quotas.invite?.dailyCap || 20})\n`;
+  msg += `• Messages: *${msgLeft} left* (${quotas.message?.dailyUsed || 0}/${quotas.message?.dailyCap || 20})\n`;
+  msg += `• Emails: *${emailLeft} left* (${quotas.email?.dailyUsed || 0}/${quotas.email?.dailyCap || 50})\n\n`;
+
+  const leads = liveRes.leads || [];
+  const relevantLeads = [
+    ...leads.filter((l) => l.status === 'running'),
+    ...leads.filter((l) => l.status === 'active' && (!l.nextRunAt || l.nextRunAt <= Date.now())),
+    ...leads.filter((l) => l.status === 'waiting'),
+    ...leads.filter((l) => l.status === 'failed'),
+    ...leads.filter((l) => l.status === 'replied'),
+  ].slice(0, 5);
+
+  if (relevantLeads.length > 0) {
+    msg += `🎯 *Live Prospects Progress:*\n`;
+    for (const lead of relevantLeads) {
+      const safeName = String(lead.fullName || lead.publicId).replace(/[_*`]/g, ' ');
+      const safeCompany = String(lead.company || '').replace(/[_*`]/g, ' ');
+      const compStr = safeCompany ? ` (${safeCompany})` : '';
+      const stepStr = String(lead.currentStepLabel || 'In Progress').replace(/[_*`]/g, ' ');
+
+      let timingOrResult = '';
+      if (lead.lastError) {
+        const safeErr = String(lead.lastError).replace(/[_*`]/g, ' ');
+        timingOrResult = `⚠️ ${safeErr.length > 28 ? safeErr.slice(0, 28) + '...' : safeErr}`;
+      } else if (lead.replied) {
+        timingOrResult = `💬 Replied`;
+      } else if (lead.nextRunAt && lead.nextRunAt > Date.now()) {
+        const diffMs = lead.nextRunAt - Date.now();
+        const mins = Math.max(1, Math.round(diffMs / 60000));
+        timingOrResult = `⏳ in ${mins < 60 ? `${mins}m` : `${(mins / 60).toFixed(1)}h`}`;
+      } else if (lead.status === 'active' || lead.status === 'running') {
+        timingOrResult = `🏃 Due now`;
+      } else {
+        timingOrResult = `✅ Done`;
+      }
+
+      msg += `• *${safeName}*${compStr}\n  ↳ ${stepStr} — ${timingOrResult}\n`;
+    }
+    msg += `\n`;
+  }
+
+  msg += `_Auto-pacing and LinkedIn cooldowns active._`;
+
+  const isPaused = target.status === 'paused';
+  const replyMarkup = {
+    inline_keyboard: [
+      [
+        { text: '🔄 Refresh Live Status', callback_data: `camp_live_refresh:${target.campaignId}` },
+        { text: '⚡ Run Step Now', callback_data: `camp_live_tick:${target.campaignId}` },
+      ],
+      [
+        { text: isPaused ? '▶️ Resume Campaign' : '⏸️ Pause Campaign', callback_data: `camp_live_toggle:${target.campaignId}` },
+      ],
+    ],
+  };
+
+  return sendTelegramMessage(botToken, chatId, msg, { reply_markup: replyMarkup });
+}
+
 async function handleUserCommand(botToken, chatId, text) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return;
@@ -1288,6 +1434,15 @@ async function handleUserCommand(botToken, chatId, text) {
     return renderDailyStats(botToken, chatId);
   }
 
+  // 5. Live Campaign & Per-Lead Status Command (/live, /status, or natural language)
+  if (
+    /^\/?(live|status|live\s*status)/i.test(trimmed) ||
+    /^(campaign\s*status|campaign\s*ka\s*(?:live\s*)?status|kis\s*lead\s*ka\s*kya\s*status)/i.test(trimmed) ||
+    /live\s*status\s*batao/i.test(trimmed)
+  ) {
+    return renderLiveCampaignStatus(botToken, chatId);
+  }
+
   try {
     await sendTelegramMessage(botToken, chatId, `⚡ *AI analyzing intent...*`);
 
@@ -1408,6 +1563,9 @@ async function handleUserCommand(botToken, chatId, text) {
             ],
           ],
         };
+      } else if (aiResult.name === 'get_campaign_live_status') {
+        await recordChatTurn('assistant', `Checked live status for campaign ${execResult.targetCampaignName || 'active'}.`);
+        return renderLiveCampaignStatus(botToken, chatId, execResult.targetCampaignId);
       } else if (aiResult.name === 'manage_campaigns') {
         await recordChatTurn('assistant', execResult.message || `Campaign status: ${execResult.active} active, ${execResult.paused} paused.`);
         if (execResult.pausedCount !== undefined) {
@@ -1612,6 +1770,28 @@ async function handleCallback(botToken, chatId, callbackData) {
 
   if (data === 'daily_stats') {
     return renderDailyStats(botToken, chatId);
+  }
+
+  // Live Campaign Callbacks
+  if (data.startsWith('camp_live_refresh:')) {
+    const campId = data.replace('camp_live_refresh:', '').trim();
+    return renderLiveCampaignStatus(botToken, chatId, campId);
+  }
+
+  if (data.startsWith('camp_live_tick:')) {
+    const campId = data.replace('camp_live_tick:', '').trim();
+    await campaigns.tick().catch(() => {});
+    return renderLiveCampaignStatus(botToken, chatId, campId);
+  }
+
+  if (data.startsWith('camp_live_toggle:')) {
+    const campId = data.replace('camp_live_toggle:', '').trim();
+    const camp = (await campaigns.getAll()).find((c) => c.campaignId === campId);
+    if (camp) {
+      const isPaused = camp.status === 'paused';
+      await campaigns.setStatus(campId, isPaused ? 'active' : 'paused');
+      return renderLiveCampaignStatus(botToken, chatId, campId);
+    }
   }
 
   // 11. 1-Tap Booking Dispatch

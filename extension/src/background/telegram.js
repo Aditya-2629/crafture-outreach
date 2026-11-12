@@ -1357,14 +1357,13 @@ function _toGeminiContents(openAiMessages) {
 }
 
 export async function callLlmWithTools(provider, aiConfig, messages, tools = [], geminiContents = null) {
-  const apiKey = aiConfig.apiKey || '';
-  const model =
-    aiConfig.model ||
-    (provider === 'groq'
-      ? 'llama-3.3-70b-versatile'
-      : provider === 'gemini'
-        ? 'gemini-2.0-flash'
-        : 'gpt-4o-mini');
+  const apiKey = String(aiConfig.apiKey || '').trim();
+  const baseUrl = String(aiConfig.baseUrl || '').trim();
+  const model = String(aiConfig.model || '').trim() ||
+    (provider === 'groq' ? 'llama-3.3-70b-versatile'
+      : provider === 'gemini' ? 'gemini-2.5-flash'
+      : provider === 'anthropic' ? 'claude-3-5-sonnet-latest'
+      : 'gpt-4o-mini');
 
   const useTools = Array.isArray(tools) && tools.length > 0;
 
@@ -1430,8 +1429,9 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
 
   // --- Gemini: native generateContent (preserves thoughtSignature) ---
   if (provider === 'gemini') {
-    const resolvedModel = model.includes('gemini') ? model : 'gemini-2.0-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent`;
+    const resolvedModel = model || 'gemini-2.5-flash';
+    const baseHost = baseUrl || 'https://generativelanguage.googleapis.com';
+    const url = `${baseHost}/v1beta/models/${resolvedModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
     const sysMsg = messages.find((m) => m.role === 'system');
     // Use pre-built Gemini contents if provided, otherwise convert history
     const contents = geminiContents || _toGeminiContents(messages);
@@ -1444,7 +1444,7 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
 
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
@@ -1470,18 +1470,18 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
     return { text, toolCalls, rawGeminiContent };
   }
 
-  // OpenAI / Groq / Gemini / Ollama
+  // OpenAI / Groq / Ollama / openai-compatible
   let url = '';
   const headers = { 'Content-Type': 'application/json' };
 
   if (provider === 'groq') {
-    url = `${aiConfig.baseUrl || 'https://api.groq.com'}/openai/v1/chat/completions`;
+    url = `${baseUrl || 'https://api.groq.com'}/openai/v1/chat/completions`;
     headers['Authorization'] = `Bearer ${apiKey}`;
   } else if (provider === 'ollama') {
-    url = `${aiConfig.baseUrl || 'http://127.0.0.1:11434'}/api/chat`;
+    url = `${baseUrl || 'http://127.0.0.1:11434'}/api/chat`;
   } else {
     // openai / openai-compatible
-    url = `${aiConfig.baseUrl || 'https://api.openai.com/v1'}/chat/completions`;
+    url = `${baseUrl || 'https://api.openai.com/v1'}/chat/completions`;
     headers['Authorization'] = `Bearer ${apiKey}`;
   }
 
@@ -1566,10 +1566,12 @@ export async function runAgentLoop(botToken, chatId, userText) {
 
   try {
     const cfg = await getConfig();
-    const ai = cfg.ai || {};
-    const provider = ai.provider || 'none';
+    const ai = cfg?.ai || {};
+    const provider = String(ai.provider || 'none').toLowerCase();
+    const apiKey = String(ai.apiKey || '').trim();
 
-    if (provider === 'none' || (!ai.apiKey && provider !== 'ollama')) {
+    const noKey = provider !== 'ollama' && provider !== 'openai-compatible' && !apiKey;
+    if (provider === 'none' || noKey) {
       const offlineMsg =
         `⚠️ *AI Copilot Not Configured:*\n` +
         `OutFox Dashboard ➔ *Settings ➔ AI Engine* me jaakar apna Groq ya Gemini API Key connect karo!\n\n` +

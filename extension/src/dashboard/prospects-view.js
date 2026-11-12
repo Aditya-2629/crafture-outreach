@@ -36,6 +36,7 @@ export async function renderProspectsView(container, ctx = {}) {
   const rawCampaigns = allData.campaigns || [];
   const rawActions = allData.actions || [];
   const blacklist = new Set(allData.blacklist || []);
+  let companyBlacklist = Array.isArray(allData.company_blacklist) ? allData.company_blacklist : [];
   const storedColumns = allData.crm_column_preferences || {
     job: true,
     company: true,
@@ -406,6 +407,39 @@ export async function renderProspectsView(container, ctx = {}) {
             </button>
           </div>
 
+          ${currentListId === 'blacklist' ? `
+            <!-- Blocked Companies & Domains Section -->
+            <div class="company-exclusion-card" style="background:#FFFFFF; border:1px solid #fed7aa; border-radius:14px; padding:16px 20px; box-shadow:0 4px 14px rgba(255,107,0,0.06); margin-bottom:4px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <div>
+                  <h3 style="margin:0; font-size:14px; font-weight:700; color:#14142b; display:flex; align-items:center; gap:8px;">
+                    🏢 Blocked Companies & Domains
+                    <span style="font-size:11px; background:#fff7ed; color:#ff6b00; padding:2px 8px; border-radius:12px; font-weight:700;" id="badge-company-count">${companyBlacklist.length} blocked</span>
+                  </h3>
+                  <p style="margin:4px 0 0 0; font-size:12px; color:#64748b;">Prospects matching these company names or domains will be automatically skipped across all campaigns.</p>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:10px; margin-bottom:12px; align-items:center;">
+                <input type="text" id="input-block-company" placeholder="e.g. tcs, infosys.com, accenture" style="flex:1; max-width:360px; padding:8px 14px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; outline:none;" />
+                <button type="button" id="btn-add-block-company" class="btn btn-sm" style="padding:8px 16px; font-size:12.5px; background:#ff6b00; color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer;">
+                  🏢 Block Company
+                </button>
+              </div>
+
+              <div class="company-chips-wrap" style="display:flex; flex-wrap:wrap; gap:8px;">
+                ${companyBlacklist.length === 0 ? `
+                  <span style="font-size:12px; color:#94a3b8; font-style:italic;">No companies or domains blocked yet.</span>
+                ` : companyBlacklist.map((c) => `
+                  <span class="company-chip" style="display:inline-flex; align-items:center; gap:6px; background:#fff7ed; border:1px solid #ffedd5; color:#c2410c; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:600;">
+                    <span>${c}</span>
+                    <button type="button" class="btn-remove-company-chip" data-company="${encodeURIComponent(c)}" style="border:none; background:transparent; color:#ea580c; cursor:pointer; font-size:12px; font-weight:700; padding:0 2px; line-height:1;" title="Unblock ${c}">✕</button>
+                  </span>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+
           <!-- Top Filter Bar (Screenshot 1 & 4) -->
           <div class="crm-filter-bar" style="display:flex; justify-content:space-between; align-items:center; background:#FFFFFF; border:1px solid rgba(20,20,43,0.08); border-radius:14px; padding:12px 18px; box-shadow:0 10px 25px rgba(37,79,229,0.04);">
             <div style="position:relative; width:260px;">
@@ -507,10 +541,15 @@ export async function renderProspectsView(container, ctx = {}) {
                       ${storedColumns.campaign ? `<td style="padding:12px 16px; color:#14142b; font-weight:500; vertical-align:middle;">${p.campaign}</td>` : ''}
                       ${storedColumns.email ? `<td style="padding:12px 16px; color:#6e7191; vertical-align:middle;">${p.email || '<span style="color:#a0a3bd;">-</span>'}</td>` : ''}
                       ${storedColumns.status ? `<td style="padding:12px 16px; vertical-align:middle;">${getStatusBadge(p.status)}</td>` : ''}
-                      <td style="padding:12px 20px; text-align:right; vertical-align:middle;">
-                        <button class="btn-quick-blacklist" data-id="${p.publicId}" style="border:none; background:transparent; color:#a0a3bd; cursor:pointer; font-size:12px;" title="Toggle Blacklist">
-                          ${blacklist.has(p.publicId) ? 'Unblock ↺' : '${ICONS.ban} Blacklist'}
+                      <td style="padding:12px 20px; text-align:right; vertical-align:middle; white-space:nowrap;">
+                        <button class="btn-quick-blacklist" data-id="${p.publicId}" style="border:none; background:transparent; color:#a0a3bd; cursor:pointer; font-size:12px; margin-right:8px;" title="Toggle Blacklist">
+                          ${blacklist.has(p.publicId) ? 'Unblock ↺' : `${ICONS.ban} Blacklist`}
                         </button>
+                        ${p.company ? `
+                          <button class="btn-quick-block-co" data-company="${encodeURIComponent(p.company)}" style="border:none; background:transparent; color:#ea580c; cursor:pointer; font-size:12px; font-weight:600;" title="Block Entire Company (${p.company})">
+                            🏢 Block Co.
+                          </button>
+                        ` : ''}
                       </td>
                     </tr>
                   `).join('')}
@@ -1065,6 +1104,58 @@ export async function renderProspectsView(container, ctx = {}) {
         else blacklist.add(id);
         await chrome.storage.local.set({ blacklist: Array.from(blacklist) });
         paint();
+      });
+    });
+
+    // Q. Company Exclusion Block Listeners
+    container.querySelector('#btn-add-block-company')?.addEventListener('click', async () => {
+      const input = container.querySelector('#input-block-company');
+      const val = input?.value?.trim();
+      if (!val) return;
+      try {
+        const res = await call(ACTIONS.COMPANY_BLACKLIST_ADD, { company: val });
+        companyBlacklist = res?.companies || [...companyBlacklist, val];
+        ctx.showToast?.(`🏢 Company "${val}" added to exclusion list!`, 'success');
+        paint();
+      } catch (e) {
+        ctx.showToast?.(`Error blocking company: ${e.message}`, 'error');
+      }
+    });
+
+    container.querySelector('#input-block-company')?.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        container.querySelector('#btn-add-block-company')?.click();
+      }
+    });
+
+    container.querySelectorAll('.btn-remove-company-chip').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const comp = decodeURIComponent(btn.dataset.company || '');
+        if (!comp) return;
+        try {
+          const res = await call(ACTIONS.COMPANY_BLACKLIST_REMOVE, { company: comp });
+          companyBlacklist = res?.companies || companyBlacklist.filter((c) => c !== comp);
+          ctx.showToast?.(`Removed "${comp}" from company exclusion list.`, 'info');
+          paint();
+        } catch (e) {
+          ctx.showToast?.(`Error removing company: ${e.message}`, 'error');
+        }
+      });
+    });
+
+    container.querySelectorAll('.btn-quick-block-co').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const comp = decodeURIComponent(btn.dataset.company || '');
+        if (!comp) return;
+        try {
+          const res = await call(ACTIONS.COMPANY_BLACKLIST_ADD, { company: comp });
+          companyBlacklist = res?.companies || [...companyBlacklist, comp];
+          ctx.showToast?.(`🏢 Blocked "${comp}" across all campaigns!`, 'success');
+          paint();
+        } catch (e) {
+          ctx.showToast?.(`Error blocking company: ${e.message}`, 'error');
+        }
       });
     });
   }

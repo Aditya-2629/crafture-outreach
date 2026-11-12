@@ -20,7 +20,7 @@ import * as lists from './lists.js';
 import { onEvent } from './events.js';
 import { getLiveDashboardStats } from './stats.js';
 import { snapshotAll } from './quota.js';
-import { addToBlacklist, get, set } from '../lib/storage.js';
+import { addToBlacklist, addCompanyToBlacklist, getStoredProfile, get, set } from '../lib/storage.js';
 import { getActiveCandidate, setActiveCandidate, getAllCandidates } from './candidates.js';
 import { enrichLead } from './enrich.js';
 
@@ -1184,6 +1184,24 @@ async function handleUserCommand(botToken, chatId, text) {
     return sendTelegramMessage(botToken, chatId, welcome, { reply_markup: replyMarkup });
   }
 
+  // 0. Slash Command: /blockcompany <name>
+  if (trimmed.startsWith('/blockcompany') || trimmed.startsWith('/block_company')) {
+    const companyQuery = trimmed.replace(/^\/block_?company\s*/i, '').trim();
+    if (!companyQuery) {
+      return sendTelegramMessage(
+        botToken,
+        chatId,
+        `⚠️ *Usage:* \`/blockcompany <name or domain>\`\n_Example:_ \`/blockcompany infosys.com\``
+      );
+    }
+    await addCompanyToBlacklist(companyQuery);
+    return sendTelegramMessage(
+      botToken,
+      chatId,
+      `🏢 *Company Excluded:*\n\`${companyQuery}\` has been added to the Company Exclusion list.\n\nAll campaigns will automatically skip prospects from this company.`
+    );
+  }
+
   // 1. Conversational Sequence Step Editing Interceptor (with Auto-Recovery & Persistent Storage)
   const editCmd = parseBlueprintEditCommand(trimmed);
   if (editCmd && editCmd.newContent) {
@@ -1702,6 +1720,21 @@ async function handleCallback(botToken, chatId, callbackData) {
       return sendTelegramMessage(botToken, chatId, `❌ Failed to blacklist: ${err.message}`);
     }
   }
+
+  // 16. Block Company
+  if (data.startsWith('block_co:')) {
+    const company = data.replace('block_co:', '').trim();
+    try {
+      await addCompanyToBlacklist(company);
+      return sendTelegramMessage(
+        botToken,
+        chatId,
+        `🏢 *Company Excluded:* \`${company}\` added to Company Exclusion list.\n\nAll campaigns will automatically skip prospects from this company.`
+      );
+    } catch (err) {
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to block company: ${err.message}`);
+    }
+  }
 }
 
 export function stopTelegramPoller() {
@@ -1833,6 +1866,17 @@ onEvent(async (name, payload = {}) => {
           [{ text: '🚫 Do Not Contact', callback_data: `blacklist:${publicId}` }],
         ],
       };
+
+      let company = payload.company || payload.companyName;
+      if (!company) {
+        const stored = await getStoredProfile(publicId).catch(() => null);
+        company = stored?.company || stored?.companyName;
+      }
+      if (company) {
+        replyMarkup.inline_keyboard.push([
+          { text: `🏢 Block Company (${company})`, callback_data: `block_co:${company}` },
+        ]);
+      }
 
       await sendTelegramAlert(alertMsg, { reply_markup: replyMarkup });
     }

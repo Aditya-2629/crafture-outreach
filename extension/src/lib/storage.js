@@ -19,6 +19,7 @@ export const K = Object.freeze({
   CONFIG: 'config',
   QUOTA: 'quota',
   BLACKLIST: 'blacklist',
+  COMPANY_BLACKLIST: 'company_blacklist',
   DEBUG_LOGS: 'debug_logs',
 
   LISTS: 'lists',
@@ -422,6 +423,58 @@ export async function removeFromBlacklist(publicId) {
     (current) => (current || []).filter((id) => id !== publicId),
     [],
   );
+}
+
+/* ================================================================== */
+/*  Company & Domain Exclusion                                        */
+/* ================================================================== */
+
+export function normalizeCompany(val) {
+  return String(val || '')
+    .toLowerCase()
+    .replace(/\b(inc|llc|ltd|corp|pvt|limited|technologies|solutions)\b\.?/g, '')
+    .replace(/[^a-z0-9.]/g, ' ')
+    .replace(/\.+(\s|$)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export async function getCompanyBlacklist() {
+  return get(K.COMPANY_BLACKLIST, []);
+}
+
+export async function addCompanyToBlacklist(companyOrDomain) {
+  const clean = normalizeCompany(companyOrDomain);
+  if (!clean) return [];
+  return update(
+    K.COMPANY_BLACKLIST,
+    (current) => Array.from(new Set([...(current || []), clean])),
+    [],
+  );
+}
+
+export async function removeCompanyFromBlacklist(companyOrDomain) {
+  const clean = normalizeCompany(companyOrDomain);
+  return update(
+    K.COMPANY_BLACKLIST,
+    (current) => (current || []).filter((c) => c !== clean),
+    [],
+  );
+}
+
+export async function isCompanyBlacklisted(profile = {}) {
+  const blocked = await getCompanyBlacklist();
+  if (!blocked.length) return false;
+  const company = normalizeCompany(profile.company || profile.companyName || '');
+  const domain = String(profile.companyDomain || profile.domain || '').toLowerCase().trim();
+  const headline = String(profile.headline || '').toLowerCase();
+
+  return blocked.some((term) => {
+    if (domain && domain.includes(term)) return true;
+    if (company && (company === term || company.includes(term))) return true;
+    if (headline && term.length > 3 && headline.includes(term)) return true;
+    return false;
+  });
 }
 
 /* ================================================================== */

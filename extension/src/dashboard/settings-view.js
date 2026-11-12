@@ -401,6 +401,7 @@ export async function renderSettingsView(container, ctx = {}) {
   let warmupEnabled = Boolean(config.warmup?.enabled);
   let humanPacing = config.humanPacing !== false;
   let autoWithdraw = config.autoWithdraw || { enabled: true, olderThanDays: 14, maxPerRun: 15 };
+  let dedupeAcrossCampaigns = config.dedupeAcrossCampaigns !== false;
 
   // Selected timezone: storage.timezone || config.timezone || 'Asia/Kolkata'
   let selectedTz = storage.timezone || config.timezone || 'Asia/Kolkata';
@@ -697,6 +698,24 @@ export async function renderSettingsView(container, ctx = {}) {
                   <div style="display: flex; align-items: center; gap: 10px;">
                     <label class="ios-switch">
                       <input type="checkbox" id="toggle-human-pacing" ${humanPacing ? 'checked' : ''} />
+                      <span class="ios-slider"></span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Cross-Campaign Deduplication Guardrail -->
+              <div class="settings-block-section">
+                <div class="quotas-section-head" style="margin-bottom: 0;">
+                  <div>
+                    <div class="quotas-title-with-info">
+                      <h3 class="settings-section-heading" style="margin:0;">Cross-Campaign Deduplication</h3>
+                    </div>
+                    <p class="quotas-caption">Prevent enrolling a prospect who is already active, completed, or replied in another OutFox campaign.</p>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <label class="ios-switch">
+                      <input type="checkbox" id="toggle-dedupe-campaigns" ${dedupeAcrossCampaigns ? 'checked' : ''} />
                       <span class="ios-slider"></span>
                     </label>
                   </div>
@@ -1239,6 +1258,16 @@ export async function renderSettingsView(container, ctx = {}) {
       }
     });
 
+    container.querySelector('#toggle-dedupe-campaigns')?.addEventListener('change', async (e) => {
+      dedupeAcrossCampaigns = e.target.checked;
+      try {
+        await call(ACTIONS.CONFIG_SET, { config: { dedupeAcrossCampaigns } });
+        ctx.showToast?.(`Cross-campaign deduplication turned ${dedupeAcrossCampaigns ? 'ON' : 'OFF'}.`, 'info');
+      } catch (err) {
+        console.warn('Failed to update dedupeAcrossCampaigns config', err);
+      }
+    });
+
     container.querySelector('#btn-save-activity-settings')?.addEventListener('click', async () => {
       await saveConfig();
       ctx.showToast?.('Account activity settings saved successfully!', 'success');
@@ -1260,6 +1289,9 @@ export async function renderSettingsView(container, ctx = {}) {
       const autoWdDays = container.querySelector('#input-withdraw-days')
         ? parseInt(container.querySelector('#input-withdraw-days').value, 10) || 14
         : (autoWithdraw.olderThanDays || 14);
+      const dedupeVal = container.querySelector('#toggle-dedupe-campaigns')
+        ? container.querySelector('#toggle-dedupe-campaigns').checked
+        : dedupeAcrossCampaigns;
 
       const payload = {
         workingDays,
@@ -1275,6 +1307,7 @@ export async function renderSettingsView(container, ctx = {}) {
         dailyVisitCap: qVis,
         dailyFollowCap: qFol,
         humanPacing: hPacing,
+        dedupeAcrossCampaigns: dedupeVal,
         autoWithdraw: {
           enabled: autoWdEnabled,
           olderThanDays: autoWdDays,

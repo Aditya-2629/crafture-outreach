@@ -97,6 +97,10 @@ export const ACTIONS = Object.freeze({
   BLACKLIST_ADD: 'blacklist.add',
   BLACKLIST_REMOVE: 'blacklist.remove',
 
+  COMPANY_BLACKLIST_GET: 'companyBlacklist.get',
+  COMPANY_BLACKLIST_ADD: 'companyBlacklist.add',
+  COMPANY_BLACKLIST_REMOVE: 'companyBlacklist.remove',
+
   IMPORT_PROFILE_VIEWERS: 'import.profileViewers',
   IMPORT_POST_COMMENTERS: 'import.postCommenters',
 
@@ -296,6 +300,7 @@ export const DEFAULT_CONFIG = {
   warmup: { enabled: false, days: 14 },
   humanPacing: true,
   autoWithdraw: { enabled: true, olderThanDays: 14, maxPerRun: 15 },
+  dedupeAcrossCampaigns: true,
   ai: { provider: 'none' },
   enrichment: { provider: 'none' },
   bridge: { enabled: true, port: 47829, token: '8824d1f6b5220b57550a33f124e346f8' },
@@ -579,6 +584,10 @@ const PARAM_SPECS = {
   [ACTIONS.BLACKLIST_ADD]: { required: { publicId: 'string' } },
   [ACTIONS.BLACKLIST_REMOVE]: { required: { publicId: 'string' } },
 
+  [ACTIONS.COMPANY_BLACKLIST_GET]: {},
+  [ACTIONS.COMPANY_BLACKLIST_ADD]: { required: { company: 'string' } },
+  [ACTIONS.COMPANY_BLACKLIST_REMOVE]: { required: { company: 'string' } },
+
   [ACTIONS.IMPORT_PROFILE_VIEWERS]: {},
   [ACTIONS.IMPORT_POST_COMMENTERS]: { required: { postUrl: 'string' } },
 
@@ -780,6 +789,7 @@ export function clampConfig(cfg = {}) {
     maxPerRun: clampInt(input.autoWithdraw?.maxPerRun, d.autoWithdraw.maxPerRun, 1, 50),
   };
   out.humanPacing = toBoolean(input.humanPacing, d.humanPacing);
+  out.dedupeAcrossCampaigns = toBoolean(input.dedupeAcrossCampaigns, d.dedupeAcrossCampaigns);
 
   if (!AI_PROVIDERS.includes(out.ai.provider)) out.ai.provider = d.ai.provider;
   if (!ENRICHMENT_PROVIDERS.includes(out.enrichment.provider)) {

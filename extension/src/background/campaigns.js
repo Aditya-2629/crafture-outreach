@@ -12,7 +12,7 @@
 import { ACTIONS, ERROR, EVENTS, EngineError, INVITE_NOTE_MAX } from '../lib/actions.js';
 import { getConfig } from '../lib/config.js';
 import { handle, register } from './engine.js';
-import { K, allActions, get, getStoredProfile, newId, remove, set, stamp, isBlacklisted, getBlacklist, addToBlacklist, removeFromBlacklist, logDebug } from '../lib/storage.js';
+import { K, allActions, get, getStoredProfile, newId, remove, set, stamp, isBlacklisted, getBlacklist, addToBlacklist, removeFromBlacklist, logDebug, isCompanyBlacklisted, getCompanyBlacklist, addCompanyToBlacklist, removeCompanyFromBlacklist } from '../lib/storage.js';
 import { pickVariant, renderTemplate } from '../lib/template.js';
 import { emit } from './events.js';
 import * as inbox from './inbox.js';
@@ -245,8 +245,27 @@ export async function getOne(campaignId) {
 
 export async function enroll(campaignId, publicIds) {
   await requireCampaign(campaignId);
+  const config = await getConfig();
   const enrollments = await readEnrollments(campaignId);
   const seen = new Set(enrollments.map((e) => e.publicId));
+
+  const dedupeAcross = config.dedupeAcrossCampaigns !== false;
+  const otherCampaignActiveProspects = new Map();
+
+  if (dedupeAcross) {
+    const allCampaigns = await readCampaigns();
+    for (const other of allCampaigns) {
+      if (other.campaignId === campaignId) continue;
+      const otherEnrollments = await readEnrollments(other.campaignId);
+      for (const enr of otherEnrollments) {
+        if (['active', 'completed', 'replied', 'email_fallback_sent'].includes(enr.status)) {
+          if (!otherCampaignActiveProspects.has(enr.publicId)) {
+            otherCampaignActiveProspects.set(enr.publicId, other.name || other.campaignId);
+          }
+        }
+      }
+    }
+  }
 
   let enrolled = 0;
   let skipped = 0;
@@ -255,6 +274,28 @@ export async function enroll(campaignId, publicIds) {
       skipped += 1;
       continue;
     }
+
+    if (await isBlacklisted(publicId)) {
+      skipped += 1;
+      logDebug('info', 'Dedupe', `Skipped ${publicId}: prospect is blacklisted`);
+      continue;
+    }
+
+    const prof = await getStoredProfile(publicId);
+    if (prof && (await isCompanyBlacklisted(prof))) {
+      skipped += 1;
+      logDebug('info', 'Dedupe', `Skipped ${publicId}: company "${prof.company || prof.companyName || ''}" is on company exclusion list`);
+      continue;
+    }
+
+    if (dedupeAcross && otherCampaignActiveProspects.has(publicId)) {
+      skipped += 1;
+      const otherName = otherCampaignActiveProspects.get(publicId);
+      console.log(`[Dedupe] Skipped ${publicId}: already active/contacted in campaign "${otherName}"`);
+      logDebug('info', 'Dedupe', `Skipped ${publicId}: already active/contacted in campaign "${otherName}"`);
+      continue;
+    }
+
     seen.add(publicId);
     enrollments.push(
       stamp({
@@ -621,6 +662,15 @@ export async function tick() {
         continue;
       }
 
+      const profileForGuard = await getStoredProfile(enrollment.publicId);
+      if (profileForGuard && (await isCompanyBlacklisted(profileForGuard))) {
+        enrollment.status = 'blacklisted';
+        enrollment.error = `Company "${profileForGuard.company || profileForGuard.companyName || 'Blocked'}" is on the Company Exclusion list.`;
+        enrollment.updatedAt = now;
+        dirty = true;
+        continue;
+      }
+
       // One enrollment may resolve several zero-cost steps (branch, wait) in a
       // single tick, but performs at most one write.
       let wrote = false;
@@ -916,3 +966,7 @@ register(ACTIONS.CAMPAIGN_TICK, () => tick());
 register(ACTIONS.BLACKLIST_GET, async () => ({ blacklist: await getBlacklist() }));
 register(ACTIONS.BLACKLIST_ADD, async ({ publicId }) => ({ blacklist: await addToBlacklist(publicId) }));
 register(ACTIONS.BLACKLIST_REMOVE, async ({ publicId }) => ({ blacklist: await removeFromBlacklist(publicId) }));
+
+register(ACTIONS.COMPANY_BLACKLIST_GET, async () => ({ companies: await getCompanyBlacklist() }));
+register(ACTIONS.COMPANY_BLACKLIST_ADD, async ({ company }) => ({ companies: await addCompanyToBlacklist(company) }));
+register(ACTIONS.COMPANY_BLACKLIST_REMOVE, async ({ company }) => ({ companies: await removeCompanyFromBlacklist(company) }));

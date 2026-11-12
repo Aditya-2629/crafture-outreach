@@ -8,7 +8,7 @@ import { call } from '../ui/api.js';
 import { ACTIONS } from '../lib/actions.js';
 import { ICONS } from '../ui/icons.js';
 import { openUiConfirm, openUiAlert, openUiPrompt } from './modal-engine.js';
-import { openSheetCrmGuide, openTelegramGuideModal, openMcpGuideModal } from './guide-modal.js';
+import { openTelegramGuideModal, openMcpGuideModal } from './guide-modal.js';
 import { getStorageHealth } from '../lib/storage.js';
 
 let activeSettingsTab = 'activity';
@@ -456,9 +456,6 @@ export async function renderSettingsView(container, ctx = {}) {
     const isTimeActive = tzData.mins >= startMinutes && tzData.mins <= endMinutes;
     const isCurrentlyActive = isTodayActive && isTimeActive;
 
-    const hasSheet = Boolean(
-      storage.googleSheetUrl || config.googleSheetUrl || storage.googleSheetWebhookUrl || config.googleSheetWebhookUrl,
-    );
     const hasWebhook = Boolean(storage.webhookUrl || config.webhookUrl);
     const hasTelegram = Boolean(
       (config.telegram && config.telegram.enabled && config.telegram.botToken) ||
@@ -997,7 +994,7 @@ export async function renderSettingsView(container, ctx = {}) {
                           Open Live Sheet ↗
                         </a>
                       ` : ''}
-                      <button type="button" class="btn-int-action btn-int-active" id="btn-sync-all-leads-sheet" style="font-size:11.5px; padding:6px 14px;">
+                      <button type="button" class="btn-int-action btn-int-active" id="btn-sync-crm-now" style="font-size:11.5px; padding:6px 14px;">
                         ↻ Sync All Leads
                       </button>
                     ` : `
@@ -1028,17 +1025,17 @@ export async function renderSettingsView(container, ctx = {}) {
                   </div>
                   <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
                     ${googleWorkspace.connected ? `
-                      <button type="button" class="btn-int-action btn-int-active" id="btn-drive-backup-save" style="font-size:11.5px; padding:6px 12px;">
+                      <button type="button" class="btn-int-action btn-int-active" id="btn-drive-backup-now" style="font-size:11.5px; padding:6px 12px;">
                         ☁️ Backup to Drive
                       </button>
-                      <button type="button" class="btn-int-action" id="btn-drive-backup-restore" style="font-size:11.5px; padding:6px 12px;">
+                      <button type="button" class="btn-int-action" id="btn-drive-backup-restore-now" style="font-size:11.5px; padding:6px 12px;">
                         📥 Restore Drive
                       </button>
                     ` : ''}
-                    <button type="button" class="btn-int-action" id="btn-export-local-json" style="font-size:11.5px; padding:6px 12px;">
+                    <button type="button" class="btn-int-action" id="btn-export-json-backup" style="font-size:11.5px; padding:6px 12px;">
                       💾 Export .json
                     </button>
-                    <button type="button" class="btn-int-action" id="btn-import-local-json" style="font-size:11.5px; padding:6px 12px;">
+                    <button type="button" class="btn-int-action" id="btn-import-json-backup" style="font-size:11.5px; padding:6px 12px;">
                       📂 Restore .json
                     </button>
                     <input type="file" id="input-import-backup-file" accept=".json" style="display:none;" />
@@ -1605,11 +1602,13 @@ export async function renderSettingsView(container, ctx = {}) {
       }
     });
 
-    container.querySelector('#btn-sync-all-leads-sheet')?.addEventListener('click', async (e) => {
-      const btn = e.currentTarget;
-      const originalText = btn.innerHTML;
-      btn.innerHTML = '⏳ Syncing...';
-      btn.disabled = true;
+    const handleSyncCrm = async (e) => {
+      const btn = e?.currentTarget;
+      const originalText = btn ? btn.innerHTML : '';
+      if (btn) {
+        btn.innerHTML = '⏳ Syncing...';
+        btn.disabled = true;
+      }
       try {
         const res = await call(ACTIONS.SHEETS_CRM_SYNC_NOW, {});
         ctx.showToast?.(`Synced ${res.rowsSynced || 0} leads to Google Sheet!`, 'success');
@@ -1618,17 +1617,24 @@ export async function renderSettingsView(container, ctx = {}) {
         paint();
       } catch (err) {
         ctx.showToast?.(err.message || 'Failed to sync leads to sheet', 'error');
-        btn.innerHTML = originalText;
-        btn.disabled = false;
+        if (btn) {
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        }
       }
-    });
+    };
+
+    container.querySelector('#btn-sync-crm-now')?.addEventListener('click', handleSyncCrm);
+    container.querySelector('#btn-sync-all-leads-sheet')?.addEventListener('click', handleSyncCrm);
 
     // 2. Cloud & Local Data Backup
-    container.querySelector('#btn-drive-backup-save')?.addEventListener('click', async (e) => {
-      const btn = e.currentTarget;
-      const originalText = btn.innerHTML;
-      btn.innerHTML = '⏳ Backing up...';
-      btn.disabled = true;
+    const handleDriveBackup = async (e) => {
+      const btn = e?.currentTarget;
+      const originalText = btn ? btn.innerHTML : '';
+      if (btn) {
+        btn.innerHTML = '⏳ Backing up...';
+        btn.disabled = true;
+      }
       try {
         await call(ACTIONS.BACKUP_DRIVE_SAVE, {});
         ctx.showToast?.('Saved snapshot to Google Drive (OutFox Backups/outfox-backup.json)!', 'success');
@@ -1637,12 +1643,17 @@ export async function renderSettingsView(container, ctx = {}) {
         paint();
       } catch (err) {
         ctx.showToast?.(err.message || 'Drive backup failed', 'error');
-        btn.innerHTML = originalText;
-        btn.disabled = false;
+        if (btn) {
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        }
       }
-    });
+    };
 
-    container.querySelector('#btn-drive-backup-restore')?.addEventListener('click', async () => {
+    container.querySelector('#btn-drive-backup-now')?.addEventListener('click', handleDriveBackup);
+    container.querySelector('#btn-drive-backup-save')?.addEventListener('click', handleDriveBackup);
+
+    const handleDriveRestore = async () => {
       const ok = await openUiConfirm({
         title: 'Restore from Google Drive',
         message: 'Restore your OutFox data from the latest Google Drive backup? This will update local collections.',
@@ -1658,9 +1669,12 @@ export async function renderSettingsView(container, ctx = {}) {
           ctx.showToast?.(err.message || 'Drive restore failed', 'error');
         }
       }
-    });
+    };
 
-    container.querySelector('#btn-export-local-json')?.addEventListener('click', async () => {
+    container.querySelector('#btn-drive-backup-restore-now')?.addEventListener('click', handleDriveRestore);
+    container.querySelector('#btn-drive-backup-restore')?.addEventListener('click', handleDriveRestore);
+
+    const handleExportJson = async () => {
       try {
         const res = await call(ACTIONS.BACKUP_EXPORT_JSON, {});
         const blob = new Blob([JSON.stringify(res.snapshot || {}, null, 2)], { type: 'application/json' });
@@ -1674,12 +1688,15 @@ export async function renderSettingsView(container, ctx = {}) {
       } catch (err) {
         ctx.showToast?.(err.message || 'Failed to export JSON backup', 'error');
       }
-    });
+    };
+
+    container.querySelector('#btn-export-json-backup')?.addEventListener('click', handleExportJson);
+    container.querySelector('#btn-export-local-json')?.addEventListener('click', handleExportJson);
 
     const fileInput = container.querySelector('#input-import-backup-file');
-    container.querySelector('#btn-import-local-json')?.addEventListener('click', () => {
-      fileInput?.click();
-    });
+    const handleImportJson = () => fileInput?.click();
+    container.querySelector('#btn-import-json-backup')?.addEventListener('click', handleImportJson);
+    container.querySelector('#btn-import-local-json')?.addEventListener('click', handleImportJson);
 
     fileInput?.addEventListener('change', (e) => {
       const file = e.target.files?.[0];
@@ -1704,15 +1721,6 @@ export async function renderSettingsView(container, ctx = {}) {
         }
       };
       reader.readAsText(file);
-    });
-
-    // Legacy Sheet CRM Guide modal trigger (if present)
-    container.querySelector('#btn-setup-sheet-crm')?.addEventListener('click', () => {
-      openSheetCrmGuide((url) => {
-        storage.googleSheetUrl = url;
-        storage.googleSheetWebhookUrl = url;
-        paint();
-      });
     });
 
     // 2. AI Engine Multi-Model & Fallback Router

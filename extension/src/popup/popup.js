@@ -87,7 +87,10 @@ async function refreshPopup() {
     // 4. Google Sheets CRM Status
     const crmEl = document.getElementById('popup-crm-status');
     if (crmEl) {
-      if (config.googleSheetWebhookUrl || config.googleSheetViewUrl) {
+      const sheetsMeta = (await new Promise((r) => chrome.storage.local.get(['outfox_sheets_crm_meta'], r)).catch(() => ({})))?.outfox_sheets_crm_meta || {};
+      const gw = config.googleWorkspace || {};
+      const hasCrm = Boolean(gw.connected && (sheetsMeta.spreadsheetId || gw.spreadsheetId));
+      if (hasCrm) {
         crmEl.textContent = 'Synced';
         crmEl.style.color = '#00BA88';
       } else {

@@ -12,7 +12,6 @@ import { renderQueueView } from './queue-view.js';
 import { renderTemplatesView } from './templates-view.js';
 import { renderInboxView } from './inbox-view.js';
 import { renderSettingsView } from './settings-view.js';
-import { openSheetCrmGuide } from './guide-modal.js';
 
 let currentViewId = 'home';
 
@@ -194,7 +193,7 @@ async function initDashboard() {
     if (isGuideBtn) {
       e.preventDefault();
       e.stopPropagation();
-      openSheetCrmGuide();
+      switchView('settings', { tab: 'integrations' });
     }
   });
 

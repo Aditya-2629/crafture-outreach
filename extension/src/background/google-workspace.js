@@ -19,7 +19,7 @@ import {
   switchOutreachMailbox,
 } from './gmail.js';
 
-const SHEETS_CRM_STORAGE_KEY = 'outfox_sheets_crm';
+const SHEETS_CRM_STORAGE_KEY = 'outfox_sheets_crm_meta';
 const DRIVE_BACKUP_FOLDER = 'OutFox Backups';
 const DRIVE_BACKUP_FILENAME = 'outfox-backup.json';
 
@@ -94,7 +94,10 @@ export async function createLiveCrmSheet(token) {
     },
   });
 
-  await new Promise((r) => chrome.storage.local.set({ [SHEETS_CRM_STORAGE_KEY]: { spreadsheetId, spreadsheetUrl } }, r));
+  await new Promise((r) => chrome.storage.local.set({
+    [SHEETS_CRM_STORAGE_KEY]: { spreadsheetId, spreadsheetUrl },
+    outfox_sheets_crm: { spreadsheetId, spreadsheetUrl },
+  }, r));
   return { spreadsheetId, spreadsheetUrl };
 }
 
@@ -110,7 +113,10 @@ export async function getOrCreateLiveCrmSheet(token) {
     };
   }
 
-  const stored = await new Promise((r) => chrome.storage.local.get([SHEETS_CRM_STORAGE_KEY], (res) => r(res?.[SHEETS_CRM_STORAGE_KEY])));
+  const stored = await new Promise((r) => chrome.storage.local.get([SHEETS_CRM_STORAGE_KEY, 'outfox_sheets_crm'], (res) => {
+    r(res?.[SHEETS_CRM_STORAGE_KEY] || res?.outfox_sheets_crm);
+  }));
+
   if (stored?.spreadsheetId && stored?.spreadsheetUrl) {
     await setConfig({
       googleWorkspace: {
@@ -122,6 +128,14 @@ export async function getOrCreateLiveCrmSheet(token) {
   }
 
   return createLiveCrmSheet(token);
+}
+
+/**
+ * Ensures "OutFox Live CRM" Google Sheet is created and returns metadata.
+ */
+export async function ensureLiveCrmSheet(interactive = false) {
+  const token = await getGoogleWorkspaceToken(interactive);
+  return getOrCreateLiveCrmSheet(token);
 }
 
 /**
@@ -550,3 +564,4 @@ register(ACTIONS.BACKUP_DRIVE_RESTORE, async () => {
 register(ACTIONS.OUTREACH_MAILBOX_SWITCH, async (params = {}) => {
   return switchOutreachMailbox(params);
 });
+

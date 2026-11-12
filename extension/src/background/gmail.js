@@ -43,6 +43,8 @@ async function setStoredToken(key, data) {
   });
 }
 
+export const DEFAULT_CLIENT_ID = '567155036878-t4bm7btrqe9joju5uqdmq9ml2funkdap.apps.googleusercontent.com';
+
 async function clearStoredToken(key) {
   return new Promise((resolve) => {
     chrome.storage.local.remove([key], resolve);
@@ -51,7 +53,7 @@ async function clearStoredToken(key) {
 
 async function launchGoogleOAuth({ scopes, interactive = false, prompt = 'select_account' }) {
   const manifest = chrome.runtime.getManifest();
-  const clientId = (manifest.oauth2 && manifest.oauth2.client_id) || '272657974342-33vqnbq383euhl43tjimcede05ev23od.apps.googleusercontent.com';
+  const clientId = (manifest.oauth2 && manifest.oauth2.client_id) || DEFAULT_CLIENT_ID;
   const scopeStr = (scopes || []).join(' ');
 
   const redirectUri = typeof chrome.identity?.getRedirectURL === 'function'

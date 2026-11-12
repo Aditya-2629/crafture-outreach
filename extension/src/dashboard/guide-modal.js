@@ -283,9 +283,10 @@ export function openMcpGuideModal() {
   const mcpConfigCode = JSON.stringify({
     mcpServers: {
       outfox: {
-        command: "node",
+        command: "npx",
         args: [
-          "C:\\Users\\hp\\Desktop\\ADITYA\\linki\\linkedin-toolkit\\linkedin-toolkit\\mcp-server\\dist\\server.js"
+          "-y",
+          "outfox-mcp"
         ]
       }
     }
@@ -296,22 +297,31 @@ export function openMcpGuideModal() {
       <div class="modal-head">
         <div class="guide-head-group">
           <span class="guide-logo-icon" style="background:#ff6b00; color:#fff;">${ICONS.terminal}</span>
-          <h3 class="modal-title">OutFox MCP Server — Local IDE Agent Setup</h3>
+          <h3 class="modal-title">OutFox MCP Server — Universal AI Agent Bridge</h3>
         </div>
         <button type="button" class="btn-close-modal" id="btn-close-mcp-guide">✕</button>
       </div>
 
       <div class="modal-body guide-body">
         <p class="guide-intro">
-          Pair OutFox directly with Antigravity IDE, Claude Code, Cursor, or Windsurf. Agents can search LinkedIn prospects, trigger campaigns, and inspect quotas in real time.
+          Pair OutFox directly with Antigravity IDE, Claude Desktop, Cursor, or Windsurf. Agents can search LinkedIn prospects, trigger campaigns, and inspect quotas in real time.
         </p>
 
         <div class="guide-steps-list">
           <div class="guide-step-item">
             <div class="step-num-badge">1</div>
             <div class="step-content" style="width:100%;">
-              <strong>Add OutFox to your <code>.mcp.json</code></strong>
-              <p>Add this MCP server block to your IDE configuration file:</p>
+              <strong>Option A: 1-Command Auto-Installer (Recommended)</strong>
+              <p>Run this in your terminal to automatically configure Claude Desktop & Cursor across Windows, macOS, or Linux:</p>
+              <pre style="background:#0f172a; color:#38bdf8; padding:10px 12px; border-radius:8px; font-size:12px; font-family:monospace; margin:6px 0;"><code>npx outfox-mcp-setup</code></pre>
+            </div>
+          </div>
+
+          <div class="guide-step-item">
+            <div class="step-num-badge">2</div>
+            <div class="step-content" style="width:100%;">
+              <strong>Option B: Universal <code>.mcp.json</code> Config</strong>
+              <p>Or paste this universal zero-setup config into your IDE or Claude Desktop:</p>
               <pre style="background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow-x:auto; margin:8px 0; font-family:monospace;"><code>${mcpConfigCode}</code></pre>
               <button type="button" class="btn btn-secondary btn-copy-mcp" id="btn-copy-mcp-config" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
                 ${ICONS.duplicate || ''} Copy .mcp.json snippet
@@ -320,10 +330,10 @@ export function openMcpGuideModal() {
           </div>
 
           <div class="guide-step-item">
-            <div class="step-num-badge">2</div>
+            <div class="step-num-badge">3</div>
             <div class="step-content">
               <strong>Localhost WebSocket Bridge</strong>
-              <p>OutFox MCP communicates over <code>ws://127.0.0.1:47829</code> with your active Chrome/Brave session. No headless browsers or bot detection.</p>
+              <p>OutFox MCP communicates over <code>ws://127.0.0.1:47829</code> with your active Chrome/Brave session. Zero tokens, no headless browsers or bot detection.</p>
             </div>
           </div>
         </div>

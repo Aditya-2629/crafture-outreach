@@ -348,7 +348,7 @@ describe('client config paths', () => {
     expect(serverEntry('vscode')).toEqual({
       type: 'stdio',
       command: 'npx',
-      args: ['-y', 'linkedin-toolkit-mcp'],
+      args: ['-y', 'outfox-mcp'],
     });
   });
 
@@ -360,7 +360,7 @@ describe('client config paths', () => {
   });
 
   it('prints a generic snippet for anything else', () => {
-    expect(configSnippet('print')).toContain('"linkedin-toolkit"');
+    expect(configSnippet('print')).toContain('"outfox"');
     expect(configSnippet('print')).toContain('"mcpServers"');
   });
 });
@@ -371,7 +371,7 @@ describe('merging into an existing config', () => {
   it('creates the file contents from nothing', () => {
     const merged = mergeMcpConfig({ existing: null, key: 'mcpServers', entry });
     expect(JSON.parse(merged.contents)).toEqual({
-      mcpServers: { 'linkedin-toolkit': entry },
+      mcpServers: { outfox: entry },
     });
     expect(merged.changed).toBe(true);
     expect(merged.kept).toEqual([]);
@@ -388,7 +388,7 @@ describe('merging into an existing config', () => {
     });
     const merged = mergeMcpConfig({ existing, key: 'mcpServers', entry });
     const parsed = JSON.parse(merged.contents);
-    expect(Object.keys(parsed.mcpServers).sort()).toEqual(['filesystem', 'github', 'linkedin-toolkit']);
+    expect(Object.keys(parsed.mcpServers).sort()).toEqual(['filesystem', 'github', 'outfox']);
     expect(parsed.mcpServers.github.command).toBe('docker');
     expect(parsed.theme).toBe('dark');
     expect(parsed.$schema).toBe('https://example.invalid/schema.json');
@@ -405,14 +405,14 @@ describe('merging into an existing config', () => {
   it('replaces an older entry of ours without disturbing the neighbours', () => {
     const existing = JSON.stringify({
       mcpServers: {
-        'linkedin-toolkit': { command: 'node', args: ['/old/path/server.js'] },
+        outfox: { command: 'node', args: ['/old/path/server.js'] },
         github: { command: 'docker' },
       },
     });
     const merged = mergeMcpConfig({ existing, key: 'mcpServers', entry });
     const parsed = JSON.parse(merged.contents);
     expect(merged.changed).toBe(true);
-    expect(parsed.mcpServers['linkedin-toolkit']).toEqual(entry);
+    expect(parsed.mcpServers.outfox).toEqual(entry);
     expect(parsed.mcpServers.github).toEqual({ command: 'docker' });
   });
 
@@ -420,8 +420,8 @@ describe('merging into an existing config', () => {
     const existing = JSON.stringify({ servers: { other: { type: 'stdio', command: 'x' } } });
     const merged = mergeMcpConfig({ existing, key: 'servers', entry: serverEntry('vscode') });
     const parsed = JSON.parse(merged.contents);
-    expect(Object.keys(parsed.servers).sort()).toEqual(['linkedin-toolkit', 'other']);
-    expect(parsed.servers['linkedin-toolkit'].type).toBe('stdio');
+    expect(Object.keys(parsed.servers).sort()).toEqual(['other', 'outfox']);
+    expect(parsed.servers.outfox.type).toBe('stdio');
   });
 
   it('refuses malformed JSON instead of overwriting it', () => {
@@ -447,7 +447,7 @@ describe('merging into an existing config', () => {
 
   it('treats an empty file as a new one', () => {
     const merged = mergeMcpConfig({ existing: '   \n', key: 'mcpServers', entry });
-    expect(JSON.parse(merged.contents).mcpServers['linkedin-toolkit']).toEqual(entry);
+    expect(JSON.parse(merged.contents).mcpServers.outfox).toEqual(entry);
   });
 });
 
@@ -463,7 +463,7 @@ describe('writing a client config', () => {
     expect(outcome.action).toBe('written');
     expect(outcome.created).toBe(true);
     expect(outcome.backup).toBeUndefined();
-    expect(JSON.parse(readFileSync(path, 'utf8')).mcpServers['linkedin-toolkit']).toEqual(entry);
+    expect(JSON.parse(readFileSync(path, 'utf8')).mcpServers.outfox).toEqual(entry);
   });
 
   it('backs the old file up before replacing it', () => {

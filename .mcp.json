@@ -1,9 +1,10 @@
 {
   "mcpServers": {
     "outfox": {
-      "command": "node",
+      "command": "npx",
       "args": [
-        "C:\\Users\\hp\\Desktop\\ADITYA\\linki\\linkedin-toolkit\\linkedin-toolkit\\mcp-server\\dist\\server.js"
+        "-y",
+        "outfox-mcp"
       ]
     }
   }

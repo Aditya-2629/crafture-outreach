@@ -1,6 +1,6 @@
+#!/usr/bin/env node
 /**
- * `lit setup` — everything between "I found this repo" and "my agent can use
- * it", minus the three clicks Chrome will not let anybody automate.
+ * `lit setup` / `npx outfox-mcp-setup` — OutFox MCP auto-configuration tool.
  *
  * The old path was: find the Releases page, download a zip, unzip it somewhere
  * you will not delete, turn on Developer mode, Load unpacked, run a server,
@@ -505,11 +505,11 @@ export const CLIENTS = [
 
 export type ClientId = (typeof CLIENTS)[number];
 
-export const SERVER_KEY = 'linkedin-toolkit';
+export const SERVER_KEY = 'outfox';
 
 /** The stdio entry every MCP client gets, in that client's spelling. */
 export function serverEntry(client: ClientId): Record<string, unknown> {
-  const base = { command: 'npx', args: ['-y', 'linkedin-toolkit-mcp'] };
+  const base = { command: 'npx', args: ['-y', 'outfox-mcp'] };
   // VS Code's own schema wants the transport named; the rest infer stdio.
   return client === 'vscode' ? { type: 'stdio', ...base } : base;
 }
@@ -785,4 +785,98 @@ export function pairingTimeoutMessage(seconds: number): string {
     '  2. Open the toolkit popup → Settings → Local bridge, paste the pairing token, enable it.',
     '  3. Check it:  lit status',
   ].join('\n');
+}
+
+/* ------------------------------------------------------------------ *
+ * Standalone 1-Command Auto-Installer (`npx outfox-mcp-setup`)
+ * ------------------------------------------------------------------ */
+
+export async function runAutoInstaller(): Promise<void> {
+  const platform = process.platform;
+  const home = homedir();
+  const env = process.env;
+
+  process.stdout.write('\n🦊 OutFox MCP Auto-Installer\n');
+  process.stdout.write('Connecting OutFox to your AI agents (Claude Desktop, Cursor)...\n\n');
+
+  const targets: { name: string; path: string; key: 'mcpServers' }[] = [];
+
+  // 1. Claude Desktop
+  let claudePath: string;
+  if (platform === 'win32') {
+    claudePath = join(env.APPDATA || join(home, 'AppData', 'Roaming'), 'Claude', 'claude_desktop_config.json');
+  } else if (platform === 'darwin') {
+    claudePath = join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+  } else {
+    claudePath = join(env.XDG_CONFIG_HOME || join(home, '.config'), 'Claude', 'claude_desktop_config.json');
+  }
+  targets.push({ name: 'Claude Desktop', path: claudePath, key: 'mcpServers' });
+
+  // 2. Cursor
+  const cursorPath = join(home, '.cursor', 'mcp.json');
+  targets.push({ name: 'Cursor', path: cursorPath, key: 'mcpServers' });
+
+  const serverEntryObj = {
+    command: 'npx',
+    args: ['-y', 'outfox-mcp'],
+  };
+
+  let configuredCount = 0;
+
+  for (const target of targets) {
+    try {
+      let existingConfig: any = {};
+      let existed = false;
+      if (existsSync(target.path)) {
+        existed = true;
+        try {
+          const content = readFileSync(target.path, 'utf8');
+          existingConfig = JSON.parse(content) || {};
+        } catch {
+          process.stdout.write(`  ⚠️ Could not parse existing config at ${target.path}. Creating backup...\n`);
+          copyFileSync(target.path, `${target.path}.bak-${Date.now()}`);
+          existingConfig = {};
+        }
+      }
+
+      if (!existingConfig || typeof existingConfig !== 'object') {
+        existingConfig = {};
+      }
+      if (!existingConfig.mcpServers || typeof existingConfig.mcpServers !== 'object') {
+        existingConfig.mcpServers = {};
+      }
+
+      // Add/update "outfox" entry
+      existingConfig.mcpServers['outfox'] = serverEntryObj;
+
+      mkdirSync(dirname(target.path), { recursive: true });
+      writeFileSync(target.path, `${JSON.stringify(existingConfig, null, 2)}\n`, 'utf8');
+
+      process.stdout.write(`  ✓ ${target.name}: ${existed ? 'Updated' : 'Created'} at ${target.path}\n`);
+      configuredCount += 1;
+    } catch (err: any) {
+      process.stderr.write(`  ✕ ${target.name}: Failed to write config: ${err?.message || err}\n`);
+    }
+  }
+
+  process.stdout.write(`\n🎉 OutFox MCP successfully configured for ${configuredCount} client(s)!\n`);
+  process.stdout.write('------------------------------------------------------------\n');
+  process.stdout.write('Next Steps:\n');
+  process.stdout.write('  1. Ensure OutFox Chrome Extension is running (Bridge port: 47829)\n');
+  process.stdout.write('  2. Restart Cursor and/or Claude Desktop\n');
+  process.stdout.write('  3. In chat, ask your agent: "Search 5 founders in NYC using OutFox"\n');
+  process.stdout.write('------------------------------------------------------------\n\n');
+}
+
+const invokedDirectly = process.argv[1]
+  ? import.meta.url === new URL(`file://${process.argv[1].replace(/\\/g, '/')}`).href ||
+    process.argv[1].endsWith('setup.js') ||
+    process.argv[1].endsWith('setup.ts')
+  : false;
+
+if (invokedDirectly) {
+  runAutoInstaller().catch((err) => {
+    process.stderr.write(`OutFox setup error: ${err?.message || err}\n`);
+    process.exit(1);
+  });
 }

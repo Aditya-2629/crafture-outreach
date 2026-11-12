@@ -6,8 +6,10 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "linkedin-toolkit-mcp": "dist/server.js",
-    "lit": "dist/cli.js"
+    "outfox-mcp": "./dist/server.js",
+    "outfox-mcp-setup": "./dist/setup.js",
+    "linkedin-toolkit-mcp": "./dist/server.js",
+    "lit": "./dist/cli.js"
   },
   "engines": {
     "node": ">=20"

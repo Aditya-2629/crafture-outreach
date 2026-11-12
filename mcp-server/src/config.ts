@@ -23,9 +23,16 @@ export const DEFAULT_BRIDGE_PORT = 47829;
 export const DEFAULT_HTTP_PORT = 47830;
 export const DEFAULT_RESEARCH_TIMEOUT_MS = 600_000;
 
-/** `~/.linkedin-toolkit`, or `$LINKEDIN_TOOLKIT_HOME` when set (tests use this). */
+/** `~/.outfox` or `~/.linkedin-toolkit`, or `$OUTFOX_HOME` / `$LINKEDIN_TOOLKIT_HOME` when set. */
 export function toolkitHome(): string {
-  return process.env.LINKEDIN_TOOLKIT_HOME || join(homedir(), '.linkedin-toolkit');
+  if (process.env.OUTFOX_HOME) return process.env.OUTFOX_HOME;
+  if (process.env.LINKEDIN_TOOLKIT_HOME) return process.env.LINKEDIN_TOOLKIT_HOME;
+  const outfoxDir = join(homedir(), '.outfox');
+  const legacyDir = join(homedir(), '.linkedin-toolkit');
+  if (!existsSync(outfoxDir) && existsSync(legacyDir)) {
+    return legacyDir;
+  }
+  return outfoxDir;
 }
 
 export function configPath(): string {
@@ -80,9 +87,13 @@ export function generateToken(): string {
 }
 
 function defaults(): ServerConfig {
+  const envPort = process.env.OUTFOX_BRIDGE_PORT || process.env.LINKEDIN_TOOLKIT_PORT;
+  const bridgePort = envPort && !isNaN(Number(envPort)) ? Number(envPort) : DEFAULT_BRIDGE_PORT;
+  const envToken = process.env.OUTFOX_BRIDGE_TOKEN || process.env.OUTFOX_TOKEN;
+
   return {
-    token: generateToken(),
-    bridgePort: DEFAULT_BRIDGE_PORT,
+    token: envToken && envToken.trim() ? envToken.trim() : generateToken(),
+    bridgePort,
     httpPort: DEFAULT_HTTP_PORT,
     dbPath: join(toolkitHome(), 'toolkit.db'),
     researchTimeoutMs: DEFAULT_RESEARCH_TIMEOUT_MS,
@@ -91,11 +102,24 @@ function defaults(): ServerConfig {
 
 function coerce(raw: any): ServerConfig {
   const base = defaults();
+  const envToken = process.env.OUTFOX_BRIDGE_TOKEN || process.env.OUTFOX_TOKEN;
+  const validRawToken = typeof raw?.token === 'string' && /^[0-9a-f]{32}$/i.test(raw.token.trim());
   const token =
-    typeof raw?.token === 'string' && /^[0-9a-f]{32}$/i.test(raw.token) ? raw.token : base.token;
+    envToken && envToken.trim()
+      ? envToken.trim()
+      : validRawToken
+      ? raw.token.trim()
+      : base.token;
+  const envPort = process.env.OUTFOX_BRIDGE_PORT || process.env.LINKEDIN_TOOLKIT_PORT;
+  const bridgePort = envPort && !isNaN(Number(envPort))
+    ? Number(envPort)
+    : Number.isInteger(raw?.bridgePort)
+    ? raw.bridgePort
+    : base.bridgePort;
+
   const config: ServerConfig = {
     token,
-    bridgePort: Number.isInteger(raw?.bridgePort) ? raw.bridgePort : base.bridgePort,
+    bridgePort,
     httpPort: Number.isInteger(raw?.httpPort) ? raw.httpPort : base.httpPort,
     dbPath: typeof raw?.dbPath === 'string' && raw.dbPath ? raw.dbPath : base.dbPath,
     researchTimeoutMs: Number.isInteger(raw?.researchTimeoutMs)

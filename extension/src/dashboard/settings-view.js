@@ -365,16 +365,19 @@ export async function renderSettingsView(container, ctx = {}) {
   let config = {};
   let storage = {};
   let storageHealth = { isIdbActive: false, profileCount: 0 };
+  let statusData = {};
 
   try {
-    const [cRes, sRes, sHealth] = await Promise.all([
+    const [cRes, sRes, sHealth, statRes] = await Promise.all([
       call(ACTIONS.CONFIG_GET, {}).catch(() => ({})),
       new Promise((r) => chrome.storage.local.get(null, r)),
       getStorageHealth().catch(() => ({ isIdbActive: false, profileCount: 0 })),
+      call(ACTIONS.STATUS_GET, {}).catch(() => ({})),
     ]);
     config = cRes || {};
     storage = sRes || {};
     storageHealth = sHealth || { isIdbActive: false, profileCount: 0 };
+    statusData = statRes || {};
   } catch (e) {
     console.warn('[Settings View] Read error', e);
   }
@@ -462,6 +465,8 @@ export async function renderSettingsView(container, ctx = {}) {
       (config.telegram && config.telegram.enabled && config.telegram.botToken) ||
       (storage.telegram && storage.telegram.enabled && storage.telegram.botToken)
     );
+    const bridgePort = statusData.bridge?.port || config.bridge?.port || 47829;
+    const bridgeConnected = Boolean(statusData.bridge?.connected);
 
     container.innerHTML = `
       <div class="waalaxy-settings-layout">
@@ -1071,17 +1076,29 @@ export async function renderSettingsView(container, ctx = {}) {
                   </button>
                 </div>
 
-                <!-- 3. IA Connector (MCP) -->
+                <!-- 3. AI Desktop Bridge (Optional MCP) -->
                 <div class="integration-item-card">
                   <div class="int-card-head">
                     <div class="int-card-head-left">
-                      <span class="int-logo-ico" style="background:#ff6b00; color:#fff;">${ICONS.sparkles}</span>
-                      <h3 class="int-card-title">IA Connector (MCP)</h3>
+                      <span class="int-logo-ico" style="background:#ff6b00; color:#fff;">${ICONS.terminal || ICONS.sparkles}</span>
+                      <h3 class="int-card-title">AI Desktop Bridge (Optional MCP)</h3>
                     </div>
-                    <span class="badge-status-running"><span class="live-dot-circle"></span> SSE Ready</span>
+                    ${bridgeConnected
+                      ? `<span class="badge-status-running"><span class="live-dot-circle"></span> Connected (Port ${bridgePort})</span>`
+                      : `<span class="live-activity-pill is-paused" style="font-size:11px;">○ Standby (Port ${bridgePort})</span>`}
                   </div>
-                  <p class="int-card-desc">Connect Claude Desktop, Cursor, or ChatGPT to OutFox through local Model Context Protocol SSE on port 3000.</p>
-                  <button type="button" class="btn-int-action" id="btn-mcp-guide">How to connect ? ↗</button>
+                  <p class="int-card-desc">Connect Cursor, Claude Desktop, or Antigravity IDE directly to OutFox to control outreach, search leads, and inspect quotas in real time.</p>
+                  <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin:10px 0; font-size:11.5px; color:#64748b; line-height:1.4;">
+                    💡 <em>All OutFox features (Telegram, Campaigns, Gmail, Sheets) work automatically without MCP. Enable this only to control OutFox from Cursor or Claude Desktop.</em>
+                  </div>
+                  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:4px;">
+                    <button type="button" class="btn-int-action btn-int-active" id="btn-copy-mcp-config" style="flex:1; min-width:140px; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+                      ${ICONS.duplicate || ''} Copy Universal MCP Config
+                    </button>
+                    <button type="button" class="btn-int-action" id="btn-mcp-guide" style="flex:1; min-width:110px;">
+                      Setup Guide ↗
+                    </button>
+                  </div>
                 </div>
 
                 <!-- 4. Telegram Mobile AI Assistant -->
@@ -1765,9 +1782,32 @@ export async function renderSettingsView(container, ctx = {}) {
       });
     });
 
-    // 3. IA Connector (MCP)
+    // 3. AI Desktop Bridge (Optional MCP)
     container.querySelector('#btn-mcp-guide')?.addEventListener('click', () => {
       openMcpGuideModal();
+    });
+
+    container.querySelector('#btn-copy-mcp-config')?.addEventListener('click', async () => {
+      const snippet = JSON.stringify({
+        mcpServers: {
+          outfox: {
+            command: 'npx',
+            args: ['-y', 'outfox-mcp'],
+          },
+        },
+      }, null, 2);
+      try {
+        await navigator.clipboard.writeText(snippet);
+        ctx.showToast?.('Universal MCP snippet copied to clipboard!', 'success');
+        const btn = container.querySelector('#btn-copy-mcp-config');
+        if (btn) {
+          const original = btn.innerHTML;
+          btn.textContent = '✓ Copied!';
+          setTimeout(() => { if (btn) btn.innerHTML = original; }, 2000);
+        }
+      } catch (err) {
+        ctx.showToast?.('Failed to copy snippet', 'error');
+      }
     });
 
     // 4. Telegram Mobile AI Assistant

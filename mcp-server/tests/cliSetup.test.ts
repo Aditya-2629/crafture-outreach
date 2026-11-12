@@ -108,7 +108,7 @@ describe('lit setup', () => {
     expect(text).toContain(join(home, 'extension'));
 
     expect(text).toContain('Paired.');
-    expect(text).toContain('"linkedin-toolkit"');
+    expect(text).toContain('"outfox"');
   });
 
   it('never claims Chrome opened a page it may have ignored', async () => {
@@ -173,9 +173,9 @@ describe('lit setup', () => {
 
     const written = JSON.parse(readFileSync(join(cwd, '.mcp.json'), 'utf8'));
     expect(written.mcpServers.github).toEqual({ command: 'docker' });
-    expect(written.mcpServers['linkedin-toolkit']).toEqual({
+    expect(written.mcpServers.outfox).toEqual({
       command: 'npx',
-      args: ['-y', 'linkedin-toolkit-mcp'],
+      args: ['-y', 'outfox-mcp'],
     });
     expect(stdout()).toContain('Backed the old one up to');
     expect(stdout()).toContain('Your other MCP servers are untouched: github');
@@ -185,7 +185,7 @@ describe('lit setup', () => {
   it('writes VS Code\'s workspace file with its own shape', async () => {
     await runSetup({ version: '2.0.4', wait: 0, client: 'vscode' }, io, deps());
     const written = JSON.parse(readFileSync(join(cwd, '.vscode', 'mcp.json'), 'utf8'));
-    expect(written.servers['linkedin-toolkit'].type).toBe('stdio');
+    expect(written.servers.outfox.type).toBe('stdio');
   });
 
   it('prints for n8n instead of writing, and says why', async () => {

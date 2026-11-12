@@ -1325,7 +1325,38 @@ export async function executeTool(name, args = {}) {
   throw new Error(`Unknown tool: ${name}`);
 }
 
-export async function callLlmWithTools(provider, aiConfig, messages, tools = []) {
+// Convert OpenAI JSON schema types to Gemini uppercase types recursively
+function _toGeminiSchema(schema) {
+  if (!schema || typeof schema !== 'object') return schema;
+  const out = { ...schema };
+  if (out.type) out.type = out.type.toUpperCase();
+  if (out.properties)
+    out.properties = Object.fromEntries(
+      Object.entries(out.properties).map(([k, v]) => [k, _toGeminiSchema(v)])
+    );
+  if (out.items) out.items = _toGeminiSchema(out.items);
+  return out;
+}
+
+function _toGeminiFunctionDeclarations(tools) {
+  return tools.map((t) => ({
+    name: t.function.name,
+    description: t.function.description,
+    parameters: _toGeminiSchema(t.function.parameters),
+  }));
+}
+
+// Convert OpenAI-format history turns to Gemini `contents` format
+function _toGeminiContents(openAiMessages) {
+  return openAiMessages
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }],
+    }));
+}
+
+export async function callLlmWithTools(provider, aiConfig, messages, tools = [], geminiContents = null) {
   const apiKey = aiConfig.apiKey || '';
   const model =
     aiConfig.model ||
@@ -1397,15 +1428,54 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [])
     return { text, toolCalls, rawContent: data.content };
   }
 
+  // --- Gemini: native generateContent (preserves thoughtSignature) ---
+  if (provider === 'gemini') {
+    const resolvedModel = model.includes('gemini') ? model : 'gemini-2.0-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent`;
+    const sysMsg = messages.find((m) => m.role === 'system');
+    // Use pre-built Gemini contents if provided, otherwise convert history
+    const contents = geminiContents || _toGeminiContents(messages);
+
+    const payload = {
+      contents,
+      ...(sysMsg ? { systemInstruction: { parts: [{ text: sysMsg.content }] } } : {}),
+      ...(useTools ? { tools: [{ functionDeclarations: _toGeminiFunctionDeclarations(tools) }] } : {}),
+    };
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`GEMINI API error ${res.status}: ${errText.slice(0, 180)}`);
+    }
+
+    const data = await res.json();
+    const rawGeminiContent = data.candidates?.[0]?.content || { role: 'model', parts: [] };
+    let text = '';
+    const toolCalls = [];
+    for (const part of rawGeminiContent.parts || []) {
+      if (part.text) text += part.text;
+      else if (part.functionCall) {
+        toolCalls.push({
+          id: `gemini_${Math.random().toString(36).slice(2, 8)}`,
+          name: part.functionCall.name,
+          args: part.functionCall.args || {},
+        });
+      }
+    }
+    return { text, toolCalls, rawGeminiContent };
+  }
+
   // OpenAI / Groq / Gemini / Ollama
   let url = '';
   const headers = { 'Content-Type': 'application/json' };
 
   if (provider === 'groq') {
     url = `${aiConfig.baseUrl || 'https://api.groq.com'}/openai/v1/chat/completions`;
-    headers['Authorization'] = `Bearer ${apiKey}`;
-  } else if (provider === 'gemini') {
-    url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
     headers['Authorization'] = `Bearer ${apiKey}`;
   } else if (provider === 'ollama') {
     url = `${aiConfig.baseUrl || 'http://127.0.0.1:11434'}/api/chat`;
@@ -1415,10 +1485,7 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [])
     headers['Authorization'] = `Bearer ${apiKey}`;
   }
 
-  const resolvedModel =
-    provider === 'gemini'
-      ? (model.includes('gemini') ? model : 'gemini-2.0-flash')
-      : model;
+  const resolvedModel = model;
 
   const payload = {
     model: resolvedModel,
@@ -1534,6 +1601,15 @@ export async function runAgentLoop(botToken, chatId, userText) {
       { role: 'user', content: userText },
     ];
 
+    // Gemini needs its own contents array (native format, no system role)
+    const isGemini = provider === 'gemini';
+    let geminiContents = isGemini
+      ? [
+          ..._toGeminiContents(historyTurns),
+          { role: 'user', parts: [{ text: userText }] },
+        ]
+      : null;
+
     let lastBlueprint = null;
     let launchedCampaign = null;
     let controlledCampaigns = null;
@@ -1544,10 +1620,13 @@ export async function runAgentLoop(botToken, chatId, userText) {
     while (iterations < MAX_ITERATIONS) {
       iterations++;
 
-      const response = await callLlmWithTools(provider, ai, messages, AI_TOOLS);
+      const response = await callLlmWithTools(provider, ai, messages, AI_TOOLS, geminiContents);
 
       if (response.toolCalls && response.toolCalls.length > 0) {
-        if (provider === 'anthropic') {
+        if (isGemini) {
+          // Push raw model content VERBATIM — preserves thoughtSignature
+          geminiContents.push(response.rawGeminiContent);
+        } else if (provider === 'anthropic') {
           messages.push({
             role: 'assistant',
             content: response.rawContent || response.toolCalls.map((tc) => ({
@@ -1558,72 +1637,54 @@ export async function runAgentLoop(botToken, chatId, userText) {
             })),
           });
         } else {
-          messages.push({
-            role: 'assistant',
-            content: response.text || null,
-            tool_calls: response.toolCalls.map((tc) => ({
-              id: tc.id,
-              type: 'function',
-              function: {
-                name: tc.name,
-                arguments: JSON.stringify(tc.args),
-              },
-            })),
-          });
+          // OpenAI / Groq / Ollama / openai-compatible — push raw assistant message
+          messages.push(
+            response.rawMessage || {
+              role: 'assistant',
+              content: response.text || null,
+              tool_calls: response.toolCalls.map((tc) => ({
+                id: tc.id,
+                type: 'function',
+                function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+              })),
+            }
+          );
         }
 
+        const functionResponses = []; // collected for Gemini batch push
         for (const tc of response.toolCalls) {
+          let toolOutput;
           try {
-            const toolOutput = await executeTool(tc.name, tc.args);
-
-            if (tc.name === 'design_campaign_blueprint' || tc.name === 'update_blueprint_steps') {
-              lastBlueprint = toolOutput;
-            } else if (tc.name === 'launch_blueprint') {
-              launchedCampaign = toolOutput;
-            } else if (tc.name === 'control_campaign') {
-              controlledCampaigns = toolOutput;
-            }
-
-            if (provider === 'anthropic') {
-              messages.push({
-                role: 'user',
-                content: [
-                  {
-                    type: 'tool_result',
-                    tool_use_id: tc.id,
-                    content: JSON.stringify(toolOutput),
-                  },
-                ],
-              });
-            } else {
-              messages.push({
-                role: 'tool',
-                tool_call_id: tc.id,
-                content: JSON.stringify(toolOutput),
-              });
-            }
+            toolOutput = await executeTool(tc.name, tc.args);
           } catch (err) {
-            const errorOutput = { error: err.message || 'Tool execution failed' };
-            if (provider === 'anthropic') {
-              messages.push({
-                role: 'user',
-                content: [
-                  {
-                    type: 'tool_result',
-                    tool_use_id: tc.id,
-                    is_error: true,
-                    content: JSON.stringify(errorOutput),
-                  },
-                ],
-              });
-            } else {
-              messages.push({
-                role: 'tool',
-                tool_call_id: tc.id,
-                content: JSON.stringify(errorOutput),
-              });
-            }
+            toolOutput = { error: err.message || 'Tool execution failed' };
           }
+
+          if (tc.name === 'design_campaign_blueprint' || tc.name === 'update_blueprint_steps') {
+            lastBlueprint = toolOutput;
+          } else if (tc.name === 'launch_blueprint') {
+            launchedCampaign = toolOutput;
+          } else if (tc.name === 'control_campaign') {
+            controlledCampaigns = toolOutput;
+          }
+
+          if (isGemini) {
+            functionResponses.push({
+              functionResponse: { name: tc.name, response: { result: toolOutput } },
+            });
+          } else if (provider === 'anthropic') {
+            messages.push({
+              role: 'user',
+              content: [{ type: 'tool_result', tool_use_id: tc.id, content: JSON.stringify(toolOutput) }],
+            });
+          } else {
+            messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(toolOutput) });
+          }
+        }
+
+        // Gemini: single user turn with all function responses
+        if (isGemini && functionResponses.length > 0) {
+          geminiContents.push({ role: 'user', parts: functionResponses });
         }
       } else {
         finalContent = response.text || '';

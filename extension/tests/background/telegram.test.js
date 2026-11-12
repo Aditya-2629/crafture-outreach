@@ -358,9 +358,41 @@ describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
         }
 
         const requestBody = JSON.parse(opts.body);
-        const lastMsg = requestBody.messages[requestBody.messages.length - 1];
+        // Gemini native format uses `contents`; OpenAI uses `messages`
+        const turns = requestBody.contents || requestBody.messages || [];
+        const lastTurn = turns[turns.length - 1];
+        const lastRole = lastTurn?.role;
+        // Gemini: role 'user' for initial; role 'user' with functionResponse for tool result
+        const isToolResult =
+          lastRole === 'tool' || // OpenAI
+          (lastRole === 'user' && lastTurn?.parts?.[0]?.functionResponse); // Gemini
 
-        if (lastMsg.role === 'user') {
+        if (!isToolResult) {
+          // First call — model wants to call a tool
+          if (requestBody.contents) {
+            // Gemini native response
+            return {
+              ok: true,
+              json: async () => ({
+                candidates: [
+                  {
+                    content: {
+                      role: 'model',
+                      parts: [
+                        {
+                          functionCall: {
+                            name: 'get_campaign_live_status',
+                            args: { campaignNameOrId: 'Data Analyst' },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              }),
+            };
+          }
+          // OpenAI format
           return {
             ok: true,
             json: async () => ({
@@ -384,22 +416,21 @@ describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
           };
         }
 
-        if (lastMsg.role === 'tool') {
+        // Second call — model summarises tool result
+        const finalText =
+          'Data Analyst campaign me 20 leads hai, 17 complete ho chuke hai aur Sarah Connor (Google) par atka nahi hai balki next step 12 minute me scheduled hai.';
+        if (requestBody.contents) {
           return {
             ok: true,
             json: async () => ({
-              choices: [
-                {
-                  message: {
-                    content: 'Data Analyst campaign me 20 leads hai, 17 complete ho chuke hai aur Sarah Connor (Google) par atka nahi hai balki next step 12 minute me scheduled hai.',
-                  },
-                },
-              ],
+              candidates: [{ content: { role: 'model', parts: [{ text: finalText }] } }],
             }),
           };
         }
-
-        return { ok: true, json: async () => ({}) };
+        return {
+          ok: true,
+          json: async () => ({ choices: [{ message: { content: finalText } }] }),
+        };
       });
 
       await set('config', {
@@ -415,3 +446,4 @@ describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
     });
   });
 });
+

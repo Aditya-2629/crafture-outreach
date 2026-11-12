@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ACTIONS } from '../../src/lib/actions.js';
-import { handle } from '../../src/background/engine.js';
+import { ACTIONS, ERROR } from '../../src/lib/actions.js';
+import * as engine from '../../src/background/engine.js';
+const { handle } = engine;
 import { setConfig } from '../../src/lib/config.js';
 import * as campaigns from '../../src/background/campaigns.js';
 import * as events from '../../src/background/events.js';
@@ -782,5 +783,88 @@ describe('v1 migration', () => {
       totalSteps: 3,
       currentStepLabel: 'Step 1/3: View Profile',
     });
+  });
+
+  it('staggers Step 2 nextAt when Step 1 (view) completes without explicit wait', async () => {
+    const c = await makeCampaign([
+      { type: 'view' },
+      { type: 'invite', note: 'Hi {{firstName}}' },
+    ]);
+    net.push(profileView);
+    const tickRes = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+    expect(tickRes.data.executed).toBe(1);
+
+    const enrollment = await enrollmentOf(c.campaignId);
+    expect(enrollment.stepIndex).toBe(1);
+    // nextAt should be scheduled at least 15 minutes in future (between 15m and 30m)
+    expect(enrollment.nextAt).toBeGreaterThanOrEqual(Date.now() + 14 * 60 * 1000);
+    expect(enrollment.nextAt).toBeLessThanOrEqual(Date.now() + 31 * 60 * 1000);
+  });
+
+  it('caps tick execution at MAX_ACTIONS_PER_TICK across enrollments', async () => {
+    await storage.putProfile({ publicId: 'lead1', firstName: 'Lead 1' });
+    await storage.putProfile({ publicId: 'lead2', firstName: 'Lead 2' });
+    await storage.putProfile({ publicId: 'lead3', firstName: 'Lead 3' });
+    await storage.putProfile({ publicId: 'lead4', firstName: 'Lead 4' });
+
+    const res = await handle(ACTIONS.CAMPAIGN_CREATE, {
+      name: 'BatchTest',
+      steps: [{ type: 'view' }],
+      publicIds: ['lead1', 'lead2', 'lead3', 'lead4'],
+      settings: { autopilot: true },
+    });
+    const c = res.data;
+
+    net.push(profileView);
+    net.push(profileView);
+    net.push(profileView);
+    net.push(profileView);
+
+    campaigns.setMaxActionsPerTick(2);
+    try {
+      const tickRes = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+      expect(tickRes.data.executed).toBe(2);
+    } finally {
+      campaigns.setMaxActionsPerTick(campaigns.DEFAULT_MAX_ACTIONS_PER_TICK);
+    }
+  });
+
+  it('persists bucket cooldown on QUOTA_EXCEEDED and silently skips resting bucket on subsequent ticks', async () => {
+    await storage.putProfile({ publicId: 'lead_q1', firstName: 'Lead Q1' });
+    await storage.putProfile({ publicId: 'lead_q2', firstName: 'Lead Q2' });
+
+    const c = (await handle(ACTIONS.CAMPAIGN_CREATE, {
+      name: 'QuotaCooldownTest',
+      steps: [{ type: 'invite', note: 'Hi' }],
+      publicIds: ['lead_q1', 'lead_q2'],
+      settings: { autopilot: true },
+    })).data;
+
+    // Simulate quota exceeded from engine
+    vi.spyOn(engine, 'handle').mockImplementation(async (action, params, origin) => {
+      if (action === ACTIONS.OUTREACH_INVITE) {
+        return {
+          ok: false,
+          error: { code: ERROR.QUOTA_EXCEEDED, message: 'Daily invite cap reached' },
+        };
+      }
+      return { ok: true, data: {} };
+    });
+
+    // Run tick - first lead hits quota exceeded
+    const tick1 = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+    expect(tick1.data.executed).toBe(0);
+
+    // Verify persistent cooldown is stored in outfox_bucket_cooldowns
+    const cooldowns = await quota.getBucketCooldowns();
+    expect(cooldowns.invite).toBeGreaterThan(Date.now());
+
+    // Second tick - bucket is resting, both leads should be silently skipped with 0 executed and 0 errors
+    const tick2 = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+    expect(tick2.data.executed).toBe(0);
+
+    // Reset spy & cooldown
+    vi.restoreAllMocks();
+    await chrome.storage.local.remove('outfox_bucket_cooldowns');
   });
 });

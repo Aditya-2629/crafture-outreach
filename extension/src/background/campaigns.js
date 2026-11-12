@@ -16,7 +16,7 @@ import { K, allActions, get, getStoredProfile, newId, remove, set, stamp, isBlac
 import { pickVariant, renderTemplate } from '../lib/template.js';
 import { emit } from './events.js';
 import * as inbox from './inbox.js';
-import { isWithinBusinessHours } from './quota.js';
+import { isWithinBusinessHours, getBucketCooldowns, setBucketCooldown, isBucketCoolingDown, getNextActiveWindowStart, normalizeBucket, sleep } from './quota.js';
 import * as lists from './lists.js';
 import * as queue from './queue.js';
 import { enrichLead } from './enrich.js';
@@ -39,12 +39,37 @@ const STEP_ACTION = {
 
 /** Errors that mean nothing else will work this tick either. */
 const STOP_THE_TICK = new Set([
-  ERROR.QUOTA_EXCEEDED,
   ERROR.OUTSIDE_BUSINESS_HOURS,
-  ERROR.RATE_LIMITED,
   ERROR.CHALLENGE_DETECTED,
   ERROR.NOT_LOGGED_IN,
 ]);
+
+/** Max actions executed per tick to prevent burst firing (Waalaxy-style distributed drip) */
+export const DEFAULT_MAX_ACTIONS_PER_TICK = 3;
+let maxActionsPerTick = DEFAULT_MAX_ACTIONS_PER_TICK;
+
+export function setMaxActionsPerTick(n) {
+  maxActionsPerTick = n;
+}
+
+export function getMaxActionsPerTick() {
+  return maxActionsPerTick;
+}
+
+/** Schedule next tick alarm with 2-4 minutes randomized jitter */
+export function scheduleNextTickAlarm(minutes = null) {
+  try {
+    if (typeof chrome !== 'undefined' && chrome.alarms?.create) {
+      const delay = minutes ?? (2 + Math.random() * 2); // 2–4 minutes
+      chrome.alarms.create('campaignTick', {
+        delayInMinutes: delay,
+        periodInMinutes: 2,
+      });
+    }
+  } catch {
+    /* ignore in environments without alarms API */
+  }
+}
 
 /** Hooks run at the end of every tick (the Research Pack registers one). */
 const tickHooks = [];
@@ -172,12 +197,24 @@ export function stepsAt(campaign, path = []) {
 }
 
 /** Move one step on, climbing out of any branch arms that just finished. */
-function advance(campaign, enrollment) {
+function advance(campaign, enrollment, completedStep = null) {
   enrollment.stepIndex += 1;
   while (enrollment.path.length >= 2 && enrollment.stepIndex >= stepsAt(campaign, enrollment.path).length) {
     const branchIndex = enrollment.path[enrollment.path.length - 2];
     enrollment.path = enrollment.path.slice(0, -2);
     enrollment.stepIndex = branchIndex + 1;
+  }
+  // When Step 1 (view) completes, ensure advance() sets a realistic nextAt delay
+  // (e.g., at least 15–30 minutes or the configured wait step) so Step 2 (invite)
+  // doesn't immediately fire 2 minutes later for all people at once.
+  if (completedStep && completedStep.type === 'view') {
+    const nextSteps = stepsAt(campaign, enrollment.path);
+    const nextStep = nextSteps[enrollment.stepIndex];
+    if (nextStep && nextStep.type !== 'wait') {
+      const delayMs = Math.floor(Math.random() * (30 - 15 + 1) + 15) * 60 * 1000; // 15–30m
+      enrollment.nextAt = Date.now() + delayMs;
+      logDebug('info', 'Pacing', `[Step Stagger] View step completed for ${enrollment.publicId}. Next step scheduled in ${(delayMs / 60000).toFixed(0)}m.`);
+    }
   }
 }
 
@@ -711,9 +748,22 @@ export async function tick() {
   // 500 pointless reads. Individual writes are still gated by quota.check.
   let halted = config.businessHoursOnly && !isWithinBusinessHours(config);
   const haltedBuckets = new Set();
+  const bucketCooldowns = await getBucketCooldowns();
+
+  // Populate haltedBuckets from persistent cooldowns
+  for (const [bucket, until] of Object.entries(bucketCooldowns)) {
+    if (until > now) {
+      haltedBuckets.add(bucket);
+      if (bucket === 'view') haltedBuckets.add('visit');
+      if (bucket === 'visit') haltedBuckets.add('view');
+    }
+  }
+
+  let totalDueEnrollments = 0;
+  let restingBucketSkippedCount = 0;
 
   for (const campaign of campaigns) {
-    if (halted) break;
+    if (halted || executed >= maxActionsPerTick) break;
     if (campaign.status !== 'active') continue;
 
     const enrollments = await readEnrollments(campaign.campaignId);
@@ -721,7 +771,7 @@ export async function tick() {
     let dirty = false;
 
     for (const enrollment of enrollments) {
-      if (halted) break;
+      if (halted || executed >= maxActionsPerTick) break;
 
       // Check live storage status before processing prospect
       const liveCampaigns = await readCampaigns();
@@ -733,6 +783,26 @@ export async function tick() {
 
       if (enrollment.status !== 'active') continue;
       if ((enrollment.nextAt || 0) > now) continue;
+
+      totalDueEnrollments += 1;
+
+      // Peek at next pending step before logging or executing
+      const pendingSteps = stepsAt(campaign, enrollment.path);
+      const nextPendingStep = pendingSteps[enrollment.stepIndex];
+
+      // If next step belongs to a resting bucket, silently skip without error spam
+      if (nextPendingStep && !['wait', 'branch'].includes(nextPendingStep.type)) {
+        const normBucket = normalizeBucket(nextPendingStep.type);
+        const cooldownUntil = bucketCooldowns[normBucket] || 0;
+        if (cooldownUntil > now || haltedBuckets.has(normBucket)) {
+          restingBucketSkippedCount += 1;
+          if (cooldownUntil > now && (enrollment.nextAt || 0) < cooldownUntil) {
+            enrollment.nextAt = cooldownUntil;
+            dirty = true;
+          }
+          continue;
+        }
+      }
 
       logDebug('info', 'Runner', `Processing prospect ${enrollment.publicId} (Step ${enrollment.stepIndex + 1})`);
 
@@ -819,7 +889,9 @@ export async function tick() {
         }
 
         // If this action bucket is halted for this tick (e.g. invite reached quota/rate limit), skip this enrollment so other types (view, message, email) can proceed
-        if (haltedBuckets.has(step.type)) {
+        const normBucket = normalizeBucket(step.type);
+        if (haltedBuckets.has(normBucket) || haltedBuckets.has(step.type)) {
+          restingBucketSkippedCount += 1;
           break;
         }
 
@@ -989,44 +1061,67 @@ export async function tick() {
         wrote = true;
 
         if (!res.ok) {
-          let friendlyError = res.error?.message || 'Unknown error';
-          if (
-            res.error?.code === ERROR.RATE_LIMITED ||
-            res.error?.code === ERROR.CHALLENGE_DETECTED ||
-            /429|999|403|rate limit|challenge/i.test(friendlyError)
-          ) {
-            friendlyError =
-              'LinkedIn safety cooldown active. Campaign paused for human pacing to protect your account.';
-          } else if (
-            res.error?.code === ERROR.QUOTA_EXCEEDED ||
-            /quota|limit reached/i.test(friendlyError)
-          ) {
-            const cap =
-              res.error?.extra?.cap ||
-              res.error?.cap ||
-              campaign.dailyCap ||
-              'daily limit';
-            friendlyError = `Daily quota reached (${cap}/day). Postponed automatically until tomorrow's window.`;
-          }
+          const errorCode = res.error?.code;
+          const errorMsg = res.error?.message || '';
+          const isRateLimit =
+            errorCode === ERROR.RATE_LIMITED ||
+            errorCode === ERROR.CHALLENGE_DETECTED ||
+            /429|999|403|rate limit|safety cooldown|cooldown/i.test(errorMsg);
+          const isQuota =
+            errorCode === ERROR.QUOTA_EXCEEDED ||
+            /quota|limit reached|daily limit/i.test(errorMsg);
 
-          logDebug('error', 'Runner', `Step failed: ${friendlyError}`);
+          const bucket = normalizeBucket(step.type);
+          const bucketTitle = bucket.charAt(0).toUpperCase() + bucket.slice(1);
 
-          // Bucket-isolated throttling for invites and emails: do NOT halt the whole tick across all campaigns
-          if ((step.type === 'invite' || step.type === 'email') && (res.error?.code === ERROR.QUOTA_EXCEEDED || res.error?.code === ERROR.RATE_LIMITED)) {
-            haltedBuckets.add(step.type);
-            logDebug('warn', 'Runner', `${step.type} bucket paused for this tick due to quota/rate-limit. Other enrollments will continue.`);
+          // 1. Quota Exceeded on any step: cooldown until next day's active window start
+          if (isQuota) {
+            const nextActiveStart = getNextActiveWindowStart(config);
+            await setBucketCooldown(bucket, nextActiveStart);
+            haltedBuckets.add(bucket);
+            if (bucket === 'view') haltedBuckets.add('visit');
+            bucketCooldowns[bucket] = nextActiveStart;
+
+            enrollment.nextAt = nextActiveStart;
+            enrollment.lastError = `Daily quota reached. Postponed until tomorrow's active window (${new Date(nextActiveStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`;
+            enrollment.updatedAt = Date.now();
+            dirty = true;
+
+            logDebug('info', 'Runner', `${bucketTitle} daily quota reached. Resting until tomorrow's active window (${new Date(nextActiveStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).`);
             break;
           }
 
-          if (STOP_THE_TICK.has(res.error.code)) {
+          // 2. Rate Limited / Safety Cooldown: cooldown for 45m + 5–15m jitter
+          if (isRateLimit) {
+            const rateLimitJitterMs = Math.floor(Math.random() * (15 - 5 + 1) + 5) * 60 * 1000;
+            const cooldownUntil = Date.now() + 45 * 60 * 1000 + rateLimitJitterMs;
+            await setBucketCooldown(bucket, cooldownUntil);
+            haltedBuckets.add(bucket);
+            if (bucket === 'view') haltedBuckets.add('visit');
+            bucketCooldowns[bucket] = cooldownUntil;
+
+            const mins = Math.round((cooldownUntil - Date.now()) / 60000);
+            enrollment.nextAt = cooldownUntil;
+            enrollment.lastError = `Safety cooldown active. Resuming in ~${mins}m`;
+            enrollment.updatedAt = Date.now();
+            dirty = true;
+
+            logDebug('info', 'Runner', `${bucketTitle} bucket resting for ~${mins}m (human pacing)`);
+            break;
+          }
+
+          if (STOP_THE_TICK.has(errorCode)) {
             halted = true;
             break;
           }
 
+          let friendlyError = errorMsg || 'Unknown error';
+          logDebug('error', 'Runner', `Step failed: ${friendlyError}`);
+
           // Distinguish permanent failure from transient errors with exponential retry
           const isPermanent =
-            res.error?.code === ERROR.NOT_FOUND ||
-            res.error?.code === ERROR.INVALID_PARAMS ||
+            errorCode === ERROR.NOT_FOUND ||
+            errorCode === ERROR.INVALID_PARAMS ||
             /not found|invalid|blacklisted|already invited/i.test(friendlyError);
 
           const retries = enrollment.retryCount || 0;
@@ -1056,8 +1151,7 @@ export async function tick() {
 
         if (res.data.status === 'queued') {
           queued += 1;
-          // Stay on this step; the next tick picks it up once a human has
-          // approved or rejected it.
+          // Stay on this step; the next tick picks it up once a human has approved or rejected it.
           enrollment.pendingQueueId = res.data.queueId;
         } else {
           executed += 1;
@@ -1071,12 +1165,13 @@ export async function tick() {
             if (res.data.messageId) enrollment.gmailLastMessageId = res.data.messageId;
             if (params.subject) enrollment.gmailSubject = params.subject;
           }
-          advance(campaign, enrollment);
+          advance(campaign, enrollment, step);
 
-          if (step.type === 'email' && res.data?.status === 'sent') {
-            const emailJitterMs = Math.floor(Math.random() * (120000 - 45000 + 1)) + 45000;
-            logDebug('info', 'Runner', `[Gmail Pacing] Waiting ${(emailJitterMs / 1000).toFixed(1)}s randomized human jitter before next email...`);
-            await new Promise((r) => setTimeout(r, emailJitterMs));
+          // Between actions inside a tick, enforce human-like randomized jitter (35s–75s)
+          if (executed < maxActionsPerTick) {
+            const actionJitterMs = Math.floor(Math.random() * (75000 - 35000 + 1)) + 35000;
+            logDebug('info', 'Pacing', `[Human Pacing] Waiting ${(actionJitterMs / 1000).toFixed(1)}s randomized human jitter between actions...`);
+            await sleep(actionJitterMs);
           }
         }
 
@@ -1124,6 +1219,16 @@ export async function tick() {
     }
   }
 
+  // Cap notice if tick batch limit reached
+  if (executed >= maxActionsPerTick) {
+    logDebug('info', 'Runner', `Reached tick batch limit (${executed} actions). Yielding until next tick alarm for distributed human pacing.`);
+  }
+
+  // Clean Tick Logs: Quiet notice if all due enrollments are paused on resting buckets
+  if (executed === 0 && queued === 0 && restingBucketSkippedCount > 0 && restingBucketSkippedCount >= totalDueEnrollments) {
+    logDebug('info', 'Runner', 'All due steps paused until quota/cooldown window resumes.');
+  }
+
   for (const hook of tickHooks) {
     try {
       await hook({ executed, queued, halted });
@@ -1135,6 +1240,7 @@ export async function tick() {
     return { executed, queued };
   } finally {
     isTickRunning = false;
+    scheduleNextTickAlarm();
   }
 }
 

@@ -85,6 +85,10 @@ export function setSleepFn(fn) {
   sleepFn = typeof fn === 'function' ? fn : (ms) => new Promise((r) => setTimeout(r, ms));
 }
 
+export async function sleep(ms) {
+  return sleepFn(ms);
+}
+
 /* ================================================================== */
 /*  Counter state                                                     */
 /* ================================================================== */
@@ -237,6 +241,79 @@ export function isWithinBusinessHours(config, now = new Date()) {
 }
 
 /* ================================================================== */
+/*  Persistent Bucket Cooldowns                                       */
+/* ================================================================== */
+
+export const BUCKET_COOLDOWNS_KEY = K.BUCKET_COOLDOWNS || 'outfox_bucket_cooldowns';
+
+export function normalizeBucket(stepType) {
+  if (!stepType) return 'view';
+  const s = String(stepType).toLowerCase();
+  if (s === 'invite') return 'invite';
+  if (s === 'message' || s === 'inmail') return 'message';
+  if (s === 'email') return 'email';
+  if (s === 'view' || s === 'visit' || s === 'follow' || s === 'like' || s === 'comment' || s === 'endorse') return 'view';
+  return s;
+}
+
+export async function getBucketCooldowns() {
+  try {
+    const data = await get(BUCKET_COOLDOWNS_KEY, {});
+    return data && typeof data === 'object' ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function setBucketCooldown(bucket, timestamp) {
+  const norm = normalizeBucket(bucket);
+  return withKeyLock(BUCKET_COOLDOWNS_KEY, async () => {
+    const current = await getBucketCooldowns();
+    current[norm] = timestamp;
+    if (norm === 'view') current.visit = timestamp;
+    if (norm === 'visit') current.view = timestamp;
+    await set(BUCKET_COOLDOWNS_KEY, current);
+    return current;
+  });
+}
+
+export async function isBucketCoolingDown(bucket, now = Date.now()) {
+  const norm = normalizeBucket(bucket);
+  const cooldowns = await getBucketCooldowns();
+  const until = cooldowns[norm] || cooldowns[bucket] || 0;
+  return until > now ? until : 0;
+}
+
+export function getNextActiveWindowStart(config, now = new Date()) {
+  const d = new Date(now);
+  let startHour = 9;
+  let startMinute = 0;
+
+  if (config?.businessStartTime && typeof config.businessStartTime === 'string') {
+    const [h, m] = config.businessStartTime.split(':').map(Number);
+    startHour = isNaN(h) ? 9 : h;
+    startMinute = isNaN(m) ? 0 : m;
+  } else if (config?.businessStart !== undefined) {
+    startHour = Number(config.businessStart) || 9;
+  }
+
+  // Next calendar day at startHour:startMinute
+  d.setDate(d.getDate() + 1);
+  d.setHours(startHour, startMinute, 0, 0);
+
+  // If weekdaysOnly, advance past Saturday (6) and Sunday (0) to Monday
+  if (config?.weekdaysOnly) {
+    while (d.getDay() === 0 || d.getDay() === 6) {
+      d.setDate(d.getDate() + 1);
+    }
+  }
+
+  // Random 5-20 min jitter
+  const jitterMs = Math.floor(Math.random() * (20 - 5 + 1) + 5) * 60 * 1000;
+  return d.getTime() + jitterMs;
+}
+
+/* ================================================================== */
 /*  Backoff and challenges                                            */
 /* ================================================================== */
 
@@ -297,6 +374,7 @@ export async function noteChallenge() {
 export async function noteBucketBackoff(kind, ms = 24 * HOUR) {
   assertKind(kind);
   const now = Date.now();
+  await setBucketCooldown(kind, now + ms);
   return withKeyLock(K.QUOTA, async () => {
     const current = await readState(new Date(now));
     if (!current.bucketBackoffUntil) {
@@ -309,6 +387,7 @@ export async function noteBucketBackoff(kind, ms = 24 * HOUR) {
 
 /** Clear a security challenge once the human has dealt with it. */
 export async function clearChallenge() {
+  await set(BUCKET_COOLDOWNS_KEY, {});
   return withKeyLock(K.QUOTA, async () => {
     const state = await readState();
     state.challenge = null;
@@ -391,6 +470,17 @@ async function gate(kind, cost) {
       `Paused after a LinkedIn limit response for ${kind}.`,
       {
         retryAfter: state.bucketBackoffUntil[kind] - now,
+      },
+    );
+  }
+
+  const persistentCooldownUntil = await isBucketCoolingDown(kind, now);
+  if (persistentCooldownUntil > now) {
+    throw new EngineError(
+      ERROR.RATE_LIMITED,
+      `Paused after a LinkedIn safety cooldown / quota limit for ${kind}.`,
+      {
+        retryAfter: persistentCooldownUntil - now,
       },
     );
   }
@@ -618,6 +708,13 @@ export async function resetDailyQuota(kinds = KINDS, options = {}) {
       state.weeklyInvites = 0;
     }
     await writeState(state);
+    const cooldowns = await getBucketCooldowns();
+    for (const k of kinds) {
+      const norm = normalizeBucket(k);
+      delete cooldowns[norm];
+      if (norm === 'view') delete cooldowns.visit;
+    }
+    await set(BUCKET_COOLDOWNS_KEY, cooldowns);
     return state;
   });
 }

@@ -18,6 +18,7 @@ import { idbGet, idbGetAll, idbPut, idbPutMany, idbCount, isIdbAvailable } from 
 export const K = Object.freeze({
   CONFIG: 'config',
   QUOTA: 'quota',
+  BUCKET_COOLDOWNS: 'outfox_bucket_cooldowns',
   BLACKLIST: 'blacklist',
   COMPANY_BLACKLIST: 'company_blacklist',
   DEBUG_LOGS: 'debug_logs',

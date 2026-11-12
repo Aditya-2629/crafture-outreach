@@ -15,6 +15,7 @@
  */
 
 import { ERROR, EngineError, INVITE_NOTE_FIX, INVITE_NOTE_MAX } from '../lib/actions.js';
+import { noteBucketBackoff } from './quota.js';
 import { collection } from './normalized.js';
 import {
   LINKEDIN_BASE,
@@ -1185,6 +1186,11 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
       headers: { 'content-type': 'application/json; charset=UTF-8' },
     });
   } catch (e) {
+    if (looksLikeAllowance(e?.code, e?.message) || /invitation limit|weekly.*limit|429/i.test(e?.message || '')) {
+      try {
+        await noteBucketBackoff('invite', 24 * 60 * 60 * 1000);
+      } catch (_) {}
+    }
     // A stand-down (rate limit, challenge, signed out) is the user's to act on
     // and must not be dressed up as an invitation problem.
     if (e instanceof EngineError && e.code !== ERROR.LINKEDIN_ERROR) throw e;

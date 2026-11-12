@@ -388,10 +388,13 @@ export async function renderSettingsView(container, ctx = {}) {
   let startMinutes = Number.isInteger(config.startMinutes) ? config.startMinutes : 0;
   let endMinutes = Number.isInteger(config.endMinutes) ? config.endMinutes : 1439;
 
-  let maxInvites = config.dailyInviteCap || 100;
-  let maxMessages = config.dailyMessageCap || 150;
-  let maxVisits = config.dailyVisitCap || 150;
+  let maxInvites = config.dailyInviteCap || 25;
+  let weeklyInviteCap = config.weeklyInviteCap || 150;
+  let maxMessages = config.dailyMessageCap || 40;
+  let maxVisits = config.dailyVisitCap || 120;
   let maxFollows = config.dailyFollowCap || 100;
+  let accountPreset = config.accountPreset || 'free';
+  let warmupEnabled = Boolean(config.warmup?.enabled);
 
   // Selected timezone: storage.timezone || config.timezone || 'Asia/Kolkata'
   let selectedTz = storage.timezone || config.timezone || 'Asia/Kolkata';
@@ -577,27 +580,66 @@ export async function renderSettingsView(container, ctx = {}) {
                 <div class="quotas-section-head">
                   <div>
                     <div class="quotas-title-with-info">
-                      <h3 class="settings-section-heading" style="margin:0;">Edit your max daily quota</h3>
+                      <h3 class="settings-section-heading" style="margin:0;">Edit your max daily & weekly quota</h3>
                       <span class="info-circle-btn" title="Safety quotas enforced on your LinkedIn profile">${ICONS.info}</span>
                     </div>
-                    <p class="quotas-caption">Specific limit : Linkedin allows only 200 invitations max. per week</p>
+                    <p class="quotas-caption">Paced outreach limits protecting your account from LinkedIn restrictions.</p>
                   </div>
 
-                  <button type="button" class="btn-restore-defaults" id="btn-restore-quotas">
-                    Restore default values
-                  </button>
+                  <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn-restore-defaults" id="btn-reset-daily-quota" style="color: #ea580c; border-color: #ffedd5; background: #fff7ed;">
+                      ↻ Reset Today's Quota
+                    </button>
+                    <button type="button" class="btn-restore-defaults" id="btn-restore-quotas">
+                      Restore default values
+                    </button>
+                  </div>
                 </div>
 
-                <div class="quotas-subheading">LinkedIn</div>
+                <!-- Account Preset & Warmup Toggle Row -->
+                <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <label for="select-account-preset" style="font-size: 13px; font-weight: 700; color: #14142b;">Account Preset:</label>
+                    <select id="select-account-preset" style="padding: 6px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; font-weight: 600; background: #f8fafc; color: #14142b;">
+                      <option value="free" ${accountPreset === 'free' ? 'selected' : ''}>Free LinkedIn (25/day · 150/week)</option>
+                      <option value="premium" ${accountPreset === 'premium' ? 'selected' : ''}>LinkedIn Premium (25/day · 150/week)</option>
+                      <option value="salesnav" ${accountPreset === 'salesnav' ? 'selected' : ''}>Sales Navigator (30/day · 200/week)</option>
+                      <option value="recruiter" ${accountPreset === 'recruiter' ? 'selected' : ''}>LinkedIn Recruiter (40/day · 250/week)</option>
+                    </select>
+                  </div>
 
-                <div class="quota-cards-row">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <label for="toggle-warmup-enabled" style="font-size: 13px; font-weight: 700; color: #14142b; cursor: pointer;">
+                      14-Day Account Warmup Mode
+                    </label>
+                    <label class="switch-toggle" style="position: relative; display: inline-block; width: 40px; height: 22px; margin: 0;">
+                      <input type="checkbox" id="toggle-warmup-enabled" ${warmupEnabled ? 'checked' : ''} style="opacity: 0; width: 0; height: 0;" />
+                      <span class="slider-round" style="position: absolute; cursor: pointer; inset: 0; background-color: ${warmupEnabled ? '#ff6b00' : '#cbd5e1'}; transition: .3s; border-radius: 22px;"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="quotas-subheading">LinkedIn Safety Ceilings</div>
+
+                <div class="quota-cards-row" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
                   <div class="quota-input-card">
                     <div class="q-card-icon icon-circle-blue">${ICONS.invitation}</div>
                     <div class="q-card-content">
-                      <span class="q-card-label">INVITATIONS</span>
+                      <span class="q-card-label">DAILY INVITES</span>
                       <div class="quota-input-group">
                         <input type="number" id="input-quota-invites" class="quota-number-input" value="${maxInvites}" min="1" max="100" />
                         <span class="quota-max-label">/ 100</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="quota-input-card">
+                    <div class="q-card-icon icon-circle-blue">${ICONS.invitation}</div>
+                    <div class="q-card-content">
+                      <span class="q-card-label">WEEKLY INVITES</span>
+                      <div class="quota-input-group">
+                        <input type="number" id="input-quota-weekly-invites" class="quota-number-input" value="${weeklyInviteCap}" min="1" max="250" />
+                        <span class="quota-max-label">/ 250</span>
                       </div>
                     </div>
                   </div>
@@ -618,8 +660,8 @@ export async function renderSettingsView(container, ctx = {}) {
                     <div class="q-card-content">
                       <span class="q-card-label">PROFILE VISITS</span>
                       <div class="quota-input-group">
-                        <input type="number" id="input-quota-visits" class="quota-number-input" value="${maxVisits}" min="1" max="150" />
-                        <span class="quota-max-label">/ 150</span>
+                        <input type="number" id="input-quota-visits" class="quota-number-input" value="${maxVisits}" min="1" max="500" />
+                        <span class="quota-max-label">/ 500</span>
                       </div>
                     </div>
                   </div>
@@ -987,16 +1029,66 @@ export async function renderSettingsView(container, ctx = {}) {
       updateLiveStatus();
     }, 10000);
 
-    // 4. Restore default quotas
+    // 4. Quota Presets & Controls
+    const PRESET_RECOMMENDED = {
+      free: { dailyInviteCap: 25, weeklyInviteCap: 150, dailyMessageCap: 40, dailyVisitCap: 120 },
+      premium: { dailyInviteCap: 25, weeklyInviteCap: 150, dailyMessageCap: 60, dailyVisitCap: 120 },
+      salesnav: { dailyInviteCap: 30, weeklyInviteCap: 200, dailyMessageCap: 80, dailyVisitCap: 200 },
+      recruiter: { dailyInviteCap: 40, weeklyInviteCap: 250, dailyMessageCap: 100, dailyVisitCap: 300 },
+    };
+
+    container.querySelector('#select-account-preset')?.addEventListener('change', (e) => {
+      const rec = PRESET_RECOMMENDED[e.target.value];
+      if (rec) {
+        if (container.querySelector('#input-quota-invites')) container.querySelector('#input-quota-invites').value = rec.dailyInviteCap;
+        if (container.querySelector('#input-quota-weekly-invites')) container.querySelector('#input-quota-weekly-invites').value = rec.weeklyInviteCap;
+        if (container.querySelector('#input-quota-messages')) container.querySelector('#input-quota-messages').value = rec.dailyMessageCap;
+        if (container.querySelector('#input-quota-visits')) container.querySelector('#input-quota-visits').value = rec.dailyVisitCap;
+      }
+    });
+
+    container.querySelector('#toggle-warmup-enabled')?.addEventListener('change', async (e) => {
+      const isChecked = e.target.checked;
+      const slider = e.target.nextElementSibling;
+      if (slider) slider.style.backgroundColor = isChecked ? '#ff6b00' : '#cbd5e1';
+      try {
+        await call(ACTIONS.CONFIG_SET, {
+          config: {
+            warmup: {
+              enabled: isChecked,
+              days: 14,
+              startedAt: isChecked ? (config.warmup?.startedAt || Date.now()) : undefined,
+            },
+          },
+        });
+        ctx.showToast?.(`14-Day Account Warmup mode turned ${isChecked ? 'ON' : 'OFF'}.`, 'info');
+      } catch (err) {
+        console.warn('Failed to update warmup config', err);
+      }
+    });
+
+    container.querySelector('#btn-reset-daily-quota')?.addEventListener('click', async () => {
+      try {
+        await call(ACTIONS.QUOTA_RESET, {});
+        ctx.showToast?.("Today's local quota counters reset!", 'success');
+      } catch (err) {
+        ctx.showToast?.("Failed to reset quota counters", 'error');
+      }
+    });
+
+    // Restore default quotas
     container.querySelector('#btn-restore-quotas')?.addEventListener('click', () => {
       maxInvites = 25;
+      weeklyInviteCap = 150;
       maxMessages = 40;
-      maxVisits = 80;
+      maxVisits = 120;
       maxFollows = 50;
-      container.querySelector('#input-quota-invites').value = 25;
-      container.querySelector('#input-quota-messages').value = 40;
-      container.querySelector('#input-quota-visits').value = 80;
-      container.querySelector('#input-quota-follows').value = 50;
+      if (container.querySelector('#input-quota-invites')) container.querySelector('#input-quota-invites').value = 25;
+      if (container.querySelector('#input-quota-weekly-invites')) container.querySelector('#input-quota-weekly-invites').value = 150;
+      if (container.querySelector('#input-quota-messages')) container.querySelector('#input-quota-messages').value = 40;
+      if (container.querySelector('#input-quota-visits')) container.querySelector('#input-quota-visits').value = 120;
+      if (container.querySelector('#input-quota-follows')) container.querySelector('#input-quota-follows').value = 50;
+      if (container.querySelector('#select-account-preset')) container.querySelector('#select-account-preset').value = 'free';
       saveConfig();
       ctx.showToast?.('Default quotas restored.', 'info');
     });
@@ -1009,9 +1101,11 @@ export async function renderSettingsView(container, ctx = {}) {
 
     async function saveConfig() {
       const qInv = parseInt(container.querySelector('#input-quota-invites')?.value) || maxInvites;
+      const qWeeklyInv = parseInt(container.querySelector('#input-quota-weekly-invites')?.value) || weeklyInviteCap;
       const qMsg = parseInt(container.querySelector('#input-quota-messages')?.value) || maxMessages;
       const qVis = parseInt(container.querySelector('#input-quota-visits')?.value) || maxVisits;
       const qFol = parseInt(container.querySelector('#input-quota-follows')?.value) || maxFollows;
+      const preset = container.querySelector('#select-account-preset')?.value || accountPreset;
 
       const payload = {
         workingDays,
@@ -1020,7 +1114,9 @@ export async function renderSettingsView(container, ctx = {}) {
         businessStartTime: formatMinsToAmPm(startMinutes),
         businessEndTime: formatMinsToAmPm(endMinutes),
         timezone: selectedTz,
+        accountPreset: preset,
         dailyInviteCap: qInv,
+        weeklyInviteCap: qWeeklyInv,
         dailyMessageCap: qMsg,
         dailyVisitCap: qVis,
         dailyFollowCap: qFol,

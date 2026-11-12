@@ -108,15 +108,27 @@ export async function renderQueueView(container, ctx = {}) {
   ]);
 
   const quotas = statusRes?.quotas || {};
-  const inviteQuota = quotas.invite || { usedToday: 0, max: 25 };
-  const messageQuota = quotas.message || { usedToday: 0, max: 40 };
-  const visitQuota = quotas.view || { usedToday: 0, max: 80 };
+  const inviteQuota = quotas.invite || {};
+  const messageQuota = quotas.message || {};
+  const visitQuota = quotas.view || quotas.visit || {};
 
-  const invitesLeft = Math.max(0, (inviteQuota.max || 25) - (inviteQuota.usedToday || 0));
-  const messagesLeft = Math.max(0, (messageQuota.max || 40) - (messageQuota.usedToday || 0));
-  const visitsLeft = Math.max(0, (visitQuota.max || 80) - (visitQuota.usedToday || 0));
+  const inviteUsed = inviteQuota.dailyUsed ?? inviteQuota.usedToday ?? 0;
+  const inviteDailyCap = inviteQuota.dailyCap ?? inviteQuota.max ?? 25;
+  const inviteWeeklyUsed = inviteQuota.weeklyUsed ?? 0;
+  const inviteWeeklyCap = inviteQuota.weeklyCap ?? configRes?.weeklyInviteCap ?? 150;
 
-  const isWeeklyInviteQuotaReached = invitesLeft === 0;
+  const messageUsed = messageQuota.dailyUsed ?? messageQuota.usedToday ?? 0;
+  const messageDailyCap = messageQuota.dailyCap ?? messageQuota.max ?? 40;
+
+  const visitUsed = visitQuota.dailyUsed ?? visitQuota.usedToday ?? 0;
+  const visitDailyCap = visitQuota.dailyCap ?? visitQuota.max ?? 80;
+
+  const invitesLeft = Math.max(0, inviteDailyCap - inviteUsed);
+  const weeklyInvitesLeft = Math.max(0, inviteWeeklyCap - inviteWeeklyUsed);
+  const messagesLeft = Math.max(0, messageDailyCap - messageUsed);
+  const visitsLeft = Math.max(0, visitDailyCap - visitUsed);
+
+  const isWeeklyInviteQuotaReached = invitesLeft === 0 || weeklyInvitesLeft === 0;
   const campaigns = Array.isArray(allStorage.campaigns) ? allStorage.campaigns : [];
   const queuedItems = [];
 
@@ -325,9 +337,14 @@ export async function renderQueueView(container, ctx = {}) {
         </div>
 
         <aside class="queue-quotas-panel">
-          <div class="quotas-head">
-            <h2 class="quotas-title">Daily quotas</h2>
-            <p class="quotas-sub">These quotas are updated on a daily basis.</p>
+          <div class="quotas-head" style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <h2 class="quotas-title">Daily quotas</h2>
+              <p class="quotas-sub">These quotas are updated on a daily basis.</p>
+            </div>
+            <button type="button" id="btn-queue-reset-quota" title="Reset Today's Quotas" style="background: #fff7ed; border: 1px solid #ffedd5; color: #ff6b00; border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+              ↻ Reset
+            </button>
           </div>
 
           <div class="quotas-channel-section">
@@ -340,16 +357,18 @@ export async function renderQueueView(container, ctx = {}) {
                   <span class="quota-metric-name">INVITATIONS</span>
                   <span class="quota-metric-val"><strong>${invitesLeft}</strong> left today</span>
                 </div>
-                <span class="quota-info-icon" title="Weekly safety ceiling enforced by LinkedIn">${ICONS.info}</span>
+                <span class="quota-info-icon" title="Weekly and daily safety ceiling enforced by LinkedIn">${ICONS.info}</span>
               </div>
               <div class="quota-bar-track">
-                <div class="quota-bar-fill fill-invites" style="width: ${Math.round(((inviteQuota.usedToday || 0) / (inviteQuota.max || 25)) * 100)}%;"></div>
+                <div class="quota-bar-fill fill-invites" style="width: ${Math.round(((inviteUsed) / (inviteDailyCap || 25)) * 100)}%;"></div>
               </div>
               ${isWeeklyInviteQuotaReached ? `
-                <div class="quota-warning-line">LinkedIn weekly quota reached</div>
-              ` : `
-                <div class="quota-count-line">${inviteQuota.usedToday || 0} / ${inviteQuota.max || 25} sent today</div>
-              `}
+                <div class="quota-warning-line">LinkedIn weekly or daily quota reached</div>
+              ` : ''}
+              <div class="quota-count-line" style="display: flex; justify-content: space-between; margin-top: 4px;">
+                <span>Daily: ${inviteUsed} / ${inviteDailyCap}</span>
+                <span>Weekly: ${inviteWeeklyUsed} / ${inviteWeeklyCap}</span>
+              </div>
             </div>
 
             <div class="quota-progress-card">
@@ -362,9 +381,9 @@ export async function renderQueueView(container, ctx = {}) {
                 <span class="quota-info-icon" title="Daily message safety cap">${ICONS.info}</span>
               </div>
               <div class="quota-bar-track">
-                <div class="quota-bar-fill fill-messages" style="width: ${Math.round(((messageQuota.usedToday || 0) / (messageQuota.max || 40)) * 100)}%;"></div>
+                <div class="quota-bar-fill fill-messages" style="width: ${Math.round(((messageUsed) / (messageDailyCap || 40)) * 100)}%;"></div>
               </div>
-              <div class="quota-count-line">${messageQuota.usedToday || 0} / ${messageQuota.max || 40} sent today</div>
+              <div class="quota-count-line">${messageUsed} / ${messageDailyCap} sent today</div>
             </div>
 
             <div class="quota-progress-card">
@@ -377,9 +396,9 @@ export async function renderQueueView(container, ctx = {}) {
                 <span class="quota-info-icon" title="Profile visit safety quota">${ICONS.info}</span>
               </div>
               <div class="quota-bar-track">
-                <div class="quota-bar-fill fill-visits" style="width: ${Math.round(((visitQuota.usedToday || 0) / (visitQuota.max || 80)) * 100)}%;"></div>
+                <div class="quota-bar-fill fill-visits" style="width: ${Math.round(((visitUsed) / (visitDailyCap || 80)) * 100)}%;"></div>
               </div>
-              <div class="quota-count-line">${visitQuota.usedToday || 0} / ${visitQuota.max || 80} visited today</div>
+              <div class="quota-count-line">${visitUsed} / ${visitDailyCap} visited today</div>
             </div>
           </div>
         </aside>
@@ -390,6 +409,19 @@ export async function renderQueueView(container, ctx = {}) {
   }
 
   function wireQueueEvents(container, filteredQueue) {
+    const resetQuotaBtn = container.querySelector('#btn-queue-reset-quota');
+    if (resetQuotaBtn) {
+      resetQuotaBtn.addEventListener('click', async () => {
+        try {
+          await call(ACTIONS.QUOTA_RESET, {});
+          ctx.showToast?.("Today's quota counters reset!", 'success');
+          renderQueueView(container, ctx);
+        } catch {
+          ctx.showToast?.('Failed to reset quotas', 'error');
+        }
+      });
+    }
+
     const updateBtn = container.querySelector('#btn-update-activity');
     if (updateBtn) {
       updateBtn.addEventListener('click', async () => {

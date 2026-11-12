@@ -165,6 +165,7 @@ export const HARD_CAPS = Object.freeze({
   dailyMessageCap: 150,
   dailyVisitCap: 500,
   dailySearchCap: 1000,
+  weeklyInviteCap: 250,
 });
 
 /**
@@ -280,6 +281,7 @@ export const DEFAULT_CONFIG = {
   maxDelayMs: 10000,
   hourlyCap: 30,
   dailyInviteCap: 25,
+  weeklyInviteCap: 150,
   dailyMessageCap: 40,
   dailyVisitCap: 120,
   dailySearchCap: 500,
@@ -291,7 +293,7 @@ export const DEFAULT_CONFIG = {
   weekdaysOnly: true,
   autopilot: false,
   accountPreset: 'free',
-  warmup: { enabled: true, days: 14 },
+  warmup: { enabled: false, days: 14 },
   ai: { provider: 'none' },
   enrichment: { provider: 'none' },
   bridge: { enabled: true, port: 47829, token: '8824d1f6b5220b57550a33f124e346f8' },
@@ -734,6 +736,7 @@ export function clampConfig(cfg = {}) {
     maxDelayMs,
     hourlyCap: clampInt(input.hourlyCap, d.hourlyCap, 0, MAX_HOURLY_CAP),
     dailyInviteCap: clampInt(input.dailyInviteCap, d.dailyInviteCap, 0, HARD_CAPS.dailyInviteCap),
+    weeklyInviteCap: clampInt(input.weeklyInviteCap, d.weeklyInviteCap, 0, HARD_CAPS.weeklyInviteCap),
     dailyMessageCap: clampInt(
       input.dailyMessageCap,
       d.dailyMessageCap,

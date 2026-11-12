@@ -544,6 +544,7 @@ export async function tick() {
   // enrollments at all — a nightly tick over 500 people would otherwise make
   // 500 pointless reads. Individual writes are still gated by quota.check.
   let halted = config.businessHoursOnly && !isWithinBusinessHours(config);
+  const haltedBuckets = new Set();
 
   for (const campaign of campaigns) {
     if (halted) break;
@@ -640,6 +641,11 @@ export async function tick() {
           advance(campaign, enrollment);
           dirty = true;
           continue;
+        }
+
+        // If this action bucket is halted for this tick (e.g. invite reached quota/rate limit), skip this enrollment so other types (view, message, email) can proceed
+        if (haltedBuckets.has(step.type)) {
+          break;
         }
 
         if (step.type === 'wait') {
@@ -780,6 +786,14 @@ export async function tick() {
           }
 
           logDebug('error', 'Runner', `Step failed: ${friendlyError}`);
+
+          // Bucket-isolated throttling for invites: do NOT halt the whole tick across all campaigns
+          if (step.type === 'invite' && (res.error?.code === ERROR.QUOTA_EXCEEDED || res.error?.code === ERROR.RATE_LIMITED)) {
+            haltedBuckets.add('invite');
+            logDebug('warn', 'Runner', `Invite bucket paused for this tick due to quota/rate-limit. Other enrollments (view, message, email) will continue.`);
+            break;
+          }
+
           if (STOP_THE_TICK.has(res.error.code)) {
             halted = true;
             break;

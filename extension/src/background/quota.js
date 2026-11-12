@@ -91,29 +91,52 @@ function dayKey(now) {
   return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 }
 
+function getMonday(d) {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+  date.setDate(diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function weekKey(now = new Date()) {
+  const monday = getMonday(now);
+  return `${monday.getFullYear()}-${monday.getMonth() + 1}-${monday.getDate()}`;
+}
+
+function nextWeekAt(now = new Date()) {
+  const monday = getMonday(now);
+  return monday.getTime() + 7 * 24 * HOUR;
+}
+
 function emptyCounts() {
   return { invite: 0, message: 0, visit: 0, search: 0 };
 }
 
 /**
- * The stored counter state, rolled forward to the current day and hour.
- * Rolling is done on read so a service worker that was asleep at midnight
+ * The stored counter state, rolled forward to the current day, hour and week.
+ * Rolling is done on read so a service worker that was asleep at midnight or Monday
  * still reports the right numbers.
  */
 async function readState(now = new Date()) {
   const stored = (await get(K.QUOTA, null)) || {};
   const day = dayKey(now);
   const hour = now.getHours();
+  const week = weekKey(now);
 
   const state = {
     day,
     hour,
+    weekKey: week,
     daily: stored.day === day ? { ...emptyCounts(), ...(stored.daily || {}) } : emptyCounts(),
     hourly:
       stored.day === day && stored.hour === hour
         ? { ...emptyCounts(), ...(stored.hourly || {}) }
         : emptyCounts(),
+    weeklyInvites: stored.weekKey === week ? (stored.weeklyInvites || 0) : 0,
     backoffUntil: stored.backoffUntil || 0,
+    bucketBackoffUntil: { invite: 0, message: 0, visit: 0, search: 0, ...(stored.bucketBackoffUntil || {}) },
     challenge: stored.challenge || null,
   };
   return state;
@@ -156,11 +179,16 @@ export function hourlyCapFor(kind, config, dailyCap) {
   return WRITE_KINDS.has(kind) ? config.hourlyCap : dailyCap;
 }
 
-/** Effective daily cap for a bucket: min(config, preset, hard) × warm-up. */
+/** Effective daily cap for a bucket: user-configured or preset cap, capped by hard cap × warm-up. */
 export async function dailyCapFor(kind, config) {
   const cfg = config || (await getConfig());
   const preset = PRESETS[cfg.accountPreset] || PRESETS.free;
-  const base = Math.min(cfg[CONFIG_CAP_KEY[kind]], preset[kind], HARD_CAP_FOR[kind]);
+  // Use user's configured cap if set, otherwise fallback to preset; never exceed HARD_CAP_FOR
+  const configured = cfg[CONFIG_CAP_KEY[kind]];
+  const base = Math.min(
+    typeof configured === 'number' && configured >= 0 ? configured : preset[kind],
+    HARD_CAP_FOR[kind]
+  );
   if (!cfg.warmup || !cfg.warmup.enabled) return base;
   const factor = warmupFactor(warmupDayIndex(cfg), cfg.warmup.days);
   return Math.max(1, Math.floor(base * factor));
@@ -260,12 +288,30 @@ export async function noteChallenge() {
   return state;
 }
 
+/**
+ * Record a bucket-specific LinkedIn stand-down signal (e.g. invite limit reached).
+ * Pauses only that specific action kind instead of blocking the entire extension.
+ */
+export async function noteBucketBackoff(kind, ms = 24 * HOUR) {
+  assertKind(kind);
+  const now = Date.now();
+  return withKeyLock(K.QUOTA, async () => {
+    const current = await readState(new Date(now));
+    if (!current.bucketBackoffUntil) {
+      current.bucketBackoffUntil = { invite: 0, message: 0, visit: 0, search: 0 };
+    }
+    current.bucketBackoffUntil[kind] = Math.max(current.bucketBackoffUntil[kind] || 0, now + ms);
+    return writeState(current);
+  });
+}
+
 /** Clear a security challenge once the human has dealt with it. */
 export async function clearChallenge() {
   return withKeyLock(K.QUOTA, async () => {
     const state = await readState();
     state.challenge = null;
     state.backoffUntil = 0;
+    state.bucketBackoffUntil = { invite: 0, message: 0, visit: 0, search: 0 };
     return writeState(state);
   });
 }
@@ -337,6 +383,16 @@ async function gate(kind, cost) {
     });
   }
 
+  if (state.bucketBackoffUntil && state.bucketBackoffUntil[kind] > now) {
+    throw new EngineError(
+      ERROR.RATE_LIMITED,
+      `Paused after a LinkedIn limit response for ${kind}.`,
+      {
+        retryAfter: state.bucketBackoffUntil[kind] - now,
+      },
+    );
+  }
+
   if (config.businessHoursOnly && WRITE_KINDS.has(kind) && !isWithinBusinessHours(config)) {
     const startDisplay = config.businessStartTime || `${String(config.businessStart || 9).padStart(2, '0')}:00`;
     const endDisplay = config.businessEndTime || `${String(config.businessEnd || 19).padStart(2, '0')}:00`;
@@ -359,6 +415,25 @@ async function gate(kind, cost) {
     );
   }
 
+  // Weekly invite budget check
+  if (kind === 'invite') {
+    const weeklyCap = config.weeklyInviteCap ?? 150;
+    if (state.weeklyInvites + cost > weeklyCap) {
+      await emit(EVENTS.QUOTA_HIT, {
+        kind: 'invite',
+        scope: 'weekly',
+        used: state.weeklyInvites,
+        cap: weeklyCap,
+        resetsAt: nextWeekAt(now),
+      });
+      throw new EngineError(
+        ERROR.QUOTA_EXCEEDED,
+        `Weekly invite cap reached (${weeklyCap}/week).`,
+        { retryAfter: nextWeekAt(now) - now },
+      );
+    }
+  }
+
   if (state.daily[kind] + cost > dailyCap) {
     await emit(EVENTS.QUOTA_HIT, {
       kind,
@@ -373,7 +448,7 @@ async function gate(kind, cost) {
     );
   }
 
-  return toRateLimit(state, kind, hourlyCap, dailyCap, now);
+  return toRateLimit(state, kind, hourlyCap, dailyCap, now, config);
 }
 
 /** Count `n` units against a bucket (search records the number of results). */
@@ -401,6 +476,9 @@ export async function release(kind, n = 1) {
     const state = await readState();
     state.daily[kind] = Math.max(0, state.daily[kind] - units);
     state.hourly[kind] = Math.max(0, state.hourly[kind] - units);
+    if (kind === 'invite' && state.weeklyInvites) {
+      state.weeklyInvites = Math.max(0, state.weeklyInvites - units);
+    }
     await writeState(state);
     return state.daily[kind];
   });
@@ -413,6 +491,9 @@ async function bump(kind, n) {
   const state = await readState();
   state.daily[kind] += units;
   state.hourly[kind] += units;
+  if (kind === 'invite') {
+    state.weeklyInvites = (state.weeklyInvites || 0) + units;
+  }
   await writeState(state);
   return state.daily[kind];
 }
@@ -429,18 +510,27 @@ function nextDayAt(now) {
   return d.getTime() + 24 * HOUR;
 }
 
-function toRateLimit(state, kind, hourlyCap, dailyCap, now) {
+function toRateLimit(state, kind, hourlyCap, dailyCap, now, config) {
   let nextAllowedAt = 0;
   if (state.challenge) nextAllowedAt = Number.MAX_SAFE_INTEGER;
   else if (state.backoffUntil > now) nextAllowedAt = state.backoffUntil;
+  else if (state.bucketBackoffUntil && state.bucketBackoffUntil[kind] > now) nextAllowedAt = state.bucketBackoffUntil[kind];
+  else if (kind === 'invite' && state.weeklyInvites >= (config?.weeklyInviteCap ?? 150)) nextAllowedAt = nextWeekAt(now);
   else if (state.hourly[kind] >= hourlyCap) nextAllowedAt = nextHourAt(now);
   else if (state.daily[kind] >= dailyCap) nextAllowedAt = nextDayAt(now);
+
+  const weeklyCap = kind === 'invite' ? (config?.weeklyInviteCap ?? 150) : undefined;
+  const weeklyUsed = kind === 'invite' ? (state.weeklyInvites || 0) : undefined;
 
   return {
     hourlyUsed: state.hourly[kind],
     hourlyCap,
     dailyUsed: state.daily[kind],
     dailyCap,
+    usedToday: state.daily[kind],
+    max: dailyCap,
+    weeklyUsed,
+    weeklyCap,
     nextAllowedAt,
   };
 }
@@ -452,7 +542,7 @@ export async function snapshot(kind) {
   const config = await getConfig();
   const state = await readState(new Date(now));
   const dailyCap = await dailyCapFor(kind, config);
-  return toRateLimit(state, kind, hourlyCapFor(kind, config, dailyCap), dailyCap, now);
+  return toRateLimit(state, kind, hourlyCapFor(kind, config, dailyCap), dailyCap, now, config);
 }
 
 /** RateLimit for all four buckets — the `quotas` field of `Status`. */
@@ -482,13 +572,20 @@ export async function humanDelay() {
 /**
  * Reset quota counters (both daily and hourly) to zero.
  * @param {readonly string[]} [kinds=KINDS]
+ * @param {{ resetWeekly?: boolean }} [options={}]
  */
-export async function resetDailyQuota(kinds = KINDS) {
+export async function resetDailyQuota(kinds = KINDS, options = {}) {
   return withKeyLock(K.QUOTA, async () => {
     const state = await readState();
     for (const k of kinds) {
       if (state.daily[k] !== undefined) state.daily[k] = 0;
       if (state.hourly[k] !== undefined) state.hourly[k] = 0;
+      if (state.bucketBackoffUntil && state.bucketBackoffUntil[k] !== undefined) {
+        state.bucketBackoffUntil[k] = 0;
+      }
+    }
+    if (options?.resetWeekly) {
+      state.weeklyInvites = 0;
     }
     await writeState(state);
     return state;
@@ -497,6 +594,6 @@ export async function resetDailyQuota(kinds = KINDS) {
 
 register(ACTIONS.QUOTA_RESET, (params = {}) => {
   const kinds = Array.isArray(params?.kinds) && params.kinds.length > 0 ? params.kinds : KINDS;
-  return resetDailyQuota(kinds);
+  return resetDailyQuota(kinds, { resetWeekly: Boolean(params?.resetWeekly) });
 });
 

@@ -11,6 +11,8 @@ import {
   saveStoredBlueprint,
   launchBlueprintInternal,
   sendChatAction,
+  sendTelegramMessage,
+  extractErrorMessage,
 } from '../../src/background/telegram.js';
 import * as campaigns from '../../src/background/campaigns.js';
 import * as lists from '../../src/background/lists.js';
@@ -535,6 +537,109 @@ describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
       expect(modelStep).toBeDefined();
       expect(modelStep.parts[1].functionCall.name).toBe('list_prospect_lists');
       expect(modelStep.parts[1].thought_signature).toBe('sig_crypto_hash_12345');
+    });
+  });
+
+  describe('4. Bulletproof Telegram Delivery & Error Formatting', () => {
+    it('extractErrorMessage extracts readable messages from various types', () => {
+      expect(extractErrorMessage(new Error('Quota reached'))).toBe('Quota reached');
+      expect(extractErrorMessage('Direct error text')).toBe('Direct error text');
+      expect(extractErrorMessage({ code: 429, details: 'Too many requests' })).toBe('{"code":429,"details":"Too many requests"}');
+      expect(extractErrorMessage(null)).toBe('Unknown error');
+    });
+
+    it('sendTelegramMessage automatically falls back to plain text when Markdown fails', async () => {
+      const calls = [];
+      global.fetch = vi.fn(async (url, opts) => {
+        const body = JSON.parse(opts.body);
+        calls.push(body);
+
+        // Fail first call (Markdown) with Telegram entity parse error
+        if (body.parse_mode === 'Markdown') {
+          return {
+            ok: true,
+            json: async () => ({
+              ok: false,
+              error_code: 400,
+              description: "Bad Request: can't parse entities: can't find end of entity at offset 12",
+            }),
+          };
+        }
+
+        // Second call (plain text fallback) succeeds
+        return {
+          ok: true,
+          json: async () => ({ ok: true, result: { message_id: 101, text: body.text } }),
+        };
+      });
+
+      const res = await sendTelegramMessage('bot123', 'chat456', '⚡ *LIVE STATUS:* Lead john_doe is `running`!');
+      expect(res).toEqual({ message_id: 101, text: '⚡ LIVE STATUS: Lead johndoe is running!' });
+      expect(calls).toHaveLength(2);
+      expect(calls[0].parse_mode).toBe('Markdown');
+      expect(calls[1].parse_mode).toBeUndefined(); // Plain text retry
+      expect(calls[1].text).not.toContain('*');
+      expect(calls[1].text).not.toContain('`');
+      expect(calls[1].text).toContain('johndoe');
+    });
+
+    it('get_campaign_live_status sanitizes unescaped characters in prospect names and errors', async () => {
+      vi.spyOn(campaigns, 'getAll').mockResolvedValue([
+        { campaignId: 'camp_live_123', name: 'data_analyst_US', status: 'active' },
+      ]);
+      vi.spyOn(campaigns, 'getCampaignLiveStatus').mockResolvedValue({
+        campaignId: 'camp_live_123',
+        campaignName: 'data_analyst_US',
+        summary: { total: 10, active: 2, waiting: 8 },
+        leads: [
+          {
+            publicId: 'lead_john_doe_456',
+            fullName: 'john_doe',
+            company: 'tech_corp_llc',
+            status: 'failed',
+            currentStepLabel: 'Step 1: invite_note',
+            lastError: 'CUSTOM_INVITE_LIMIT_REACHED',
+          },
+        ],
+      });
+
+      const res = await executeTool('get_campaign_live_status', {});
+      expect(res.status).toBe('ok');
+      expect(res.campaignName).toBe('data analyst US');
+      expect(res.topLeads[0].fullName).toBe('john doe');
+      expect(res.topLeads[0].company).toBe('tech corp llc');
+      expect(res.topLeads[0].currentStep).toBe('Step 1: invite note');
+      expect(res.topLeads[0].lastError).toBe('CUSTOM INVITE LIMIT REACHED');
+    });
+
+    it('runAgentLoop formats non-empty Copilot Error with clean fallback and preserves chat history', async () => {
+      const calls = [];
+      global.fetch = vi.fn(async (url, opts) => {
+        if (url.includes('api.telegram.org')) {
+          const body = JSON.parse(opts.body);
+          calls.push(body);
+          return { ok: true, json: async () => ({ ok: true, result: { message_id: 202 } }) };
+        }
+        // Force LLM error with unescaped underscores in error message
+        return {
+          ok: false,
+          status: 400,
+          text: async () => 'GEMINI API error 400: function_call thought_signature mismatch',
+        };
+      });
+
+      await set('config', {
+        ai: { provider: 'gemini', apiKey: 'test_key', model: 'gemini-2.5-flash' },
+      });
+
+      await runAgentLoop('bot123', 'chat456', 'Kya hal chal bhai ke');
+
+      const messageCalls = calls.filter((c) => c.text && c.text.includes('Copilot Error:'));
+      expect(messageCalls.length).toBeGreaterThanOrEqual(1);
+      const errorText = messageCalls[0].text;
+      expect(errorText).toContain('Copilot Error:');
+      expect(errorText).toContain('GEMINI API error 400');
+      expect(errorText).not.toBe('⚠️ *Copilot Error:* \n\n_Tip: Use /live or /clear to reset._');
     });
   });
 });

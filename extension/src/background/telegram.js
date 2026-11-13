@@ -20,7 +20,7 @@ import * as lists from './lists.js';
 import { onEvent } from './events.js';
 import { getLiveDashboardStats } from './stats.js';
 import { snapshotAll } from './quota.js';
-import { addToBlacklist, addCompanyToBlacklist, getStoredProfile, get, set } from '../lib/storage.js';
+import { addToBlacklist, addCompanyToBlacklist, getStoredProfile, get, set, logDebug } from '../lib/storage.js';
 import { getActiveCandidate, setActiveCandidate, getAllCandidates, saveCandidate } from './candidates.js';
 import { enrichLead } from './enrich.js';
 import { matchAndAdaptObjection, snoozeLead, popDueSnoozes } from './objections.js';
@@ -151,32 +151,54 @@ export async function sendChatAction(token, chatId, action = 'typing') {
   }
 }
 
-// 🛡️ Bulletproof Telegram Message Dispatcher with Entity Error Fallback
+// Helper to extract a readable string from any error object
+export function extractErrorMessage(err) {
+  if (!err) return 'Unknown error';
+  return (
+    err.message ||
+    (typeof err === 'string' ? err : JSON.stringify(err)) ||
+    'Unknown error'
+  );
+}
+
+// 🛡️ Bulletproof Telegram Message Dispatcher with Automatic Plain-Text Fallback
 export async function sendTelegramMessage(token, chatId, text, options = {}) {
+  const content = String(text ?? '');
+  if (!content) return null;
+
+  const parseMode = options.parse_mode ?? 'Markdown';
+
   try {
     return await callTelegramApi(token, 'sendMessage', {
       chat_id: chatId,
-      text,
-      parse_mode: 'Markdown',
+      text: content,
+      parse_mode: parseMode,
       disable_web_page_preview: true,
       ...options,
     });
   } catch (err) {
-    if (
-      err.message &&
-      (err.message.includes("can't parse entities") ||
-        err.message.includes('entity') ||
-        err.message.includes('parsing'))
-    ) {
-      console.warn('[Telegram] Markdown parse failed, falling back to plain text:', err.message);
+    const errorMsg = extractErrorMessage(err);
+    logDebug('warn', 'Telegram', `Markdown dispatch failed (${errorMsg}), retrying as plain text`);
+    console.warn('[Telegram] Markdown dispatch failed, falling back to plain text:', errorMsg);
+
+    const plainOptions = { ...options };
+    delete plainOptions.parse_mode;
+
+    const plainText = content.replace(/[*_`\[\]]/g, '');
+
+    try {
       return await callTelegramApi(token, 'sendMessage', {
         chat_id: chatId,
-        text: text.replace(/[*_`\[\]]/g, ''),
+        text: plainText,
         disable_web_page_preview: true,
-        ...options,
+        ...plainOptions,
       });
+    } catch (retryErr) {
+      const retryErrorMsg = extractErrorMessage(retryErr);
+      logDebug('error', 'Telegram', `Plain text sendMessage retry failed: ${retryErrorMsg}`);
+      console.error('[Telegram Plain Text Fallback Failed]', retryErr);
+      throw retryErr;
     }
-    throw err;
   }
 }
 
@@ -965,16 +987,18 @@ export async function executeTool(name, args = {}) {
     return {
       status: 'ok',
       campaignId: campId,
-      campaignName: liveData.campaignName || target?.name || 'Campaign',
+      campaignName: String(liveData.campaignName || target?.name || 'Campaign').replace(/[_*`]/g, ' '),
       summary: liveData.summary || {},
       leadsCount: (liveData.leads || []).length,
       topLeads: (liveData.leads || []).slice(0, 8).map((l) => ({
-        fullName: l.fullName || 'Lead',
-        company: l.company || '',
+        fullName: String(l.fullName || l.publicId || 'Lead').replace(/[_*`]/g, ' '),
+        company: String(l.company || '').replace(/[_*`]/g, ' '),
         status: l.status,
-        currentStep: l.currentStep,
-        nextRunIn: l.nextRunIn,
-        lastError: l.lastError || null,
+        currentStep: String(l.currentStepLabel || l.currentStep || 'In Progress').replace(/[_*`]/g, ' '),
+        nextRunIn: l.nextRunIn || (l.nextRunAt && l.nextRunAt > Date.now()
+          ? `${Math.max(1, Math.round((l.nextRunAt - Date.now()) / 60000))}m`
+          : (l.status === 'active' || l.status === 'running' ? 'Due now' : 'Done')),
+        lastError: l.lastError ? String(l.lastError).replace(/[_*`]/g, ' ') : null,
       })),
     };
   }
@@ -1346,14 +1370,31 @@ function _toGeminiFunctionDeclarations(tools) {
   }));
 }
 
-// Convert OpenAI-format history turns to Gemini `contents` format
+// Convert OpenAI-format history turns to Gemini `contents` format with strict alternating roles
 function _toGeminiContents(openAiMessages) {
-  return openAiMessages
-    .filter((m) => m.role !== 'system')
-    .map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }],
-    }));
+  const filtered = openAiMessages.filter((m) => m.role !== 'system');
+  const result = [];
+  let lastRole = null;
+
+  for (const m of filtered) {
+    const role = m.role === 'assistant' ? 'model' : 'user';
+    const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+    if (!text || !text.trim()) continue;
+
+    if (role === lastRole && result.length > 0) {
+      result[result.length - 1].parts.push({ text });
+    } else {
+      result.push({ role, parts: [{ text }] });
+      lastRole = role;
+    }
+  }
+
+  // Gemini requires the initial turn to be user
+  while (result.length > 0 && result[0].role !== 'user') {
+    result.shift();
+  }
+
+  return result;
 }
 
 export async function callLlmWithTools(provider, aiConfig, messages, tools = [], geminiContents = null) {
@@ -1493,6 +1534,9 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
         });
       }
     }
+    if (!text && toolCalls.length === 0 && Array.isArray(rawGeminiContent.parts)) {
+      text = rawGeminiContent.parts.map((p) => p.text || '').join('');
+    }
     return { text, toolCalls, rawGeminiContent };
   }
 
@@ -1613,12 +1657,11 @@ export async function runAgentLoop(botToken, chatId, userText) {
     const systemPrompt = buildSystemPrompt(contextData);
     const recentHistory = await getRecentChatTurns();
 
-    // Avoid duplicate user message if already recorded
+    // Ensure history does not end with unreplied user turns so multiturn talk alternates cleanly
     let historyTurns = [...recentHistory];
-    if (
+    while (
       historyTurns.length > 0 &&
-      historyTurns[historyTurns.length - 1].role === 'user' &&
-      historyTurns[historyTurns.length - 1].content.trim() === userText.replace(/[*_`\[\]]/g, '').trim().slice(0, 500)
+      historyTurns[historyTurns.length - 1].role === 'user'
     ) {
       historyTurns.pop();
     }
@@ -1760,9 +1803,15 @@ export async function runAgentLoop(botToken, chatId, userText) {
     const replyMarkup = inlineButtons.length > 0 ? { inline_keyboard: inlineButtons } : undefined;
     return await sendTelegramMessage(botToken, chatId, finalContent, replyMarkup ? { reply_markup: replyMarkup } : {});
   } catch (err) {
+    const errorMsg = extractErrorMessage(err);
+    logDebug('error', 'Telegram', `[Agent Loop Error] ${errorMsg}`);
     console.error('[Telegram Agent Loop Error]', err);
     stopTyping();
-    const fallbackText = `⚠️ *Copilot Error:* ${err.message || 'Something went wrong.'}\n\n_Tip: Use /live or /clear to reset._`;
+    const cleanError = errorMsg.replace(/[_*`\[\]]/g, ' ');
+    const fallbackText = `⚠️ *Copilot Error:* ${cleanError}\n\n_Tip: Use /live or /clear to reset._`;
+    try {
+      await recordChatTurn('assistant', `Encountered an issue: ${cleanError.slice(0, 100)}`);
+    } catch {}
     return await sendTelegramMessage(botToken, chatId, fallbackText);
   } finally {
     stopTyping();
@@ -1930,8 +1979,8 @@ async function renderLiveCampaignStatus(botToken, chatId, targetCampaignId = nul
   }
 
   const s = liveRes.summary || {};
-  const campNameEscaped = String(liveRes.campaignName || target.name || 'Campaign').replace(/[_*`]/g, ' ');
-  const statusUpper = String(liveRes.campaignStatus || target.status || 'ACTIVE').toUpperCase();
+  const campNameEscaped = String(liveRes.campaignName || target.name || 'Campaign').replace(/[_*`\[\]]/g, ' ');
+  const statusUpper = String(liveRes.campaignStatus || target.status || 'ACTIVE').toUpperCase().replace(/[_*`\[\]]/g, ' ');
   const statusEmoji = statusUpper === 'ACTIVE' || statusUpper === 'RUNNING' ? '🟢' : '⏸️';
 
   const invLeft = Math.max(0, (quotas.invite?.dailyCap || 20) - (quotas.invite?.dailyUsed || 0));
@@ -1943,11 +1992,11 @@ async function renderLiveCampaignStatus(botToken, chatId, targetCampaignId = nul
   msg += `👥 *Total Leads Enrolled:* *${s.total || 0}*\n\n`;
 
   msg += `📊 *Lead Status Breakdown:*\n`;
-  msg += `• ⏳ *Waiting:* ${s.waiting || 0}\n`;
-  msg += `• 🏃 *Active / Running:* ${s.active || 0}\n`;
-  msg += `• 💬 *Replied:* ${s.replied || 0}\n`;
-  msg += `• ✅ *Completed:* ${s.completed || 0}\n`;
-  if (s.failed > 0) msg += `• ⚠️ *Failed / Issues:* ${s.failed}\n`;
+  msg += `• ⏳ Waiting: ${s.waiting || 0}\n`;
+  msg += `• 🏃 Active / Running: ${s.active || 0}\n`;
+  msg += `• 💬 Replied: ${s.replied || 0}\n`;
+  msg += `• ✅ Completed: ${s.completed || 0}\n`;
+  if (s.failed > 0) msg += `• ⚠️ Failed / Issues: ${s.failed}\n`;
   msg += `\n`;
 
   msg += `🛡️ *Today's Quota Remaining:*\n`;
@@ -1967,14 +2016,14 @@ async function renderLiveCampaignStatus(botToken, chatId, targetCampaignId = nul
   if (relevantLeads.length > 0) {
     msg += `🎯 *Live Prospects Progress:*\n`;
     for (const lead of relevantLeads) {
-      const safeName = String(lead.fullName || lead.publicId).replace(/[_*`]/g, ' ');
-      const safeCompany = String(lead.company || '').replace(/[_*`]/g, ' ');
+      const safeName = String(lead.fullName || lead.publicId || 'Lead').replace(/[_*`\[\]]/g, ' ');
+      const safeCompany = String(lead.company || '').replace(/[_*`\[\]]/g, ' ');
       const compStr = safeCompany ? ` (${safeCompany})` : '';
-      const stepStr = String(lead.currentStepLabel || 'In Progress').replace(/[_*`]/g, ' ');
+      const stepStr = String(lead.currentStepLabel || 'In Progress').replace(/[_*`\[\]]/g, ' ');
 
       let timingOrResult = '';
       if (lead.lastError) {
-        const safeErr = String(lead.lastError).replace(/[_*`]/g, ' ');
+        const safeErr = String(lead.lastError).replace(/[_*`\[\]]/g, ' ');
         timingOrResult = `⚠️ ${safeErr.length > 28 ? safeErr.slice(0, 28) + '...' : safeErr}`;
       } else if (lead.replied) {
         timingOrResult = `💬 Replied`;
@@ -2101,7 +2150,9 @@ async function handleUserCommand(botToken, chatId, text) {
         `_All outreach pitches and sequences will now align with this candidate._`;
       return sendTelegramMessage(botToken, chatId, msg);
     } catch (err) {
-      return sendTelegramMessage(botToken, chatId, `❌ ${err.message}`);
+      const errorMsg = extractErrorMessage(err);
+      logDebug('error', 'Telegram', `[Candidate Switch Error] ${errorMsg}`);
+      return sendTelegramMessage(botToken, chatId, `❌ ${errorMsg.replace(/[_*`]/g, ' ')}`);
     }
   }
 
@@ -2161,7 +2212,9 @@ async function handleCallback(botToken, chatId, callbackData) {
 
       return sendTelegramMessage(botToken, chatId, launchMsg, { reply_markup: replyMarkup });
     } catch (err) {
-      return sendTelegramMessage(botToken, chatId, `❌ Failed to launch campaign: ${err.message}`);
+      const errorMsg = extractErrorMessage(err);
+      logDebug('error', 'Telegram', `[Launch Blueprint Error] ${errorMsg}`);
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to launch campaign: ${errorMsg.replace(/[_*`]/g, ' ')}`);
     }
   }
 
@@ -2248,7 +2301,9 @@ async function handleCallback(botToken, chatId, callbackData) {
         `✅ *Switched to ${switched.name}!*\nTitle: ${switched.title}\nMode: ${switched.mode}\nBooking: ${switched.bookingLink}`
       );
     } catch (err) {
-      return sendTelegramMessage(botToken, chatId, `❌ ${err.message}`);
+      const errorMsg = extractErrorMessage(err);
+      logDebug('error', 'Telegram', `[Candidate Switch Error] ${errorMsg}`);
+      return sendTelegramMessage(botToken, chatId, `❌ ${errorMsg.replace(/[_*`]/g, ' ')}`);
     }
   }
 
@@ -2329,7 +2384,9 @@ async function handleCallback(botToken, chatId, callbackData) {
         `✅ *1-Tap Booking Link Sent!*\nDelivered to \`${publicId}\` on LinkedIn.`
       );
     } catch (err) {
-      return sendTelegramMessage(botToken, chatId, `❌ Failed to send booking link: ${err.message}`);
+      const errorMsg = extractErrorMessage(err);
+      logDebug('error', 'Telegram', `[Booking Link Error] ${errorMsg}`);
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to send booking link: ${errorMsg.replace(/[_*`]/g, ' ')}`);
     }
   }
 
@@ -2372,7 +2429,9 @@ async function handleCallback(botToken, chatId, callbackData) {
 
       return sendTelegramMessage(botToken, chatId, previewMsg, { reply_markup: replyMarkup });
     } catch (err) {
-      return sendTelegramMessage(botToken, chatId, `❌ AI draft generation failed: ${err.message}`);
+      const errorMsg = extractErrorMessage(err);
+      logDebug('error', 'Telegram', `[AI Draft Error] ${errorMsg}`);
+      return sendTelegramMessage(botToken, chatId, `❌ AI draft generation failed: ${errorMsg.replace(/[_*`]/g, ' ')}`);
     }
   }
 
@@ -2394,7 +2453,9 @@ async function handleCallback(botToken, chatId, callbackData) {
         `🚀 *AI Reply Successfully Delivered!*\nDelivered to \`${draft.publicId}\` on LinkedIn.`
       );
     } catch (err) {
-      return sendTelegramMessage(botToken, chatId, `❌ Failed to deliver reply: ${err.message}`);
+      const errorMsg = extractErrorMessage(err);
+      logDebug('error', 'Telegram', `[Deliver Reply Error] ${errorMsg}`);
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to deliver reply: ${errorMsg.replace(/[_*`]/g, ' ')}`);
     }
   }
 
@@ -2416,7 +2477,9 @@ async function handleCallback(botToken, chatId, callbackData) {
         `🚫 *Lead Blacklisted:* \`${publicId}\` added to Do Not Contact.`
       );
     } catch (err) {
-      return sendTelegramMessage(botToken, chatId, `❌ Failed to blacklist: ${err.message}`);
+      const errorMsg = extractErrorMessage(err);
+      logDebug('error', 'Telegram', `[Blacklist Error] ${errorMsg}`);
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to blacklist: ${errorMsg.replace(/[_*`]/g, ' ')}`);
     }
   }
 
@@ -2431,7 +2494,9 @@ async function handleCallback(botToken, chatId, callbackData) {
         `🏢 *Company Excluded:* \`${company}\` added to Company Exclusion list.\n\nAll campaigns will automatically skip prospects from this company.`
       );
     } catch (err) {
-      return sendTelegramMessage(botToken, chatId, `❌ Failed to block company: ${err.message}`);
+      const errorMsg = extractErrorMessage(err);
+      logDebug('error', 'Telegram', `[Block Company Error] ${errorMsg}`);
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to block company: ${errorMsg.replace(/[_*`]/g, ' ')}`);
     }
   }
 
@@ -2457,7 +2522,9 @@ async function handleCallback(botToken, chatId, callbackData) {
         `📄 *Resume Link Delivered!*\nSuccessfully sent resume link to \`${publicId}\` on LinkedIn.`
       );
     } catch (err) {
-      return sendTelegramMessage(botToken, chatId, `❌ Failed to send resume link: ${err.message}`);
+      const errorMsg = extractErrorMessage(err);
+      logDebug('error', 'Telegram', `[Resume Link Error] ${errorMsg}`);
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to send resume link: ${errorMsg.replace(/[_*`]/g, ' ')}`);
     }
   }
 
@@ -2473,7 +2540,9 @@ async function handleCallback(botToken, chatId, callbackData) {
         `⏰ *Lead Snoozed for 30 Days!*\n\`${publicId}\` will be snoozed until *${wakeDate}*.\n\nYou will receive a reminder when it is time to follow up!`
       );
     } catch (err) {
-      return sendTelegramMessage(botToken, chatId, `❌ Failed to snooze lead: ${err.message}`);
+      const errorMsg = extractErrorMessage(err);
+      logDebug('error', 'Telegram', `[Snooze Error] ${errorMsg}`);
+      return sendTelegramMessage(botToken, chatId, `❌ Failed to snooze lead: ${errorMsg.replace(/[_*`]/g, ' ')}`);
     }
   }
 }
@@ -2533,7 +2602,9 @@ export async function startTelegramPoller(token, chatId) {
                 await sendTelegramMessage(token, chatId, `🗣️ *You Said:* _"${transcribed}"_`);
                 await handleUserCommand(token, chatId, transcribed);
               } catch (vErr) {
-                await sendTelegramMessage(token, chatId, `❌ Voice transcription error: ${vErr.message}`);
+                const errorMsg = extractErrorMessage(vErr);
+                logDebug('error', 'Telegram', `[Voice Transcription Error] ${errorMsg}`);
+                await sendTelegramMessage(token, chatId, `❌ Voice transcription error: ${errorMsg.replace(/[_*`]/g, ' ')}`);
               }
               continue;
             }

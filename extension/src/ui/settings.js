@@ -360,7 +360,7 @@ export async function renderSettings(container, opts = {}) {
           'Clean Pending Invites (>14 days)',
           async () => {
             maintenanceStatus.set('Checking pending sent invitations older than 14 days…');
-            const res = await call(ACTIONS.NETWORK_WITHDRAW_STALE_INVITES, {});
+            const res = await call(ACTIONS.NETWORK_WITHDRAW_STALE_INVITES, {}, { timeoutMs: 90000 });
             const withdrawn = res.withdrawnCount ?? res.withdrawn ?? 0;
             if (withdrawn === 0) {
               maintenanceStatus.set(

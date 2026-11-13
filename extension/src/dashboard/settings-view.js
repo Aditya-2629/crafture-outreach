@@ -1393,10 +1393,14 @@ export async function renderSettingsView(container, ctx = {}) {
       btn.innerHTML = '⏳ Withdrawing...';
       try {
         const days = parseInt(container.querySelector('#input-withdraw-days')?.value, 10) || autoWithdraw.olderThanDays || 14;
-        const res = await call(ACTIONS.NETWORK_WITHDRAW_STALE_INVITES, {
-          olderThanDays: days,
-          maxCount: autoWithdraw.maxPerRun || 15,
-        });
+        const res = await call(
+          ACTIONS.NETWORK_WITHDRAW_STALE_INVITES,
+          {
+            olderThanDays: days,
+            maxCount: autoWithdraw.maxPerRun || 15,
+          },
+          { timeoutMs: 90000 }
+        );
         const count = res?.withdrawn ?? res?.withdrawnCount ?? 0;
         ctx.showToast?.(`Withdrew ${count} stale invitation${count === 1 ? '' : 's'}.`, 'success');
       } catch (err) {
@@ -1644,7 +1648,7 @@ export async function renderSettingsView(container, ctx = {}) {
         btn.disabled = true;
       }
       try {
-        const res = await call(ACTIONS.SHEETS_CRM_SYNC_NOW, {});
+        const res = await call(ACTIONS.SHEETS_CRM_SYNC_NOW, {}, { timeoutMs: 90000 });
         ctx.showToast?.(`Synced ${res.rowsSynced || 0} leads to Google Sheet!`, 'success');
         config = await call(ACTIONS.CONFIG_GET, {});
         googleWorkspace = config.googleWorkspace || {};
@@ -1670,7 +1674,7 @@ export async function renderSettingsView(container, ctx = {}) {
         btn.disabled = true;
       }
       try {
-        await call(ACTIONS.BACKUP_DRIVE_SAVE, {});
+        await call(ACTIONS.BACKUP_DRIVE_SAVE, {}, { timeoutMs: 90000 });
         ctx.showToast?.('Saved snapshot to Google Drive (OutFox Backups/outfox-backup.json)!', 'success');
         config = await call(ACTIONS.CONFIG_GET, {});
         googleWorkspace = config.googleWorkspace || {};
@@ -1696,7 +1700,7 @@ export async function renderSettingsView(container, ctx = {}) {
       });
       if (ok) {
         try {
-          const res = await call(ACTIONS.BACKUP_DRIVE_RESTORE, {});
+          const res = await call(ACTIONS.BACKUP_DRIVE_RESTORE, {}, { timeoutMs: 90000 });
           ctx.showToast?.(`Restored ${res.keysRestored || 0} collections from Google Drive!`, 'success');
           setTimeout(() => window.location.reload(), 1200);
         } catch (err) {

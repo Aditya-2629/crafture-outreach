@@ -62,13 +62,13 @@ const RETRYABLE_SW_PATTERNS = [
   'could not establish connection',
   'receiving end does not exist',
   'context invalidated',
-  'timed out',
 ];
 
 function isWakeupError(error) {
   if (!error) return false;
-  if (error.code === ERROR.EXTENSION_OFFLINE) return true;
   const msg = String(error.message || '').toLowerCase();
+  if (msg.includes('timed out')) return false;
+  if (error.code === ERROR.EXTENSION_OFFLINE) return true;
   return RETRYABLE_SW_PATTERNS.some((p) => msg.includes(p));
 }
 
@@ -100,7 +100,7 @@ export function send(action, params = {}, timeoutMs = 6000) {
 
     if (timeoutMs > 0) {
       timer = setTimeout(() => {
-        finish(offline('No SW (timed out)'));
+        finish(offline('Request timed out'));
       }, timeoutMs);
     }
 
@@ -122,19 +122,25 @@ export function send(action, params = {}, timeoutMs = 6000) {
 /**
  * Like `send`, but returns `data` and throws an `ApiError` on `ok: false`.
  * Automatically retries up to 2 times (waiting 350ms between retries) if the MV3 service
- * worker was asleep ('No SW' / 'Could not establish connection'), guarded by a 6-second timeout.
+ * worker was asleep ('No SW' / 'Could not establish connection'), guarded by a configurable timeout (default: 6s).
  *
  * @param {string} action
  * @param {object} [params]
+ * @param {object|number} [options]
+ * @param {number} [options.timeoutMs=6000]
  */
-export async function call(action, params = {}) {
+export async function call(action, params = {}, options = {}) {
+  const timeoutMs = typeof options === 'number' ? options : (options?.timeoutMs ?? 6000);
   const maxRetries = 2;
-  const overallTimeoutMs = 6000;
+  const overallTimeoutMs = timeoutMs;
   const start = Date.now();
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const elapsed = Date.now() - start;
-    const remainingTime = Math.max(1000, overallTimeoutMs - elapsed);
+    if (elapsed >= overallTimeoutMs && attempt > 0) {
+      break;
+    }
+    const remainingTime = Math.max(1, overallTimeoutMs - elapsed);
 
     let envelope;
     try {

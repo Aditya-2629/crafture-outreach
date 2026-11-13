@@ -118,6 +118,49 @@ describe('call', () => {
 
     await expect(call(ACTIONS.STATUS_GET)).rejects.toBeInstanceOf(ApiError);
     expect(callCount).toBe(3); // 1 initial + 2 retries
+
+    Object.defineProperty(chrome.runtime, 'lastError', {
+      value: null,
+      configurable: true,
+    });
+  });
+
+  it('accepts custom timeoutMs and throws "Request timed out" without retrying', async () => {
+    Object.defineProperty(chrome.runtime, 'lastError', {
+      value: null,
+      configurable: true,
+    });
+    let callCount = 0;
+    chrome.runtime.sendMessage = (_msg, _cb) => {
+      callCount++;
+      // Never respond, triggering timeout
+    };
+
+    let error;
+    try {
+      await call(ACTIONS.STATUS_GET, {}, { timeoutMs: 50 });
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.message).toBe('Request timed out');
+    expect(callCount).toBe(1); // Crucial: timeout must not trigger unnecessary retries
+  });
+
+  it('supports custom timeoutMs for long-running operations that resolve before timeout', async () => {
+    Object.defineProperty(chrome.runtime, 'lastError', {
+      value: null,
+      configurable: true,
+    });
+    chrome.runtime.sendMessage = (_msg, cb) => {
+      setTimeout(() => {
+        cb({ ok: true, data: { rowsSynced: 42 } });
+      }, 30);
+    };
+
+    const res = await call(ACTIONS.SHEETS_CRM_SYNC_NOW, {}, { timeoutMs: 200 });
+    expect(res).toEqual({ rowsSynced: 42 });
   });
 });
 

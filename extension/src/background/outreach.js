@@ -241,40 +241,118 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
   const now = Date.now();
 
   const invitations = await voyager.fetchSentInvitations({ start: 0, count: 100 });
-  const stale = invitations.filter((inv) => (inv.sentTime || inv.sentAt) && now - (inv.sentTime || inv.sentAt) > cutoffMs);
+  const stale = invitations.filter(
+    (inv) => (inv.sentTime || inv.sentAt) && now - (inv.sentTime || inv.sentAt) > cutoffMs,
+  );
+
+  const toProcess = stale.slice(0, maxCount);
+  const scannedCount = toProcess.length;
 
   let withdrawnCount = 0;
   let skippedCount = 0;
   let consecutiveFailures = 0;
+  let usedMethod = 'sdui_api';
   const errors = [];
 
-  for (let i = 0; i < stale.length; i++) {
-    if (withdrawnCount >= maxCount) {
-      skippedCount += stale.length - i;
-      break;
-    }
-    const inv = stale[i];
+  for (let i = 0; i < toProcess.length; i++) {
+    const inv = toProcess[i];
     const delayMs = Math.round(3000 + Math.random() * 3000);
     await new Promise((resolve) => setTimeout(resolve, delayMs));
 
     try {
-      await voyager.withdrawInvitation(inv);
+      // Pass allowDomFallback: false to individual calls so batch does not open multiple background tabs
+      const res = await voyager.withdrawInvitation(inv, { allowDomFallback: false });
       withdrawnCount++;
       consecutiveFailures = 0;
       await logAction({
         action: ACTIONS.NETWORK_WITHDRAW_STALE_INVITES,
         publicId: inv.toPublicId || inv.recipientPublicId || inv.publicId || inv.vanityName || '',
         origin,
-        result: { status: 'withdrawn', invitationId: inv.invitationId, withdrawnAt: Date.now() },
+        result: {
+          status: 'withdrawn',
+          invitationId: inv.invitationId,
+          withdrawnAt: Date.now(),
+          method: res?.method || 'sdui_api',
+        },
       });
-      logDebug('good', 'Outreach', `[withdrawStaleInvites] Successfully withdrawn invitation for ${inv.publicId || inv.invitationId}`);
+      logDebug(
+        'good',
+        'Outreach',
+        `[withdrawStaleInvites] Successfully withdrawn invitation for ${inv.publicId || inv.invitationId} via ${res?.method || 'sdui_api'}`,
+      );
     } catch (err) {
       skippedCount++;
       consecutiveFailures++;
       errors.push({ invitationId: inv.invitationId, error: err.message });
-      logDebug('warn', 'Outreach', `[withdrawStaleInvites] Failed to withdraw invitation ${inv.invitationId}: ${err.message}`);
+      logDebug(
+        'warn',
+        'Outreach',
+        `[withdrawStaleInvites] Failed to withdraw invitation ${inv.invitationId}: ${err.message}`,
+      );
 
-      // Fail-fast guard: if 2 consecutive withdrawals fail with 0 successes, break immediately and throw
+      const status = err.status || err.response?.status || 0;
+      const isSduiRejection =
+        status === 400 || status === 404 || status === 422 || /400|404|422/i.test(String(err.message));
+
+      // If SDUI API fails twice with 400/404/422, hand off remaining eligible batch to single DOM fallback session
+      if (consecutiveFailures >= 2 && isSduiRejection) {
+        const remainingBatch = toProcess.slice(i + 1);
+        logDebug(
+          'warn',
+          'Outreach',
+          `[AutoWithdraw] SDUI API failed twice (${err.message}). Handoff of remaining ${remainingBatch.length} invites to single background DOM-click session...`,
+        );
+
+        if (remainingBatch.length > 0) {
+          try {
+            usedMethod = withdrawnCount > 0 ? 'hybrid' : 'dom_fallback';
+            const domRes = await voyager.withdrawViaDomFallback(remainingBatch);
+
+            if (domRes && Array.isArray(domRes.results)) {
+              for (const r of domRes.results) {
+                if (r.success) {
+                  withdrawnCount++;
+                  await logAction({
+                    action: ACTIONS.NETWORK_WITHDRAW_STALE_INVITES,
+                    publicId: r.publicId || '',
+                    origin,
+                    result: {
+                      status: 'withdrawn',
+                      invitationId: r.invitationId,
+                      withdrawnAt: Date.now(),
+                      method: 'dom_fallback',
+                    },
+                  });
+                } else {
+                  skippedCount++;
+                  errors.push({ invitationId: r.invitationId, error: r.reason });
+                }
+              }
+            }
+          } catch (domErr) {
+            logDebug(
+              'error',
+              'Outreach',
+              `[AutoWithdraw] DOM-click fallback error: ${domErr.message}`,
+            );
+            errors.push({ batch: 'dom_fallback', error: domErr.message });
+          }
+        }
+
+        // If after trying both SDUI and DOM fallback with 0 successes, break and throw error
+        if (withdrawnCount === 0) {
+          logDebug(
+            'error',
+            'Outreach',
+            `[withdrawStaleInvites] Fail-fast triggered: 0 successes after SDUI and DOM fallback. Aborting.`,
+          );
+          throw err;
+        }
+
+        break;
+      }
+
+      // Fail-fast guard: if 2 consecutive non-SDUI failures occur with 0 successes
       if (consecutiveFailures >= 2 && withdrawnCount === 0) {
         logDebug(
           'error',
@@ -286,13 +364,21 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
     }
   }
 
+  logDebug(
+    'info',
+    'Outreach',
+    `[withdrawStaleInvites] Finished run: scanned=${scannedCount}, withdrawn=${withdrawnCount}, skipped=${skippedCount}, method=${usedMethod}`,
+  );
+
   return {
+    scannedCount,
     withdrawnCount,
     skippedCount,
     withdrawn: withdrawnCount,
-    attempted: withdrawnCount + skippedCount,
+    attempted: scannedCount,
     totalPending: invitations.length,
     staleCount: stale.length,
+    method: usedMethod,
     ...(errors.length > 0 ? { errors } : {}),
   };
 }

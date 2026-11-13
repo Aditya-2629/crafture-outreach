@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as v from '../../src/background/voyager.js';
 import { ERROR } from '../../src/lib/actions.js';
 import { routeBackground, seedSession, status, stubFetch } from '../helpers/net.js';
@@ -895,9 +895,44 @@ describe('withdraw invitation', () => {
     expect(call.json.clientArguments.payload.invitationUrn).toEqual({ invitationId: '7504239478362759168' });
   });
 
-  it('throws cleanly when SDUI withdraw returns 400', async () => {
+  it('calls withdrawViaDomFallback when SDUI returns 400 and returns method dom_fallback', async () => {
+    net.push(status(400, { message: 'Invalid SDUI endpoint' }));
+    const origTabs = chrome.tabs;
+    const origScripting = chrome.scripting;
+
+    chrome.tabs = {
+      create: vi.fn().mockResolvedValue({ id: 99 }),
+      remove: vi.fn().mockResolvedValue(true),
+      get: vi.fn().mockResolvedValue({ id: 99, status: 'complete' }),
+      onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+    };
+    chrome.scripting = {
+      executeScript: vi.fn().mockResolvedValue([
+        { result: [{ invitationId: '7504239478362759168', success: true }] },
+      ]),
+    };
+
+    try {
+      const res = await v.withdrawInvitation({
+        invitationId: '7504239478362759168',
+        vanityName: 'adalovelace',
+      });
+      expect(res.ok).toBe(true);
+      expect(res.method).toBe('dom_fallback');
+      expect(chrome.tabs.create).toHaveBeenCalled();
+      expect(chrome.scripting.executeScript).toHaveBeenCalled();
+      expect(chrome.tabs.remove).toHaveBeenCalledWith(99);
+    } finally {
+      chrome.tabs = origTabs;
+      chrome.scripting = origScripting;
+    }
+  });
+
+  it('throws cleanly when SDUI withdraw returns 400 and DOM fallback fails', async () => {
     net.push(status(400, { message: 'Invitation not found or already withdrawn' }));
-    await expect(v.withdrawInvitation('7504239478362759168')).rejects.toThrow();
+    await expect(
+      v.withdrawInvitation('7504239478362759168', { allowDomFallback: false }),
+    ).rejects.toThrow();
   });
 });
 

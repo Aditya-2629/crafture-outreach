@@ -38,7 +38,7 @@ describe('withdrawStaleInvites', () => {
     const res = await outreach.withdrawStaleInvites({ olderThanDays: 14, maxCount: 10 });
 
     expect(fetchSpy).toHaveBeenCalled();
-    expect(withdrawSpy).toHaveBeenCalledWith(mockInvites[0]);
+    expect(withdrawSpy).toHaveBeenCalledWith(mockInvites[0], expect.anything());
     expect(res.withdrawnCount).toBe(1);
     expect(res.skippedCount).toBe(0);
 
@@ -46,7 +46,44 @@ describe('withdrawStaleInvites', () => {
     withdrawSpy.mockRestore();
   });
 
-  it('triggers fail-fast and throws when 2 consecutive withdrawals fail with 0 successes', async () => {
+  it('hands off remaining invites to withdrawViaDomFallback when SDUI fails twice', async () => {
+    const now = Date.now();
+    const staleTime = now - 20 * 24 * 60 * 60 * 1000;
+
+    const mockInvites = [
+      { invitationId: '101', sentTime: staleTime, publicId: 'p1', vanityName: 'p1' },
+      { invitationId: '102', sentTime: staleTime, publicId: 'p2', vanityName: 'p2' },
+      { invitationId: '103', sentTime: staleTime, publicId: 'p3', vanityName: 'p3' },
+      { invitationId: '104', sentTime: staleTime, publicId: 'p4', vanityName: 'p4' },
+    ];
+
+    const fetchSpy = vi.spyOn(voyager, 'fetchSentInvitations').mockResolvedValue(mockInvites);
+    const withdrawSpy = vi
+      .spyOn(voyager, 'withdrawInvitation')
+      .mockRejectedValue(new Error('SDUI error: 400 Bad Request'));
+
+    const domFallbackSpy = vi.spyOn(voyager, 'withdrawViaDomFallback').mockResolvedValue({
+      withdrawn: 2,
+      failed: 0,
+      results: [
+        { invitationId: '103', publicId: 'p3', success: true },
+        { invitationId: '104', publicId: 'p4', success: true },
+      ],
+    });
+
+    const res = await outreach.withdrawStaleInvites({ olderThanDays: 14, maxCount: 10 });
+
+    expect(withdrawSpy).toHaveBeenCalledTimes(2);
+    expect(domFallbackSpy).toHaveBeenCalledWith([mockInvites[2], mockInvites[3]]);
+    expect(res.withdrawnCount).toBe(2);
+    expect(res.method).toBe('dom_fallback');
+
+    fetchSpy.mockRestore();
+    withdrawSpy.mockRestore();
+    domFallbackSpy.mockRestore();
+  });
+
+  it('triggers fail-fast and throws when withdrawals fail with 0 successes across SDUI and DOM fallback', async () => {
     const now = Date.now();
     const staleTime = now - 20 * 24 * 60 * 60 * 1000;
 
@@ -60,16 +97,21 @@ describe('withdrawStaleInvites', () => {
     const withdrawSpy = vi
       .spyOn(voyager, 'withdrawInvitation')
       .mockRejectedValue(new Error('SDUI withdrawal failed: 400 Bad Request'));
+    const domFallbackSpy = vi.spyOn(voyager, 'withdrawViaDomFallback').mockResolvedValue({
+      withdrawn: 0,
+      failed: 1,
+      results: [{ invitationId: '103', publicId: 'p3', success: false }],
+    });
 
     await expect(
       outreach.withdrawStaleInvites({ olderThanDays: 14, maxCount: 10 }),
     ).rejects.toThrow('SDUI withdrawal failed: 400 Bad Request');
 
-    // Should only have attempted 2 calls before breaking immediately, skipping the 3rd
     expect(withdrawSpy).toHaveBeenCalledTimes(2);
 
     fetchSpy.mockRestore();
     withdrawSpy.mockRestore();
+    domFallbackSpy.mockRestore();
   });
 
   it('does not trigger fail-fast if at least 1 withdrawal succeeded', async () => {

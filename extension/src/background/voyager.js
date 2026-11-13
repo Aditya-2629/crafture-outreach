@@ -1083,12 +1083,243 @@ export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
 export const listSentInvitations = fetchSentInvitations;
 
 /**
- * Withdraw a pending sent invitation using LinkedIn's current SDUI endpoint.
+ * Self-contained page script executed inside https://www.linkedin.com/mynetwork/invitation-manager/sent/
+ * Locates invitation cards for given prospects and clicks the native Withdraw button and confirmation modal.
+ */
+async function domWithdrawInPage(targetInvites) {
+  const results = [];
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  for (const target of targetInvites) {
+    const vanity = String(target.vanityName || target.publicId || '').toLowerCase().trim();
+    const firstName = String(target.firstName || '').toLowerCase().trim();
+    const lastName = String(target.lastName || '').toLowerCase().trim();
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    // 1. Locate all invitation cards on the page
+    const candidateCards = Array.from(
+      document.querySelectorAll(
+        '.invitation-card, li.invitation-card, .mn-invitation-list li, [data-view-name="invitation-card"], .mn-invitation-card',
+      ),
+    );
+
+    let matchedCard = null;
+
+    for (const card of candidateCards) {
+      const cardText = (card.textContent || '').toLowerCase();
+      const profileLinks = Array.from(card.querySelectorAll('a[href*="/in/"]')).map((a) =>
+        (a.getAttribute('href') || '').toLowerCase(),
+      );
+
+      const matchesVanity = vanity && profileLinks.some((href) => href.includes(`/in/${vanity}`));
+      const matchesName = fullName && cardText.includes(fullName);
+
+      if (matchesVanity || matchesName) {
+        matchedCard = card;
+        break;
+      }
+    }
+
+    // Secondary fallback: search any anchor pointing to vanity and get its closest card container
+    if (!matchedCard && vanity) {
+      const link = document.querySelector(`a[href*="/in/${vanity}"]`);
+      if (link) {
+        matchedCard =
+          link.closest('li') ||
+          link.closest('.invitation-card') ||
+          link.closest('div[class*="invitation"]') ||
+          link.parentElement?.parentElement;
+      }
+    }
+
+    if (!matchedCard) {
+      results.push({
+        invitationId: target.invitationId,
+        publicId: vanity || fullName,
+        success: false,
+        reason: 'Invitation card not found in DOM',
+      });
+      continue;
+    }
+
+    // 2. Find the "Withdraw" button inside the matched card
+    const buttons = Array.from(matchedCard.querySelectorAll('button'));
+    const withdrawBtn = buttons.find((btn) => {
+      const txt = (btn.innerText || btn.textContent || '').trim().toLowerCase();
+      const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+      return txt === 'withdraw' || aria.includes('withdraw');
+    });
+
+    if (!withdrawBtn) {
+      results.push({
+        invitationId: target.invitationId,
+        publicId: vanity || fullName,
+        success: false,
+        reason: 'Withdraw button not found in card',
+      });
+      continue;
+    }
+
+    // Click the card's Withdraw button
+    withdrawBtn.click();
+    await sleep(650);
+
+    // 3. Find and click modal confirmation "Withdraw" button
+    const modal =
+      document.querySelector('[role="dialog"]') ||
+      document.querySelector('.artdeco-modal') ||
+      document.querySelector('#artdeco-modal-outlet');
+
+    let confirmBtn = null;
+    if (modal) {
+      const modalButtons = Array.from(modal.querySelectorAll('button'));
+      confirmBtn = modalButtons.find((btn) => {
+        const txt = (btn.innerText || btn.textContent || '').trim().toLowerCase();
+        const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+        return txt === 'withdraw' || aria.includes('withdraw');
+      });
+    }
+
+    if (confirmBtn) {
+      confirmBtn.click();
+      await sleep(1000);
+      results.push({
+        invitationId: target.invitationId,
+        publicId: vanity || fullName,
+        success: true,
+      });
+    } else {
+      // If modal didn't appear or withdrawal was instant
+      results.push({
+        invitationId: target.invitationId,
+        publicId: vanity || fullName,
+        success: true,
+        note: 'Card withdraw clicked without modal confirmation',
+      });
+    }
+
+    // Delay between cards (3-5s)
+    const cardDelay = Math.round(3000 + Math.random() * 2000);
+    await sleep(cardDelay);
+  }
+
+  return results;
+}
+
+/**
+ * Wait for a tab to finish loading or timeout.
+ */
+function waitForTabLoad(tabId, maxWaitMs = 15000) {
+  return new Promise((resolve) => {
+    let finished = false;
+    let timer = null;
+
+    function finish() {
+      if (finished) return;
+      finished = true;
+      if (timer) clearTimeout(timer);
+      try {
+        chrome.tabs.onUpdated.removeListener(onUpdatedListener);
+      } catch {}
+      resolve();
+    }
+
+    function onUpdatedListener(updatedId, info) {
+      if (updatedId === tabId && info.status === 'complete') {
+        finish();
+      }
+    }
+
+    timer = setTimeout(finish, maxWaitMs);
+
+    try {
+      chrome.tabs.onUpdated.addListener(onUpdatedListener);
+    } catch {
+      finish();
+      return;
+    }
+
+    Promise.resolve(chrome.tabs.get(tabId))
+      .then((t) => {
+        if (t && t.status === 'complete') finish();
+      })
+      .catch(() => {});
+  });
+}
+
+/**
+ * Fallback to clicking native Withdraw buttons in a background tab session via chrome.scripting.
+ *
+ * @param {Array<{invitationId: string, vanityName?: string, firstName?: string, lastName?: string, publicId?: string}>} invitesBatch
+ * @returns {Promise<{withdrawn: number, failed: number, results: Array}>}
+ */
+export async function withdrawViaDomFallback(invitesBatch) {
+  if (!Array.isArray(invitesBatch) || invitesBatch.length === 0) {
+    return { withdrawn: 0, failed: 0, results: [] };
+  }
+
+  if (typeof chrome === 'undefined' || !chrome.tabs?.create || !chrome.scripting?.executeScript) {
+    throw new EngineError(ERROR.UNAVAILABLE, 'Chrome tabs or scripting API unavailable for DOM fallback');
+  }
+
+  logDebug(
+    'info',
+    'AutoWithdraw',
+    `[AutoWithdraw] Opening single background tab for ${invitesBatch.length} invitations via DOM fallback...`,
+  );
+
+  let tab = null;
+  try {
+    tab = await chrome.tabs.create({
+      url: 'https://www.linkedin.com/mynetwork/invitation-manager/sent/',
+      active: false,
+    });
+
+    await waitForTabLoad(tab.id, 15000);
+    // Allow initial client-side React rendering
+    await new Promise((r) => setTimeout(r, 2000));
+
+    const execResults = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      world: 'MAIN',
+      args: [invitesBatch],
+      func: domWithdrawInPage,
+    });
+
+    const results = execResults && execResults[0] ? execResults[0].result || [] : [];
+    const withdrawn = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
+
+    logDebug(
+      'good',
+      'AutoWithdraw',
+      `[AutoWithdraw] DOM fallback completed: ${withdrawn} withdrawn, ${failed} failed.`,
+    );
+
+    return { withdrawn, failed, results };
+  } catch (err) {
+    logDebug('error', 'AutoWithdraw', `[AutoWithdraw] DOM fallback error: ${err.message || err}`);
+    throw err;
+  } finally {
+    if (tab && tab.id) {
+      try {
+        await chrome.tabs.remove(tab.id);
+      } catch {
+        /* tab may already have been closed */
+      }
+    }
+  }
+}
+
+/**
+ * Withdraw a pending sent invitation using LinkedIn's current SDUI endpoint,
+ * with automatic single-invite DOM fallback if SDUI returns 400/404/422.
  *
  * @param {string | { invitationId: string, profileUrn?: string, firstName?: string, lastName?: string, vanityName?: string }} invite
- * @returns {Promise<any>}
+ * @param {{ allowDomFallback?: boolean }} [options]
+ * @returns {Promise<{ ok: boolean, method: string, data?: any }>}
  */
-export async function withdrawInvitation(invite) {
+export async function withdrawInvitation(invite, options = { allowDomFallback: true }) {
   if (!invite) {
     throw new EngineError(ERROR.INVALID_PARAMS, 'invitationId or invite object is required to withdraw an invitation');
   }
@@ -1151,11 +1382,31 @@ export async function withdrawInvitation(invite) {
         body: sduiPayload,
       },
     );
-    return res;
+    return { ok: true, method: 'sdui_api', data: res };
   } catch (err) {
-    const status = err?.status || err?.response?.status || err?.code || 'UNKNOWN';
+    const status = err?.status || err?.response?.status || err?.code || 0;
+    const isSduiRejection =
+      status === 400 || status === 404 || status === 422 || /400|404|422/i.test(String(err?.message));
+
     const bodyText = err?.response?.text || err?.message || JSON.stringify(err);
-    logDebug('error', 'Voyager', `[withdrawInvitation Failed] id=${cleanInvitationId} status=${status} response=${bodyText}`);
+    logDebug('warn', 'Voyager', `[withdrawInvitation SDUI Failed] id=${cleanInvitationId} status=${status} response=${bodyText}`);
+
+    // If DOM fallback is allowed and it's an SDUI rejection (endpoint rotated or payload mismatch)
+    if (options.allowDomFallback && isSduiRejection && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      logDebug('warn', 'AutoWithdraw', '[AutoWithdraw] SDUI API failed, switching to DOM-click fallback...');
+      const inviteObj = {
+        invitationId: cleanInvitationId,
+        profileUrn,
+        firstName,
+        lastName,
+        vanityName,
+      };
+      const domRes = await withdrawViaDomFallback([inviteObj]);
+      if (domRes.withdrawn > 0) {
+        return { ok: true, method: 'dom_fallback', data: domRes };
+      }
+    }
+
     throw err;
   }
 }

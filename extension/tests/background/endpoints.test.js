@@ -160,4 +160,56 @@ describe('endpoints', () => {
     await new Promise((r) => setTimeout(r, 25));
     expect(auditCallCount).toBe(countAfterFirst);
   });
+
+  it('does not append query params to listSentInvitations if URL already has ?', async () => {
+    const fetchedUrls = [];
+    vi.spyOn(core, 'voyagerFetch').mockImplementation(async (url) => {
+      fetchedUrls.push(url);
+      return { ok: true };
+    });
+    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    // Sync a listSentInvitations URL that already contains query parameters
+    const existingWithQuery = '/voyager/api/relationships/sentInvitationViewsV2?count=100&q=invitationType';
+    await syncEndpointsFromVault(true);
+    // Overwrite cached endpoint to test
+    const endpoints = await initEndpoints();
+    endpoints.listSentInvitations = existingWithQuery;
+
+    await runReadOnlyEndpointAudit();
+    const listSentCall = fetchedUrls.find((u) => u.includes('sentInvitationViewsV2'));
+    expect(listSentCall).toBe(existingWithQuery);
+    expect(listSentCall?.split('?').length).toBe(2); // strictly one '?'
+  });
+
+  it('triggers background broken endpoint report when an audited endpoint returns ok: false', async () => {
+    vi.spyOn(core, 'voyagerFetch').mockImplementation(async (url) => {
+      if (url.includes('connectionsSummary')) {
+        const err = new Error('HTTP 404 Not Found');
+        err.status = 404;
+        throw err;
+      }
+      return { ok: true };
+    });
+
+    const reportCalls = [];
+    global.fetch = vi.fn().mockImplementation(async (url, opts) => {
+      if (String(url).includes('/report')) {
+        reportCalls.push({ url, body: JSON.parse(opts.body) });
+      }
+      return { ok: true, json: async () => ({ ok: true }) };
+    });
+
+    const audit = await runReadOnlyEndpointAudit();
+    expect(audit.results.connectionsSummary.ok).toBe(false);
+    expect(audit.results.connectionsSummary.status).toBe(404);
+
+    // Wait a tick for background fetch to fire
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(reportCalls.length).toBeGreaterThan(0);
+    const brokenReport = reportCalls.find((c) => c.body.key === 'connectionsSummary');
+    expect(brokenReport).toBeDefined();
+    expect(brokenReport.body.status).toBe(404);
+  });
 });

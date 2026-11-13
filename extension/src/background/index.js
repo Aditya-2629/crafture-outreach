@@ -38,6 +38,8 @@ import './objections.js';
 import { checkSnoozedReminders } from './telegram.js';
 import './google-workspace.js';
 import { backupToGoogleDrive } from './google-workspace.js';
+import './endpoints.js';
+import { initEndpoints, syncEndpointsFromVault } from './endpoints.js';
 
 import { ensureConnected, onAlarm, startKeepalive } from './bridge.js';
 
@@ -138,6 +140,7 @@ function reconnectBridge() {
 export const STALE_WITHDRAW_ALARM = 'outfox-stale-withdraw';
 export const SNOOZE_CHECK_ALARM = 'outfox-snooze-check';
 export const DRIVE_AUTOBACKUP_ALARM = 'outfox-drive-autobackup';
+export const ENDPOINTS_SYNC_ALARM = 'outfox-endpoints-sync';
 
 // Clear legacy campaignTick alarm on startup so duplicate alarms never collide
 try {
@@ -149,10 +152,19 @@ chrome.alarms.create(QUEUE_TICK_ALARM, { periodInMinutes: QUEUE_TICK_MINUTES });
 chrome.alarms.create(STALE_WITHDRAW_ALARM, { periodInMinutes: 720 });
 chrome.alarms.create(SNOOZE_CHECK_ALARM, { periodInMinutes: 60 });
 chrome.alarms.create(DRIVE_AUTOBACKUP_ALARM, { periodInMinutes: 1440 });
+chrome.alarms.create(ENDPOINTS_SYNC_ALARM, { periodInMinutes: 360 });
 startKeepalive();
+
+// Run endpoint initialization on startup
+initEndpoints().then(() => syncEndpointsFromVault(false)).catch(() => {});
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   onAlarm(alarm).catch(() => {});
+
+  if (alarm.name === ENDPOINTS_SYNC_ALARM) {
+    syncEndpointsFromVault(false).catch(() => {});
+    return;
+  }
 
   if (alarm.name === DRIVE_AUTOBACKUP_ALARM) {
     backupToGoogleDrive().catch(() => {});
@@ -194,6 +206,7 @@ function onStartup() {
   try {
     chrome.alarms?.clear?.('campaignTick');
   } catch {}
+  initEndpoints().then(() => syncEndpointsFromVault(false)).catch(() => {});
 }
 
 chrome.runtime.onStartup.addListener(onStartup);

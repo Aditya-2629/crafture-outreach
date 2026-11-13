@@ -27,7 +27,8 @@
     "https://api.openai.com/*",
     "https://api.anthropic.com/*",
     "https://api.hunter.io/*",
-    "https://api.apollo.io/*"
+    "https://api.apollo.io/*",
+    "https://vault.api.crafture.space/*"
   ],
   "optional_host_permissions": [
     "https://www.googleapis.com/*",

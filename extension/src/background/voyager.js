@@ -18,6 +18,7 @@ import { ERROR, EngineError, INVITE_NOTE_FIX, INVITE_NOTE_MAX } from '../lib/act
 import { isNoteLimitActive, setNoteLimitActive, logDebug } from '../lib/storage.js';
 import { noteBucketBackoff } from './quota.js';
 import { collection } from './normalized.js';
+import { getEndpoint, syncEndpointsFromVault, reportBrokenEndpoint } from './endpoints.js';
 import {
   LINKEDIN_BASE,
   generateTrackingId,
@@ -328,7 +329,7 @@ let selfUrnCache = '';
 
 /** Raw `/me`. */
 export async function me() {
-  return voyagerFetch(ENDPOINTS.me);
+  return voyagerFetch(getEndpoint('me') || ENDPOINTS.me);
 }
 
 /**
@@ -1002,9 +1003,10 @@ export async function getMutualConnectionsCount({ profileUrn }) {
  * @returns {Promise<{publicId: string, invitationUrn: string, sentAt?: number}[]>}
  */
 export async function getSentInvitations({ start = 0, count = 100 } = {}) {
+  const sentPath = getEndpoint('listSentInvitations') || ENDPOINTS.sentInvitations;
   try {
     const raw = await voyagerFetch(
-      `${ENDPOINTS.sentInvitations}?${qs({
+      `${sentPath}?${qs({
         q: 'invitationType',
         invitationType: 'CONNECTION',
         start,
@@ -1030,9 +1032,10 @@ export async function getSentInvitations({ start = 0, count = 100 } = {}) {
  * @returns {Promise<{invitationId: string, sentTime: number, sentAt: number, profileUrn: string, firstName: string, lastName: string, vanityName: string, toMemberUrn: string, toPublicId: string, invitationUrn?: string, recipientPublicId?: string, publicId?: string}[]>}
  */
 export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
+  const listPath = getEndpoint('listSentInvitations') || '/voyager/api/relationships/invitations';
   try {
     const raw = await voyagerFetch(
-      `/voyager/api/relationships/invitations?start=${start}&count=${count}&invitationType=SENT`,
+      `${listPath}?start=${start}&count=${count}&invitationType=SENT`,
     );
     const normalized = normalizeSentInvitations(raw);
     if (normalized.length > 0) {
@@ -1370,40 +1373,66 @@ export async function withdrawInvitation(invite, options = { allowDomFallback: t
     isModal: true,
   };
 
+  const withdrawPath =
+    getEndpoint('withdrawInvitation') ||
+    '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation';
+
   try {
-    const res = await voyagerFetch(
-      '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation',
-      {
-        method: 'POST',
-        headers: {
-          accept: 'application/json, text/plain, */*',
-          'content-type': 'application/json; charset=UTF-8',
-        },
-        body: sduiPayload,
+    const res = await voyagerFetch(withdrawPath, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/plain, */*',
+        'content-type': 'application/json; charset=UTF-8',
       },
-    );
+      body: sduiPayload,
+    });
     return { ok: true, method: 'sdui_api', data: res };
   } catch (err) {
     const status = err?.status || err?.response?.status || err?.code || 0;
     const isSduiRejection =
-      status === 400 || status === 404 || status === 422 || /400|404|422/i.test(String(err?.message));
+      status === 400 || status === 404 || status === 410 || status === 422 || /400|404|410|422/i.test(String(err?.message));
 
     const bodyText = err?.response?.text || err?.message || JSON.stringify(err);
     logDebug('warn', 'Voyager', `[withdrawInvitation SDUI Failed] id=${cleanInvitationId} status=${status} response=${bodyText}`);
 
-    // If DOM fallback is allowed and it's an SDUI rejection (endpoint rotated or payload mismatch)
-    if (options.allowDomFallback && isSduiRejection && typeof chrome !== 'undefined' && chrome.tabs?.create) {
-      logDebug('warn', 'AutoWithdraw', '[AutoWithdraw] SDUI API failed, switching to DOM-click fallback...');
-      const inviteObj = {
-        invitationId: cleanInvitationId,
-        profileUrn,
-        firstName,
-        lastName,
-        vanityName,
-      };
-      const domRes = await withdrawViaDomFallback([inviteObj]);
-      if (domRes.withdrawn > 0) {
-        return { ok: true, method: 'dom_fallback', data: domRes };
+    if (isSduiRejection) {
+      // 1. Hot-swap retry: check if Vault has updated endpoint URL
+      try {
+        const syncRes = await syncEndpointsFromVault(true);
+        if (syncRes?.changed) {
+          const freshPath = getEndpoint('withdrawInvitation');
+          logDebug('good', 'Voyager', `[withdrawInvitation] Hot-swapping to new Vault endpoint: ${freshPath}`);
+          const retryRes = await voyagerFetch(freshPath, {
+            method: 'POST',
+            headers: {
+              accept: 'application/json, text/plain, */*',
+              'content-type': 'application/json; charset=UTF-8',
+            },
+            body: sduiPayload,
+          });
+          return { ok: true, method: 'sdui_api_hotswap', data: retryRes };
+        }
+      } catch (retryErr) {
+        logDebug('warn', 'Voyager', `[withdrawInvitation] Hot-swap retry failed: ${retryErr.message}`);
+      }
+
+      // 2. Silently report broken endpoint to Vault (12h cooldown avoids log spam)
+      reportBrokenEndpoint('withdrawInvitation', status, withdrawPath, err).catch(() => {});
+
+      // 3. Fall back seamlessly to background tab DOM automation
+      if (options.allowDomFallback && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+        logDebug('warn', 'AutoWithdraw', '[AutoWithdraw] SDUI API failed, switching to DOM-click fallback...');
+        const inviteObj = {
+          invitationId: cleanInvitationId,
+          profileUrn,
+          firstName,
+          lastName,
+          vanityName,
+        };
+        const domRes = await withdrawViaDomFallback([inviteObj]);
+        if (domRes.withdrawn > 0) {
+          return { ok: true, method: 'dom_fallback', data: domRes };
+        }
       }
     }
 
@@ -1517,7 +1546,8 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
   const id = publicId || publicIdentifier;
   const urn = toFsdProfileUrn(profileUrn) || (await resolveProfileUrn(id));
 
-  const path = `${ENDPOINTS.createInvitation}?${qs({
+  const basePath = getEndpoint('sendInvite') || ENDPOINTS.createInvitation;
+  const path = `${basePath}?${qs({
     action: 'verifyQuotaAndCreateV2',
     decorationId: ENDPOINTS.decorations.invitationCreation,
   })}`;
@@ -1603,6 +1633,10 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
             await noteBucketBackoff('invite', 24 * 60 * 60 * 1000);
           } catch (_) {}
         }
+        const bStatus = blankErr?.status || blankErr?.response?.status || 0;
+        if (bStatus === 400 || bStatus === 404 || bStatus === 410 || bStatus === 422) {
+          reportBrokenEndpoint('sendInvite', bStatus, path, blankErr).catch(() => {});
+        }
         if (blankErr instanceof EngineError && blankErr.code !== ERROR.LINKEDIN_ERROR) throw blankErr;
         throw inviteFailure(
           blankPayload,
@@ -1638,6 +1672,10 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
         try {
           await noteBucketBackoff('invite', 24 * 60 * 60 * 1000);
         } catch (_) {}
+      }
+      const eStatus = e?.status || e?.response?.status || 0;
+      if (eStatus === 400 || eStatus === 404 || eStatus === 410 || eStatus === 422) {
+        reportBrokenEndpoint('sendInvite', eStatus, path, e).catch(() => {});
       }
       if (e instanceof EngineError && e.code !== ERROR.LINKEDIN_ERROR) throw e;
       throw inviteFailure(e && e.response, (e && e.message) || 'LinkedIn refused the invitation.');
@@ -1868,7 +1906,8 @@ export async function getNetworkStats() {
 
   // 2. Fetch connections summary (isolated try/catch so failure never zeroes out connections)
   try {
-    const connRes = await voyagerFetch('/voyager/api/relationships/connectionsSummary');
+    const connPath = getEndpoint('connectionsSummary') || '/voyager/api/relationships/connectionsSummary';
+    const connRes = await voyagerFetch(connPath);
     connectionsCount =
       connRes?.data?.numConnections ||
       connRes?.numConnections ||
@@ -1886,7 +1925,8 @@ export async function getNetworkStats() {
  */
 export async function getProfileViewsCount() {
   try {
-    const res = await voyagerFetch('/voyager/api/identity/wvmpCards');
+    const wvmpPath = getEndpoint('profileViewsCount') || '/voyager/api/identity/wvmpCards';
+    const res = await voyagerFetch(wvmpPath);
     const cards =
       res?.data?.elements ||
       res?.data?.data?.elements ||

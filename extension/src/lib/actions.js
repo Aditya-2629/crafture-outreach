@@ -135,6 +135,8 @@ export const ACTIONS = Object.freeze({
   BACKUP_DRIVE_SAVE: 'backup.driveSave',
   BACKUP_DRIVE_RESTORE: 'backup.driveRestore',
   OUTREACH_MAILBOX_SWITCH: 'outreachMailbox.switch',
+  VAULT_SYNC_ENDPOINTS: 'vault.syncEndpoints',
+  VAULT_HEALTH_AUDIT: 'vault.healthAudit',
 });
 
 /* ================================================================== */

@@ -22,6 +22,7 @@ import * as voyager from './voyager.js';
 import { meteredProfileUrn } from './visits.js';
 import { emit } from './events.js';
 import { getGmailToken, removeCachedToken, fetchUserEmail, sendEmail, connectGmail } from './gmail.js';
+import { reportBrokenEndpoint } from './endpoints.js';
 
 /** Which quota bucket each action draws from. */
 export const QUOTA_KIND = Object.freeze({
@@ -296,6 +297,7 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
 
       // If SDUI API fails twice with 400/404/422, hand off remaining eligible batch to single DOM fallback session
       if (consecutiveFailures >= 2 && isSduiRejection) {
+        reportBrokenEndpoint('withdrawInvitation', status, '', err).catch(() => {});
         const remainingBatch = toProcess.slice(i + 1);
         logDebug(
           'warn',

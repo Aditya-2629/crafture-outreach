@@ -13,11 +13,14 @@ import { getConfig, setConfig } from '../lib/config.js';
 import { onEvent } from './events.js';
 import { allProfiles, getStoredProfile } from '../lib/storage.js';
 import {
+  getWorkspaceToken,
   getGoogleWorkspaceToken,
   connectGoogleWorkspace,
   disconnectGoogleWorkspace,
   switchOutreachMailbox,
 } from './gmail.js';
+
+export { getWorkspaceToken };
 
 const SHEETS_CRM_STORAGE_KEY = 'outfox_sheets_crm_meta';
 const DRIVE_BACKUP_FOLDER = 'OutFox Backups';
@@ -134,7 +137,7 @@ export async function getOrCreateLiveCrmSheet(token) {
  * Ensures "OutFox Live CRM" Google Sheet is created and returns metadata.
  */
 export async function ensureLiveCrmSheet(interactive = false) {
-  const token = await getGoogleWorkspaceToken(interactive);
+  const token = await getWorkspaceToken(interactive);
   return getOrCreateLiveCrmSheet(token);
 }
 
@@ -235,7 +238,7 @@ export async function syncAllLeadsToSheet() {
     throw new Error('Google Workspace is not connected. Connect your Google account first.');
   }
 
-  const token = await getGoogleWorkspaceToken(false);
+  const token = await getWorkspaceToken();
   const { spreadsheetId, spreadsheetUrl } = await getOrCreateLiveCrmSheet(token);
 
   const profiles = await allProfiles();
@@ -377,7 +380,7 @@ export async function backupToGoogleDrive() {
     throw new Error('Google Workspace is not connected. Connect your Google account first.');
   }
 
-  const token = await getGoogleWorkspaceToken(false);
+  const token = await getWorkspaceToken();
   const folderId = await getOrCreateDriveBackupFolder(token);
   const snapshot = await exportFullSnapshot();
   const fileContent = JSON.stringify(snapshot, null, 2);
@@ -472,7 +475,7 @@ export async function restoreFromGoogleDrive() {
     throw new Error('Google Workspace is not connected. Connect your Google account first.');
   }
 
-  const token = await getGoogleWorkspaceToken(false);
+  const token = await getWorkspaceToken();
 
   // Search for outfox-backup.json
   const fileQuery = `name = '${DRIVE_BACKUP_FILENAME}' and trashed = false`;
@@ -514,7 +517,7 @@ register(ACTIONS.GOOGLE_WORKSPACE_CONNECT, async (params = {}) => {
   const result = await connectGoogleWorkspace(interactive);
   let spreadsheetUrl = '';
   try {
-    const token = await getGoogleWorkspaceToken(false);
+    const token = await getWorkspaceToken(false);
     const sheet = await getOrCreateLiveCrmSheet(token);
     spreadsheetUrl = sheet?.spreadsheetUrl || '';
   } catch {

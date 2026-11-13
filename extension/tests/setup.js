@@ -214,6 +214,16 @@ function buildChrome() {
         return settle(mock.downloads.length, callback);
       }),
     },
+
+    identity: {
+      getRedirectURL: vi.fn((path) => `https://${runtime.id}.chromiumapp.org/${path || ''}`),
+      launchWebAuthFlow: vi.fn(({ url, interactive }, callback) => {
+        if (typeof callback === 'function') callback(null);
+      }),
+      removeCachedAuthToken: vi.fn(({ token }, callback) => {
+        if (typeof callback === 'function') callback();
+      }),
+    },
   };
 }
 
@@ -245,6 +255,9 @@ const runtime = {
   },
   get lastError() {
     return mock.lastError;
+  },
+  set lastError(err) {
+    mock.lastError = err;
   },
 };
 

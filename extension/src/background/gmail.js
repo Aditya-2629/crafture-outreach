@@ -124,10 +124,17 @@ export async function getGoogleWorkspaceToken(interactive = false) {
 
   let authResult;
   try {
-    authResult = await launchGoogleOAuth({ scopes: WORKSPACE_SCOPES, interactive: false, prompt: '' });
+    authResult = await launchGoogleOAuth({
+      scopes: WORKSPACE_SCOPES,
+      interactive: Boolean(interactive),
+      prompt: interactive ? 'select_account' : '',
+    });
   } catch (err) {
-    if (!interactive) throw new Error('Google Workspace sign-in required: ' + err.message);
-    authResult = await launchGoogleOAuth({ scopes: WORKSPACE_SCOPES, interactive: true, prompt: 'select_account' });
+    const isInteractionRequired = /interaction required|user interaction/i.test(err?.message || '');
+    if (!interactive && isInteractionRequired) {
+      throw new Error('User interaction required');
+    }
+    throw new Error('Google Workspace sign-in required: ' + (err.message || err));
   }
 
   const email = await fetchUserEmail(authResult.token);
@@ -140,11 +147,27 @@ export async function getGoogleWorkspaceToken(interactive = false) {
 }
 
 /**
+ * High-level helper for user-triggered actions.
+ * Executes silent refresh (interactive: false) first; if it fails with "User interaction required",
+ * automatically retries launchWebAuthFlow with interactive: true before throwing an error.
+ */
+export async function getWorkspaceToken(interactive = false) {
+  try {
+    return await getGoogleWorkspaceToken(interactive);
+  } catch (err) {
+    if (/interaction required|user interaction/i.test(err?.message || '')) {
+      return await getGoogleWorkspaceToken(true);
+    }
+    throw err;
+  }
+}
+
+/**
  * Connects Google Workspace account with all 4 scopes (Gmail, Userinfo, Sheets, Drive).
  * Defaults cold outreach mailbox to this account unless user previously selected a custom Gmail.
  */
 export async function connectGoogleWorkspace(interactive = true) {
-  const token = await getGoogleWorkspaceToken(interactive);
+  const token = await getWorkspaceToken(interactive);
   const email = await fetchUserEmail(token);
   const cfg = await getConfig();
 
@@ -318,7 +341,7 @@ export async function getGmailToken(interactive = false) {
   }
 
   // Default: workspace
-  return getGoogleWorkspaceToken(interactive);
+  return getWorkspaceToken(interactive);
 }
 
 function safeBase64Encode(str) {

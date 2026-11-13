@@ -194,6 +194,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
   if (alarm.name !== CAMPAIGN_TICK_ALARM && alarm.name !== OUTFOX_CAMPAIGN_TICK_ALARM) return;
   reconnectBridge();
+  syncEndpointsFromVault(false).catch(() => {});
   handle(ACTIONS.CAMPAIGN_TICK, {}, 'system')
     .then((res) => {
       if (!res.ok) console.warn('[Campaign tick]', res.error);

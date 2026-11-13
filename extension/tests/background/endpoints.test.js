@@ -63,4 +63,20 @@ describe('endpoints', () => {
     expect(second.skipped).toBe(true);
     expect(second.reason).toBe('cooldown_active');
   });
+
+  it('throttles syncEndpointsFromVault when force is false and called within 2 minutes', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ endpoints: {} }),
+    });
+
+    const first = await syncEndpointsFromVault(true);
+    expect(first.ok).toBe(true);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    const second = await syncEndpointsFromVault(false);
+    expect(second.throttled).toBe(true);
+    // fetch should not be called again
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
 });

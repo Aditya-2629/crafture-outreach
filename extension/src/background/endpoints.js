@@ -28,6 +28,7 @@ export const DEFAULT_ENDPOINTS = Object.freeze({
 const STORAGE_ENDPOINTS_KEY = 'outfox_remote_endpoints';
 const STORAGE_REPORTS_KEY = 'outfox_endpoint_reports';
 const REPORT_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours
+const SYNC_THROTTLE_MS = 2 * 60 * 1000; // 2 minutes throttle for lightweight polling
 
 let cachedEndpoints = { ...DEFAULT_ENDPOINTS };
 let endpointsMeta = {
@@ -75,6 +76,11 @@ export function getEndpoint(key) {
  * @returns {Promise<{ ok: boolean, changed: boolean, endpoints: object, error?: string }>}
  */
 export async function syncEndpointsFromVault(force = false) {
+  const now = Date.now();
+  if (!force && now - (endpointsMeta.lastSyncAt || 0) < SYNC_THROTTLE_MS) {
+    return { ok: true, changed: false, endpoints: cachedEndpoints, throttled: true };
+  }
+
   try {
     const res = await fetch(VAULT_API_URL, {
       method: 'GET',

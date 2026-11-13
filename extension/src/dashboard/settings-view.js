@@ -792,33 +792,6 @@ export async function renderSettingsView(container, ctx = {}) {
                 </div>
               </div>
 
-              <!-- Dynamic Endpoints & API Health -->
-              <div class="settings-block-section" style="background: #ffffff; border: 1px solid #e2e8f0;">
-                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-                  <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: #eff6ff; color: #2563eb;">
-                      ${ICONS.search}
-                    </span>
-                    <div>
-                      <div style="font-size: 13px; font-weight: 700; color: #14142b;">
-                        Dynamic LinkedIn Endpoints & Vault
-                      </div>
-                      <div style="font-size: 12px; color: #64748b;">
-                        Hot-swappable endpoints synced with Vault to prevent breakages
-                      </div>
-                    </div>
-                  </div>
-                  <div style="display: inline-flex; align-items: center; gap: 8px;">
-                    <button type="button" class="btn-primary-settings" id="btn-sync-vault-endpoints" style="padding: 6px 12px; font-size: 12px; background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
-                      🔄 Sync Vault
-                    </button>
-                    <button type="button" class="btn-primary-settings" id="btn-check-api-health" style="padding: 6px 14px; font-size: 12px; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
-                      ⚡ Check API Health
-                    </button>
-                  </div>
-                </div>
-              </div>
-
               <div class="settings-save-bar">
                 <button type="button" class="btn-primary-settings" id="btn-save-activity-settings">Save Activity Settings</button>
               </div>
@@ -1445,50 +1418,6 @@ export async function renderSettingsView(container, ctx = {}) {
         ctx.showToast?.(`Cross-campaign deduplication turned ${dedupeAcrossCampaigns ? 'ON' : 'OFF'}.`, 'info');
       } catch (err) {
         console.warn('Failed to update dedupeAcrossCampaigns config', err);
-      }
-    });
-
-    container.querySelector('#btn-sync-vault-endpoints')?.addEventListener('click', async (e) => {
-      const btn = e.currentTarget;
-      const originalHtml = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '🔄 Syncing...';
-      try {
-        const res = await call(ACTIONS.VAULT_SYNC_ENDPOINTS, { force: true }, { timeoutMs: 15000 });
-        if (res?.ok) {
-          ctx.showToast?.(`Vault endpoints synced successfully (${res.changed ? 'updated' : 'up to date'}).`, 'success');
-        } else {
-          ctx.showToast?.(`Vault sync: ${res?.error || 'No updates'} (using offline defaults).`, 'info');
-        }
-      } catch (err) {
-        ctx.showToast?.(`Vault sync notice: ${err.message || 'Offline defaults active'}`, 'info');
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
-      }
-    });
-
-    container.querySelector('#btn-check-api-health')?.addEventListener('click', async (e) => {
-      const btn = e.currentTarget;
-      const originalHtml = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '⏳ Auditing...';
-      try {
-        const res = await call(ACTIONS.VAULT_HEALTH_AUDIT, {}, { timeoutMs: 30000 });
-        const results = res?.results || {};
-        const entries = Object.entries(results);
-        const okCount = entries.filter(([_, r]) => r.ok).length;
-        const total = entries.length;
-        if (okCount === total && total > 0) {
-          ctx.showToast?.(`All ${total} read-only endpoints healthy (200 OK)! Telemetry sent to Vault.`, 'success');
-        } else {
-          ctx.showToast?.(`API Health: ${okCount}/${total} endpoints healthy. Telemetry sent to Vault.`, 'info');
-        }
-      } catch (err) {
-        ctx.showToast?.(`Health audit error: ${err.message || 'Failed to complete audit'}`, 'error');
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
       }
     });
 

@@ -952,7 +952,7 @@ describe('writes', () => {
       await expect(
         v.sendInvite({ profileUrn: 'urn:li:fsd_profile:ACoAAAada' }),
       ).rejects.toMatchObject({
-        code: ERROR.LINKEDIN_ERROR,
+        code: ERROR.INVALID_PARAMS,
         message: expect.stringContaining('CANT_RESEND_YET'),
         extra: { howToFix: expect.stringContaining('already pending') },
       });

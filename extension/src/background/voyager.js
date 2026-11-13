@@ -1123,8 +1123,8 @@ function looksLikePerProspectIssue(code, message) {
   const m = String(message || '');
   return (
     looksLikeDuplicate(c, m) ||
-    /WITHDRAWN|EMAIL_REQUIRED|CANT_CREATE_INVITATION|CANT_RESEND/i.test(c) ||
-    /already (been )?(sent|invited)|pending invitation|duplicate|withdr(ew|awn)|recently withdrew|email (required|address)|enter.*email|cannot connect|not allowed to connect|cannot be invited/i.test(m)
+    /WITHDRAWN|EMAIL_REQUIRED|CANT_CREATE_INVITATION|CANT_RESEND|CANT_RESEND_YET/i.test(c) ||
+    /already (been )?(sent|invited)|pending invitation|duplicate|CANT_RESEND_YET|withdr(ew|awn)|recently withdrew|email (required|address)|enter.*email|cannot connect|not allowed to connect|cannot be invited/i.test(m)
   );
 }
 
@@ -1286,6 +1286,21 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
       }
     } else {
       // It was already blank when it failed
+      const payload = e && e.response;
+      const msg = (e && e.message) || 'LinkedIn refused the invitation.';
+      const data = (payload && payload.data) || payload || {};
+      const errCode = String(data.code || data.status || e?.code || '');
+      const errMsg = String(data.message || msg);
+
+      // If already-invited or per-prospect issue, throw INVALID_PARAMS immediately (permanent per-lead skip)
+      if (looksLikePerProspectIssue(errCode, errMsg)) {
+        throw new EngineError(
+          ERROR.INVALID_PARAMS,
+          errCode ? `LinkedIn refused the invitation (${errCode}): ${errMsg}` : `LinkedIn refused the invitation: ${errMsg}`,
+          { howToFix: INVITE_DUPLICATE_FIX },
+        );
+      }
+
       const isBlankCustomLimit =
         e?.code === 'CUSTOM_INVITE_LIMIT_REACHED' ||
         e?.isCustomInviteLimit ||

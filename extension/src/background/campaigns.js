@@ -1259,7 +1259,7 @@ export async function tick() {
           const isPermanent =
             errorCode === ERROR.NOT_FOUND ||
             errorCode === ERROR.INVALID_PARAMS ||
-            /not found|invalid|blacklisted|already (been )?(sent|invited)|pending invitation|duplicate|withdr(ew|awn)|recently withdrew|email (required|address)|cannot connect/i.test(errorMsg);
+            /not found|invalid|blacklisted|already (been )?(sent|invited)|pending invitation|duplicate|CANT_RESEND_YET|withdr(ew|awn)|recently withdrew|email (required|address)|cannot connect/i.test(errorMsg);
 
           const isNoteLimitOnly =
             errorCode === 'CUSTOM_INVITE_LIMIT_REACHED' ||

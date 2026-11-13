@@ -112,4 +112,52 @@ describe('endpoints', () => {
     expect(messengerCall).toContain('variables=');
     expect(messengerCall).toContain('ACoAAATEST');
   });
+
+  it('normalizes object endpoints with url property', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        endpoints: {
+          connectionsSummary: {
+            url: 'connectionsSummary_TEST404',
+            method: 'GET',
+            status: 'healthy',
+          },
+        },
+      }),
+    });
+
+    const res = await syncEndpointsFromVault(true);
+    expect(res.ok).toBe(true);
+    expect(res.changed).toBe(true);
+    expect(getEndpoint('connectionsSummary')).toBe('connectionsSummary_TEST404');
+  });
+
+  it('deduplicates auditRequestedAt so it runs strictly once per request timestamp', async () => {
+    let auditCallCount = 0;
+    vi.spyOn(core, 'voyagerFetch').mockImplementation(async () => {
+      auditCallCount++;
+      return { ok: true };
+    });
+
+    const testRequestedAt = Date.now() + 5000000;
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        endpoints: {},
+        auditRequestedAt: testRequestedAt,
+      }),
+    });
+
+    // First sync should trigger audit
+    await syncEndpointsFromVault(true);
+    await new Promise((r) => setTimeout(r, 25));
+    const countAfterFirst = auditCallCount;
+    expect(countAfterFirst).toBeGreaterThan(0);
+
+    // Second sync with identical auditRequestedAt should NOT trigger audit again
+    await syncEndpointsFromVault(true);
+    await new Promise((r) => setTimeout(r, 25));
+    expect(auditCallCount).toBe(countAfterFirst);
+  });
 });

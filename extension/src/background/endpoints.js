@@ -29,6 +29,7 @@ export const DEFAULT_ENDPOINTS = Object.freeze({
 
 const STORAGE_ENDPOINTS_KEY = 'outfox_remote_endpoints';
 const STORAGE_REPORTS_KEY = 'outfox_endpoint_reports';
+const STORAGE_LAST_AUDIT_RUN_KEY = 'outfox_last_audit_run_at';
 const REPORT_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours
 const SYNC_THROTTLE_MS = 2 * 60 * 1000; // 2 minutes throttle for lightweight polling
 
@@ -46,14 +47,16 @@ export async function initEndpoints() {
     return cachedEndpoints;
   }
   try {
-    const data = await chrome.storage.local.get([STORAGE_ENDPOINTS_KEY]);
+    const data = await chrome.storage.local.get([STORAGE_ENDPOINTS_KEY, STORAGE_LAST_AUDIT_RUN_KEY]);
     const stored = data[STORAGE_ENDPOINTS_KEY];
     if (stored && typeof stored === 'object') {
       if (stored.endpoints && typeof stored.endpoints === 'object') {
         cachedEndpoints = { ...DEFAULT_ENDPOINTS, ...stored.endpoints };
       }
       endpointsMeta.lastSyncAt = Number(stored.lastSyncAt) || 0;
-      endpointsMeta.lastAuditRunAt = Number(stored.lastAuditRunAt) || 0;
+      endpointsMeta.lastAuditRunAt = Number(data[STORAGE_LAST_AUDIT_RUN_KEY] || stored.lastAuditRunAt) || 0;
+    } else if (data[STORAGE_LAST_AUDIT_RUN_KEY] !== undefined) {
+      endpointsMeta.lastAuditRunAt = Number(data[STORAGE_LAST_AUDIT_RUN_KEY]) || 0;
     }
   } catch (err) {
     console.warn('[Endpoints] Failed to load cached endpoints:', err);
@@ -107,8 +110,9 @@ export async function syncEndpointsFromVault(force = false) {
 
     if (remoteEndpoints && typeof remoteEndpoints === 'object') {
       for (const [k, val] of Object.entries(remoteEndpoints)) {
-        if (typeof val === 'string' && val.trim() && cachedEndpoints[k] !== val.trim()) {
-          cachedEndpoints[k] = val.trim();
+        const rawUrl = typeof val === 'string' ? val : val?.url;
+        if (typeof rawUrl === 'string' && rawUrl.trim() && cachedEndpoints[k] !== rawUrl.trim()) {
+          cachedEndpoints[k] = rawUrl.trim();
           changed = true;
         }
       }
@@ -125,9 +129,29 @@ export async function syncEndpointsFromVault(force = false) {
       });
     }
 
-    // Check if Vault requested an on-demand read-only health audit
-    if (payload.auditRequestedAt && Number(payload.auditRequestedAt) > endpointsMeta.lastAuditRunAt) {
-      logDebug('good', 'Endpoints', '[Vault Sync] On-demand health audit requested by Vault. Running...');
+    // Deduplicate auditRequestedAt persistently
+    let lastAuditRunAt = endpointsMeta.lastAuditRunAt || 0;
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      const storedAudit = await chrome.storage.local.get([STORAGE_LAST_AUDIT_RUN_KEY]);
+      if (storedAudit && storedAudit[STORAGE_LAST_AUDIT_RUN_KEY] !== undefined) {
+        lastAuditRunAt = Number(storedAudit[STORAGE_LAST_AUDIT_RUN_KEY]) || 0;
+      }
+    }
+
+    const requestedAt = Number(payload.auditRequestedAt || 0);
+    if (requestedAt > lastAuditRunAt) {
+      endpointsMeta.lastAuditRunAt = requestedAt;
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        // Immediately persist BEFORE running audit so concurrent/rapid ticks never re-trigger
+        await chrome.storage.local.set({
+          [STORAGE_LAST_AUDIT_RUN_KEY]: requestedAt,
+        });
+      }
+      logDebug(
+        'good',
+        'Endpoints',
+        `[Vault Sync] On-demand health audit requested by Vault (req=${requestedAt}, last=${lastAuditRunAt}). Running...`,
+      );
       runReadOnlyEndpointAudit().catch((err) => {
         logDebug('warn', 'Endpoints', `[Vault Audit Error] ${err.message}`);
       });
@@ -304,16 +328,19 @@ export async function runReadOnlyEndpointAudit() {
   }
 
   const now = Date.now();
-  endpointsMeta.lastAuditRunAt = now;
+  endpointsMeta.lastAuditRunAt = Math.max(now, endpointsMeta.lastAuditRunAt);
 
   if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-    chrome.storage.local.get([STORAGE_ENDPOINTS_KEY]).then((data) => {
+    chrome.storage.local.get([STORAGE_ENDPOINTS_KEY, STORAGE_LAST_AUDIT_RUN_KEY]).then((data) => {
       const stored = data[STORAGE_ENDPOINTS_KEY] || {};
+      const currentStored = Number(data[STORAGE_LAST_AUDIT_RUN_KEY]) || 0;
+      const latestAuditTime = Math.max(now, currentStored, endpointsMeta.lastAuditRunAt);
       chrome.storage.local.set({
         [STORAGE_ENDPOINTS_KEY]: {
           ...stored,
-          lastAuditRunAt: now,
+          lastAuditRunAt: latestAuditTime,
         },
+        [STORAGE_LAST_AUDIT_RUN_KEY]: latestAuditTime,
       });
     }).catch(() => {});
   }

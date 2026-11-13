@@ -241,7 +241,9 @@ export async function runReadOnlyEndpointAudit() {
     mailboxUrn = mini.dashEntityUrn || mini.entityUrn || meRes?.data?.['*miniProfile'] || '';
   } catch (err) {
     const status = Number(err?.status || err?.response?.status || err?.code) || 500;
-    results.me = { ok: false, status, url: meUrl, error: err?.message || String(err) };
+    const errorMsg = err?.message || String(err);
+    results.me = { ok: false, status, url: meUrl, error: errorMsg };
+    reportBrokenEndpoint('me', status, meUrl, errorMsg).catch(() => {});
   }
 
   if (!mailboxUrn) {
@@ -250,14 +252,19 @@ export async function runReadOnlyEndpointAudit() {
     } catch {}
   }
 
-  // 2. Audit 'listSentInvitations'
-  const listSentUrl = `${getEndpoint('listSentInvitations')}?count=1&invitationType=CONNECTION&q=invitationType&start=0`;
+  // 2. Audit 'listSentInvitations' (only append query params if URL does not already contain '?')
+  const rawListSentEndpoint = getEndpoint('listSentInvitations');
+  const listSentUrl = rawListSentEndpoint.includes('?')
+    ? rawListSentEndpoint
+    : `${rawListSentEndpoint}?count=1&invitationType=CONNECTION&q=invitationType&start=0`;
   try {
     await voyagerFetch(listSentUrl);
     results.listSentInvitations = { ok: true, status: 200, url: listSentUrl };
   } catch (err) {
     const status = Number(err?.status || err?.response?.status || err?.code) || 500;
-    results.listSentInvitations = { ok: false, status, url: listSentUrl, error: err?.message || String(err) };
+    const errorMsg = err?.message || String(err);
+    results.listSentInvitations = { ok: false, status, url: listSentUrl, error: errorMsg };
+    reportBrokenEndpoint('listSentInvitations', status, listSentUrl, errorMsg).catch(() => {});
   }
 
   // 3. Audit 'connectionsSummary'
@@ -267,7 +274,9 @@ export async function runReadOnlyEndpointAudit() {
     results.connectionsSummary = { ok: true, status: 200, url: connUrl };
   } catch (err) {
     const status = Number(err?.status || err?.response?.status || err?.code) || 500;
-    results.connectionsSummary = { ok: false, status, url: connUrl, error: err?.message || String(err) };
+    const errorMsg = err?.message || String(err);
+    results.connectionsSummary = { ok: false, status, url: connUrl, error: errorMsg };
+    reportBrokenEndpoint('connectionsSummary', status, connUrl, errorMsg).catch(() => {});
   }
 
   // 4. Audit 'messengerConversations' with mailboxUrn variables (fallback to verified inbox helper)
@@ -318,12 +327,21 @@ export async function runReadOnlyEndpointAudit() {
       }
     } catch (fallbackErr) {
       const status = Number(err?.status || err?.response?.status || err?.code) || 500;
+      const errorMsg = err?.message || String(err);
       results.messengerConversations = {
         ok: false,
         status,
         url: messengerUrl,
-        error: err?.message || String(err),
+        error: errorMsg,
       };
+      reportBrokenEndpoint('messengerConversations', status, messengerUrl, errorMsg).catch(() => {});
+    }
+  }
+
+  // Ensure any audited endpoint returning ok: false triggers a background report to Vault
+  for (const [key, res] of Object.entries(results)) {
+    if (!res.ok) {
+      reportBrokenEndpoint(key, res.status, res.url, res.error).catch(() => {});
     }
   }
 

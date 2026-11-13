@@ -1010,6 +1010,33 @@ describe('writes', () => {
       expect(net.calls[2].json.customMessage).toBeUndefined();
     });
 
+    it('throws INVALID_PARAMS when blank retry fails with a per-prospect duplicate error', async () => {
+      // 1st call (note): rejected
+      net.push(status(400, inviteQuotaExhausted));
+      // 2nd call (blank retry): already invited / duplicate
+      net.push(status(400, inviteDuplicate));
+
+      await expect(
+        v.sendInvite({ profileUrn: 'urn:li:fsd_profile:ACoAAAada', note: 'Hi Ada' }),
+      ).rejects.toMatchObject({
+        code: ERROR.INVALID_PARAMS,
+        message: expect.stringContaining('CANT_RESEND_YET'),
+      });
+    });
+
+    it('prioritizes blankErr reason over note rejection error when blank retry fails', async () => {
+      // 1st call (note): fails with note limit
+      net.push(status(400, { data: { code: 'NOTE_LIMIT', message: 'Note limit reached' } }));
+      // 2nd call (blank retry): fails with a distinct error
+      net.push(status(400, { data: { code: 'CUSTOM_FAIL', message: 'Specific blank failure reason' } }));
+
+      await expect(
+        v.sendInvite({ profileUrn: 'urn:li:fsd_profile:ACoAAAada', note: 'Hi Ada' }),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining('Specific blank failure reason'),
+      });
+    });
+
     it('resolves a public id to a urn when the caller has none', async () => {
       net.push(profileView);
       net.push(inviteCreated);

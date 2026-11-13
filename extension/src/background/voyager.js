@@ -1118,6 +1118,16 @@ function looksLikeAllowance(code, message) {
   );
 }
 
+function looksLikePerProspectIssue(code, message) {
+  const c = String(code || '');
+  const m = String(message || '');
+  return (
+    looksLikeDuplicate(c, m) ||
+    /WITHDRAWN|EMAIL_REQUIRED|CANT_CREATE_INVITATION|CANT_RESEND/i.test(c) ||
+    /already (been )?(sent|invited)|pending invitation|duplicate|withdr(ew|awn)|recently withdrew|email (required|address)|enter.*email|cannot connect|not allowed to connect|cannot be invited/i.test(m)
+  );
+}
+
 /**
  * Turn a refused invitation into one honest EngineError.
  *
@@ -1206,9 +1216,9 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
     // If a personalized note was attempted and rejected, retry blank once without tripping bucket cooldown
     if (attemptedNote) {
       logDebug(
-        'info',
+        'warn',
         'Outreach',
-        `[INFO] [Outreach] Personalized note rejected (likely monthly free-account note limit). Retrying blank connection request without note...`,
+        `[Outreach] Note rejected (status=${e?.status || 'unknown'}, msg=${e?.message || 'none'}). Retrying blank connection request...`,
       );
       try {
         raw = await sendPost('');
@@ -1218,9 +1228,30 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
           sentWithoutNote = true;
           await setNoteLimitActive();
         } else {
-          throw inviteFailure(e && e.response, (e && e.message) || 'LinkedIn answered with no invitation urn.');
+          throw inviteFailure(raw || e?.response, 'LinkedIn answered with no invitation urn.');
         }
       } catch (blankErr) {
+        logDebug(
+          'warn',
+          'Outreach',
+          `[Outreach] Blank invite retry failed (status=${blankErr?.status || 'unknown'}, code=${blankErr?.code || blankErr?.response?.code || 'none'}, msg=${blankErr?.message || 'none'})`,
+        );
+
+        const blankPayload = blankErr?.response || e?.response;
+        const blankMsg = blankErr?.message || e?.message || 'LinkedIn refused the invitation.';
+        const blankData = (blankPayload && blankPayload.data) || blankPayload || {};
+        const bCode = String(blankData.code || blankData.status || blankErr?.code || '');
+        const bMsg = String(blankData.message || blankMsg);
+
+        // If blankErr indicates a per-prospect issue (already invited, pending, withdrawn recently, or email required to connect), throw INVALID_PARAMS
+        if (looksLikePerProspectIssue(bCode, bMsg)) {
+          throw new EngineError(
+            ERROR.INVALID_PARAMS,
+            bCode ? `LinkedIn refused the invitation (${bCode}): ${bMsg}` : `LinkedIn refused the invitation: ${bMsg}`,
+            { howToFix: INVITE_DUPLICATE_FIX },
+          );
+        }
+
         // Only trip RATE_LIMITED / bucket cooldown if the BLANK invitation also fails with 429 or weekly limit
         if (
           blankErr?.status === 429 ||
@@ -1232,8 +1263,8 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
         }
         if (blankErr instanceof EngineError && blankErr.code !== ERROR.LINKEDIN_ERROR) throw blankErr;
         throw inviteFailure(
-          e?.response || blankErr?.response,
-          e?.message || blankErr?.message || 'LinkedIn refused the invitation.',
+          blankPayload,
+          blankMsg,
         );
       }
     } else {
@@ -1257,9 +1288,9 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
   // If answered without invitation urn on a note attempt, retry blank
   if (!invitationUrn && attemptedNote && !sentWithoutNote) {
     logDebug(
-      'info',
+      'warn',
       'Outreach',
-      `[INFO] [Outreach] Personalized note rejected (likely monthly free-account note limit). Retrying blank connection request without note...`,
+      `[Outreach] Note attempt returned no invitation URN. Retrying blank connection request...`,
     );
     try {
       raw = await sendPost('');
@@ -1274,8 +1305,28 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
         throw inviteFailure(raw, 'LinkedIn answered with no invitation urn.');
       }
     } catch (blankErr) {
+      logDebug(
+        'warn',
+        'Outreach',
+        `[Outreach] Blank invite retry failed (status=${blankErr?.status || 'unknown'}, code=${blankErr?.code || blankErr?.response?.code || 'none'}, msg=${blankErr?.message || 'none'})`,
+      );
+
+      const blankPayload = blankErr?.response || raw;
+      const blankMsg = blankErr?.message || 'LinkedIn refused the invitation.';
+      const blankData = (blankPayload && blankPayload.data) || blankPayload || {};
+      const bCode = String(blankData.code || blankData.status || blankErr?.code || '');
+      const bMsg = String(blankData.message || blankMsg);
+
+      if (looksLikePerProspectIssue(bCode, bMsg)) {
+        throw new EngineError(
+          ERROR.INVALID_PARAMS,
+          bCode ? `LinkedIn refused the invitation (${bCode}): ${bMsg}` : `LinkedIn refused the invitation: ${bMsg}`,
+          { howToFix: INVITE_DUPLICATE_FIX },
+        );
+      }
+
       if (blankErr instanceof EngineError && blankErr.code !== ERROR.LINKEDIN_ERROR) throw blankErr;
-      throw inviteFailure(blankErr?.response, blankErr?.message || 'LinkedIn refused the invitation.');
+      throw inviteFailure(blankPayload, blankMsg);
     }
   }
 

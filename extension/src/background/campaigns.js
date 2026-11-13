@@ -1254,13 +1254,22 @@ export async function tick() {
         if (!res.ok) {
           const errorCode = res.error?.code;
           const errorMsg = res.error?.message || '';
+          logDebug('warn', 'Runner', `[${step.type} Raw Error] publicId=${enrollment.publicId} code=${errorCode} msg=${errorMsg}`);
+
+          const isPermanent =
+            errorCode === ERROR.NOT_FOUND ||
+            errorCode === ERROR.INVALID_PARAMS ||
+            /not found|invalid|blacklisted|already (been )?(sent|invited)|pending invitation|duplicate|withdr(ew|awn)|recently withdrew|email (required|address)|cannot connect/i.test(errorMsg);
+
           const isNoteLimitOnly = /personalized.*invitation|custom.*message.*limit|note limit/i.test(errorMsg);
           const isRateLimit =
+            !isPermanent &&
             !isNoteLimitOnly &&
             (errorCode === ERROR.RATE_LIMITED ||
              errorCode === ERROR.CHALLENGE_DETECTED ||
              /429|999|403|rate limit|safety cooldown|cooldown/i.test(errorMsg));
           const isQuota =
+            !isPermanent &&
             !isNoteLimitOnly &&
             (errorCode === ERROR.QUOTA_EXCEEDED ||
              /quota|limit reached|daily limit/i.test(errorMsg));
@@ -1323,12 +1332,6 @@ export async function tick() {
 
           let friendlyError = errorMsg || 'Unknown error';
           logDebug('error', 'Runner', `Step failed: ${friendlyError}`);
-
-          // Distinguish permanent failure from transient errors with exponential retry
-          const isPermanent =
-            errorCode === ERROR.NOT_FOUND ||
-            errorCode === ERROR.INVALID_PARAMS ||
-            /not found|invalid|blacklisted|already invited/i.test(friendlyError);
 
           const retries = enrollment.retryCount || 0;
           if (!isPermanent && retries < 3) {

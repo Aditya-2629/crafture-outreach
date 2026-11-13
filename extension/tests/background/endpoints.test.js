@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import * as core from '../../src/background/voyager-core.js';
 import {
   DEFAULT_ENDPOINTS,
   initEndpoints,
@@ -78,5 +79,37 @@ describe('endpoints', () => {
     expect(second.throttled).toBe(true);
     // fetch should not be called again
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs read-only health audit and appends mailboxUrn variables for messengerConversations', async () => {
+    const fetchedUrls = [];
+    vi.spyOn(core, 'voyagerFetch').mockImplementation(async (url) => {
+      fetchedUrls.push(url);
+      if (url.includes('/me')) {
+        return {
+          included: [
+            {
+              $type: 'com.linkedin.voyager.common.MiniProfile',
+              entityUrn: 'urn:li:fsd_profile:ACoAAATEST',
+            },
+          ],
+        };
+      }
+      return { ok: true };
+    });
+
+    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    const audit = await runReadOnlyEndpointAudit();
+    expect(audit.ok).toBe(true);
+    expect(audit.results.me.ok).toBe(true);
+    expect(audit.results.messengerConversations.ok).toBe(true);
+
+    const messengerCall = fetchedUrls.find(
+      (u) => u.includes('messengerConversations') || u.includes('voyagerMessagingGraphQL'),
+    );
+    expect(messengerCall).toBeDefined();
+    expect(messengerCall).toContain('variables=');
+    expect(messengerCall).toContain('ACoAAATEST');
   });
 });

@@ -9,7 +9,8 @@
 import { ACTIONS } from '../lib/actions.js';
 import { register } from './engine.js';
 import { logDebug } from '../lib/storage.js';
-import { voyagerFetch } from './voyager-core.js';
+import { voyagerFetch, encodeVariables } from './voyager-core.js';
+import { selfProfileUrn, getMessengerConversations } from './voyager.js';
 
 export const VAULT_API_URL = 'https://vault.api.crafture.space/api/endpoints';
 export const VAULT_API_KEY = '007_haiSecret';
@@ -18,7 +19,8 @@ export const DEFAULT_ENDPOINTS = Object.freeze({
   me: '/voyager/api/me',
   listSentInvitations: '/voyager/api/relationships/sentInvitationViewsV2',
   connectionsSummary: '/voyager/api/relationships/connectionsSummary',
-  messengerConversations: '/voyager/api/messaging/conversations',
+  messengerConversations:
+    '/voyagerMessagingGraphQL/graphql?queryId=messengerConversations.9501074288a12f3ae9e3c7ea243bccbf',
   profileViewsCount: '/voyager/api/identity/wvmpCards',
   sendInvite: '/voyagerRelationshipsDashMemberRelationships',
   withdrawInvitation:
@@ -202,29 +204,100 @@ export async function reportBrokenEndpoint(key, status, url, error) {
  * @returns {Promise<{ ok: boolean, results: object }>}
  */
 export async function runReadOnlyEndpointAudit() {
-  const auditTargets = {
-    me: getEndpoint('me'),
-    listSentInvitations: `${getEndpoint('listSentInvitations')}?count=1&invitationType=CONNECTION&q=invitationType&start=0`,
-    connectionsSummary: getEndpoint('connectionsSummary'),
-    messengerConversations: `${getEndpoint('messengerConversations')}?keyVersion=LEGACY_INBOX&q=all&count=1`,
-  };
-
   const results = {};
 
-  for (const [key, testUrl] of Object.entries(auditTargets)) {
+  // 1. Audit 'me' endpoint and resolve active user's mailboxUrn
+  let mailboxUrn = '';
+  const meUrl = getEndpoint('me');
+  try {
+    const meRes = await voyagerFetch(meUrl);
+    results.me = { ok: true, status: 200, url: meUrl };
+    const included = meRes?.included || [];
+    const mini = included.find((e) => String(e.entityUrn || '').includes('miniProfile')) || included[0] || {};
+    mailboxUrn = mini.dashEntityUrn || mini.entityUrn || meRes?.data?.['*miniProfile'] || '';
+  } catch (err) {
+    const status = Number(err?.status || err?.response?.status || err?.code) || 500;
+    results.me = { ok: false, status, url: meUrl, error: err?.message || String(err) };
+  }
+
+  if (!mailboxUrn) {
     try {
-      await voyagerFetch(testUrl);
-      results[key] = {
-        ok: true,
-        status: 200,
-        url: testUrl,
-      };
-    } catch (err) {
+      mailboxUrn = await selfProfileUrn();
+    } catch {}
+  }
+
+  // 2. Audit 'listSentInvitations'
+  const listSentUrl = `${getEndpoint('listSentInvitations')}?count=1&invitationType=CONNECTION&q=invitationType&start=0`;
+  try {
+    await voyagerFetch(listSentUrl);
+    results.listSentInvitations = { ok: true, status: 200, url: listSentUrl };
+  } catch (err) {
+    const status = Number(err?.status || err?.response?.status || err?.code) || 500;
+    results.listSentInvitations = { ok: false, status, url: listSentUrl, error: err?.message || String(err) };
+  }
+
+  // 3. Audit 'connectionsSummary'
+  const connUrl = getEndpoint('connectionsSummary');
+  try {
+    await voyagerFetch(connUrl);
+    results.connectionsSummary = { ok: true, status: 200, url: connUrl };
+  } catch (err) {
+    const status = Number(err?.status || err?.response?.status || err?.code) || 500;
+    results.connectionsSummary = { ok: false, status, url: connUrl, error: err?.message || String(err) };
+  }
+
+  // 4. Audit 'messengerConversations' with mailboxUrn variables (fallback to verified inbox helper)
+  const rawMessengerEndpoint = getEndpoint('messengerConversations');
+  let messengerUrl = rawMessengerEndpoint;
+  try {
+    if (rawMessengerEndpoint.includes('graphql') || rawMessengerEndpoint.includes('voyagerMessagingGraphQL')) {
+      const queryIdParam = rawMessengerEndpoint.includes('queryId=')
+        ? ''
+        : `${rawMessengerEndpoint.includes('?') ? '&' : '?'}queryId=messengerConversations.9501074288a12f3ae9e3c7ea243bccbf`;
+      const baseWithQueryId = rawMessengerEndpoint.includes('queryId=')
+        ? rawMessengerEndpoint
+        : `${rawMessengerEndpoint}${queryIdParam}`;
+      const sep = baseWithQueryId.includes('?') ? '&' : '?';
+      const vars = encodeVariables({
+        query: {
+          predicateUnions: [{ conversationCategoryPredicate: { category: 'PRIMARY_INBOX' } }],
+        },
+        count: 1,
+        ...(mailboxUrn ? { mailboxUrn } : {}),
+      });
+      messengerUrl = baseWithQueryId.includes('variables=')
+        ? baseWithQueryId
+        : `${baseWithQueryId}${sep}variables=${vars}`;
+      await voyagerFetch(messengerUrl);
+    } else {
+      const sep = rawMessengerEndpoint.includes('?') ? '&' : '?';
+      const mailboxPart = mailboxUrn
+        ? `&mailboxUrn=${encodeURIComponent(mailboxUrn)}&variables=(mailboxUrn:${encodeURIComponent(mailboxUrn)})`
+        : '';
+      messengerUrl = `${rawMessengerEndpoint}${sep}keyVersion=LEGACY_INBOX&q=all&count=1${mailboxPart}`;
+      await voyagerFetch(messengerUrl);
+    }
+    results.messengerConversations = { ok: true, status: 200, url: messengerUrl };
+  } catch (err) {
+    // If testing the raw endpoint returned an error, attempt the verified getMessengerConversations helper
+    try {
+      if (typeof getMessengerConversations === 'function') {
+        await getMessengerConversations({ count: 1 });
+        results.messengerConversations = {
+          ok: true,
+          status: 200,
+          url: messengerUrl,
+          method: 'voyager.getMessengerConversations',
+        };
+      } else {
+        throw err;
+      }
+    } catch (fallbackErr) {
       const status = Number(err?.status || err?.response?.status || err?.code) || 500;
-      results[key] = {
+      results.messengerConversations = {
         ok: false,
         status,
-        url: testUrl,
+        url: messengerUrl,
         error: err?.message || String(err),
       };
     }

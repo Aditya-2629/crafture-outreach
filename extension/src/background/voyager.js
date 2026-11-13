@@ -937,6 +937,8 @@ export async function getConversations({ count = 20, nextCursor } = {}) {
   };
 }
 
+export const getMessengerConversations = getConversations;
+
 export async function getConversationMessages({ threadId, count = 20, createdBefore }) {
   const mailboxUrn = await selfProfileUrn();
   const id = threadIdFromUrn(threadId);

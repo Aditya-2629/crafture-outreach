@@ -844,6 +844,61 @@ describe('sent invitations', () => {
     chrome.__mock.cookies.clear();
     await expect(v.getSentInvitations()).rejects.toMatchObject({ code: ERROR.NOT_LOGGED_IN });
   });
+
+  it('enriches sent invitations with invitationId, sentTime, profileUrn, and names', async () => {
+    net.push(sentInvitations);
+    const out = await v.listSentInvitations({ count: 10 });
+    expect(out.length).toBeGreaterThan(0);
+    const item = out.find((x) => x.publicId === 'carlachen') || out[0];
+    expect(item.invitationId).toMatch(/^\d+$/);
+    expect(typeof item.sentTime).toBe('number');
+    expect(item.profileUrn).toBeTruthy();
+    expect(item.firstName).toBeTruthy();
+    expect(item.lastName).toBeTruthy();
+    expect(item.vanityName).toBe(item.publicId);
+  });
+});
+
+/* ================================================================== */
+
+describe('withdraw invitation', () => {
+  it('calls SDUI addaWithdrawInvitation endpoint with full payload when withdrawing via invite object', async () => {
+    net.push({ ok: true });
+    await v.withdrawInvitation({
+      invitationId: '7504239478362759168',
+      profileUrn: 'ACoAA0106FIXTURE',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      vanityName: 'adalovelace',
+    });
+
+    expect(net.calls).toHaveLength(1);
+    const call = net.calls[0];
+    expect(call.method).toBe('POST');
+    expect(call.url).toContain('/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation');
+    expect(call.json.clientArguments.screenId).toBe('com.linkedin.sdui.flagshipnav.mynetwork.invitations.WithdrawConfirmationDialog');
+    expect(call.json.clientArguments.payload.invitationUrn).toEqual({ invitationId: '7504239478362759168' });
+    expect(call.json.clientArguments.payload.profileUrn).toBe('ACoAA0106FIXTURE');
+    expect(call.json.clientArguments.payload.firstName).toBe('Ada');
+    expect(call.json.clientArguments.payload.lastName).toBe('Lovelace');
+    expect(call.json.clientArguments.payload.inviteeVanityName).toBe('adalovelace');
+    expect(call.json.clientArguments.payload.trackingActionType).toBe('INVITATION_MANAGER_WITHDRAW');
+    expect(call.json.isModal).toBe(true);
+  });
+
+  it('accepts a raw string or urn as invitationId', async () => {
+    net.push({ ok: true });
+    await v.withdrawInvitation('urn:li:fs_relInvitation:7504239478362759168');
+
+    expect(net.calls).toHaveLength(1);
+    const call = net.calls[0];
+    expect(call.json.clientArguments.payload.invitationUrn).toEqual({ invitationId: '7504239478362759168' });
+  });
+
+  it('throws cleanly when SDUI withdraw returns 400', async () => {
+    net.push(status(400, { message: 'Invitation not found or already withdrawn' }));
+    await expect(v.withdrawInvitation('7504239478362759168')).rejects.toThrow();
+  });
 });
 
 /* ================================================================== */

@@ -241,10 +241,11 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
   const now = Date.now();
 
   const invitations = await voyager.fetchSentInvitations({ start: 0, count: 100 });
-  const stale = invitations.filter((inv) => inv.sentAt && now - inv.sentAt > cutoffMs);
+  const stale = invitations.filter((inv) => (inv.sentTime || inv.sentAt) && now - (inv.sentTime || inv.sentAt) > cutoffMs);
 
   let withdrawnCount = 0;
   let skippedCount = 0;
+  let consecutiveFailures = 0;
   const errors = [];
 
   for (let i = 0; i < stale.length; i++) {
@@ -257,17 +258,31 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
     await new Promise((resolve) => setTimeout(resolve, delayMs));
 
     try {
-      await voyager.withdrawInvitation(inv.invitationId || inv.invitationUrn);
+      await voyager.withdrawInvitation(inv);
       withdrawnCount++;
+      consecutiveFailures = 0;
       await logAction({
         action: ACTIONS.NETWORK_WITHDRAW_STALE_INVITES,
-        publicId: inv.toPublicId || inv.recipientPublicId || inv.publicId || '',
+        publicId: inv.toPublicId || inv.recipientPublicId || inv.publicId || inv.vanityName || '',
         origin,
         result: { status: 'withdrawn', invitationId: inv.invitationId, withdrawnAt: Date.now() },
       });
+      logDebug('good', 'Outreach', `[withdrawStaleInvites] Successfully withdrawn invitation for ${inv.publicId || inv.invitationId}`);
     } catch (err) {
       skippedCount++;
+      consecutiveFailures++;
       errors.push({ invitationId: inv.invitationId, error: err.message });
+      logDebug('warn', 'Outreach', `[withdrawStaleInvites] Failed to withdraw invitation ${inv.invitationId}: ${err.message}`);
+
+      // Fail-fast guard: if 2 consecutive withdrawals fail with 0 successes, break immediately and throw
+      if (consecutiveFailures >= 2 && withdrawnCount === 0) {
+        logDebug(
+          'error',
+          'Outreach',
+          `[withdrawStaleInvites] Fail-fast triggered: 2 consecutive withdrawals failed with 0 successes. Aborting run.`,
+        );
+        throw err;
+      }
     }
   }
 

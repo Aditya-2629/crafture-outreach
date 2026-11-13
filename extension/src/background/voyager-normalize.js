@@ -1143,17 +1143,35 @@ export function normalizeSentInvitations(raw) {
       invitation.toMemberId ||
       '';
 
+    const invitationUrn =
+      invitation.entityUrn ||
+      invitation.mailboxItemId ||
+      element['*invitation'] ||
+      element.entityUrn ||
+      '';
+
+    const numericMatch = String(invitationUrn).match(/\d+/);
+    const invitationId = numericMatch ? numericMatch[0] : String(invitationUrn).replace(/^urn:li:[^:]+:/, '');
+    const sentTime = invitation.sentTime || invitation.createdAt || undefined;
+    const profileUrn = (mini.dashEntityUrn || mini.entityUrn || toMemberUrn || invitation.toMemberId || '')
+      .replace(/^urn:li:(?:fsd?_profile|member):/, '');
+    const titleParts = (element.title?.text || '').trim().split(/\s+/);
+    const firstName = mini.firstName || (titleParts.length > 0 ? titleParts[0] : '');
+    const lastName = mini.lastName || (titleParts.length > 1 ? titleParts.slice(1).join(' ') : '');
+    const vanityName = mini.publicIdentifier || publicId || '';
+
     out.push({
       publicId,
       toPublicId: publicId,
       toMemberUrn,
-      invitationUrn:
-        invitation.entityUrn ||
-        invitation.mailboxItemId ||
-        element['*invitation'] ||
-        element.entityUrn ||
-        '',
-      sentAt: invitation.sentTime || invitation.createdAt || undefined,
+      invitationUrn,
+      invitationId,
+      sentTime,
+      sentAt: sentTime,
+      profileUrn,
+      firstName,
+      lastName,
+      vanityName,
     });
   }
 

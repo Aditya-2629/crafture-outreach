@@ -145,8 +145,15 @@ export async function voyagerFetch(path, options = {}) {
   await assertNotPaused();
 
   const csrf = await getCsrfToken();
-  const cleanPath = path.startsWith('/voyager/api') ? path.slice('/voyager/api'.length) : path;
-  const url = path.startsWith('http') ? path : `${VOYAGER_BASE}${cleanPath}`;
+  let url;
+  if (path.startsWith('http')) {
+    url = path;
+  } else if (path.startsWith('/flagship-web')) {
+    url = `${LINKEDIN_BASE}${path}`;
+  } else {
+    const cleanPath = path.startsWith('/voyager/api') ? path.slice('/voyager/api'.length) : path;
+    url = `${VOYAGER_BASE}${cleanPath}`;
+  }
 
   const headers = {
     'csrf-token': csrf,

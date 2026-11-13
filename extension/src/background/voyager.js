@@ -1027,7 +1027,7 @@ export async function getSentInvitations({ start = 0, count = 100 } = {}) {
  * Fetch sent invitations list directly from Voyager REST endpoint.
  *
  * @param {{ start?: number, count?: number }} [opts]
- * @returns {Promise<{invitationId: string, sentAt: number, toMemberUrn: string, toPublicId: string, invitationUrn?: string, recipientPublicId?: string, publicId?: string}[]>}
+ * @returns {Promise<{invitationId: string, sentTime: number, sentAt: number, profileUrn: string, firstName: string, lastName: string, vanityName: string, toMemberUrn: string, toPublicId: string, invitationUrn?: string, recipientPublicId?: string, publicId?: string}[]>}
  */
 export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
   try {
@@ -1037,11 +1037,16 @@ export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
     const normalized = normalizeSentInvitations(raw);
     if (normalized.length > 0) {
       return normalized.map((inv) => {
-        const id = inv.invitationUrn ? inv.invitationUrn.split(':').pop() : '';
-        const toPublicId = inv.toPublicId || inv.publicId || '';
+        const id = inv.invitationId || (inv.invitationUrn ? (inv.invitationUrn.match(/\d+$/) || [])[0] : '') || inv.invitationUrn;
+        const toPublicId = inv.toPublicId || inv.publicId || inv.vanityName || '';
         return {
-          invitationId: id || inv.invitationUrn,
-          sentAt: inv.sentAt || 0,
+          invitationId: String(id),
+          sentTime: inv.sentTime || inv.sentAt || 0,
+          sentAt: inv.sentTime || inv.sentAt || 0,
+          profileUrn: inv.profileUrn || '',
+          firstName: inv.firstName || '',
+          lastName: inv.lastName || '',
+          vanityName: inv.vanityName || toPublicId,
           toMemberUrn: inv.toMemberUrn || '',
           toPublicId,
           invitationUrn: inv.invitationUrn,
@@ -1056,11 +1061,16 @@ export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
 
   const fallback = await getSentInvitations({ start, count });
   return fallback.map((inv) => {
-    const id = inv.invitationUrn ? inv.invitationUrn.split(':').pop() : '';
-    const toPublicId = inv.toPublicId || inv.publicId || '';
+    const id = inv.invitationId || (inv.invitationUrn ? (inv.invitationUrn.match(/\d+$/) || [])[0] : '') || inv.invitationUrn;
+    const toPublicId = inv.toPublicId || inv.publicId || inv.vanityName || '';
     return {
-      invitationId: id || inv.invitationUrn,
-      sentAt: inv.sentAt || 0,
+      invitationId: String(id),
+      sentTime: inv.sentTime || inv.sentAt || 0,
+      sentAt: inv.sentTime || inv.sentAt || 0,
+      profileUrn: inv.profileUrn || '',
+      firstName: inv.firstName || '',
+      lastName: inv.lastName || '',
+      vanityName: inv.vanityName || toPublicId,
       toMemberUrn: inv.toMemberUrn || '',
       toPublicId,
       invitationUrn: inv.invitationUrn,
@@ -1070,20 +1080,84 @@ export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
   });
 }
 
+export const listSentInvitations = fetchSentInvitations;
+
 /**
- * Withdraw a pending sent invitation.
+ * Withdraw a pending sent invitation using LinkedIn's current SDUI endpoint.
  *
- * @param {string} invitationId ID or URN of the invitation to cancel
+ * @param {string | { invitationId: string, profileUrn?: string, firstName?: string, lastName?: string, vanityName?: string }} invite
  * @returns {Promise<any>}
  */
-export async function withdrawInvitation(invitationId) {
-  if (!invitationId) {
-    throw new EngineError(ERROR.INVALID_PARAMS, 'invitationId is required to withdraw an invitation');
+export async function withdrawInvitation(invite) {
+  if (!invite) {
+    throw new EngineError(ERROR.INVALID_PARAMS, 'invitationId or invite object is required to withdraw an invitation');
   }
-  const id = String(invitationId).replace(/^urn:li:(?:fs_relInvitation|invitation):/, '');
-  return voyagerFetch(`/voyager/api/relationships/invitations/${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-  });
+
+  let rawId = '';
+  let profileUrn = '';
+  let firstName = '';
+  let lastName = '';
+  let vanityName = '';
+
+  if (typeof invite === 'string' || typeof invite === 'number') {
+    rawId = String(invite);
+  } else if (typeof invite === 'object') {
+    rawId = String(invite.invitationId || invite.invitationUrn || invite.id || '');
+    profileUrn = invite.profileUrn || (invite.toMemberUrn ? String(invite.toMemberUrn).replace(/^urn:li:[^:]+:/, '') : '') || '';
+    firstName = invite.firstName || '';
+    lastName = invite.lastName || '';
+    vanityName = invite.vanityName || invite.publicId || invite.toPublicId || '';
+  }
+
+  const numericMatch = rawId.match(/\d+/);
+  const cleanInvitationId = numericMatch ? numericMatch[0] : rawId.replace(/^urn:li:[^:]+:/, '');
+
+  if (!cleanInvitationId) {
+    throw new EngineError(ERROR.INVALID_PARAMS, 'Valid numeric invitationId is required to withdraw an invitation');
+  }
+
+  const sduiPayload = {
+    clientArguments: {
+      $type: 'proto.sdui.actions.requests.RequestedArguments',
+      requestedStateKeys: [],
+      knownTemplateIds: [],
+      requestMetadata: { $type: 'proto.sdui.common.RequestMetadata' },
+      states: [],
+      screenId: 'com.linkedin.sdui.flagshipnav.mynetwork.invitations.WithdrawConfirmationDialog',
+      payload: {
+        invitationUrn: { invitationId: cleanInvitationId },
+        invitationType: 1,
+        inviterActionType: 2,
+        trackingActionType: 'INVITATION_MANAGER_WITHDRAW',
+        queryName: 'ProfileMemberRelationshipRefreshById',
+        profileUrn: profileUrn || '',
+        inviteeVanityName: vanityName || '',
+        firstName: firstName || '',
+        lastName: lastName || '',
+      },
+    },
+    isModal: true,
+  };
+
+  try {
+    const res = await voyagerFetch(
+      '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation',
+      {
+        method: 'POST',
+        headers: {
+          accept: 'application/json, text/plain, */*',
+          'content-type': 'application/json; charset=UTF-8',
+        },
+        body: sduiPayload,
+      },
+    );
+    return res;
+  } catch (err) {
+    const status = err?.status || err?.response?.status || err?.code || 'UNKNOWN';
+    const bodyText = err?.response?.text || err?.message || JSON.stringify(err);
+    logDebug('error', 'Voyager', `[withdrawInvitation Failed] id=${cleanInvitationId} status=${status} response=${bodyText}`);
+    throw err;
+  }
 }
 
 /* ================================================================== */

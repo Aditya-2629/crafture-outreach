@@ -195,6 +195,33 @@ export async function voyagerFetch(path, options = {}) {
   }
 
   if (!resp.ok) {
+    let parsedBody = null;
+    try {
+      if (text) parsedBody = JSON.parse(text);
+    } catch {
+      /* not JSON; the message already carries the text */
+    }
+
+    const dataObj = (parsedBody && parsedBody.data) || parsedBody || {};
+    const dataCode = String(dataObj.code || dataObj.data?.code || parsedBody?.code || '');
+    const isCustomInviteLimit =
+      dataCode === 'CUSTOM_INVITE_LIMIT_REACHED' ||
+      /CUSTOM_INVITE_LIMIT_REACHED/i.test(text || '');
+
+    // Exclude monthly personalized note limit (CUSTOM_INVITE_LIMIT_REACHED) from global 429 backoff
+    if (isCustomInviteLimit) {
+      const err = new EngineError(
+        'CUSTOM_INVITE_LIMIT_REACHED',
+        'LinkedIn personalized invitation note limit reached (monthly free account limit).',
+        { howToFix: 'Send connection requests without a note, or upgrade to LinkedIn Premium.' },
+      );
+      err.code = 'CUSTOM_INVITE_LIMIT_REACHED';
+      err.status = resp.status;
+      err.response = parsedBody || { data: { code: 'CUSTOM_INVITE_LIMIT_REACHED', status: resp.status } };
+      err.isCustomInviteLimit = true;
+      throw err;
+    }
+
     const known = STATUS_ERROR[resp.status];
     if (resp.status === 429 || resp.status === 999 || resp.status === 403) {
       await noteBackoff(resp.status);
@@ -206,6 +233,7 @@ export async function voyagerFetch(path, options = {}) {
       // cannot say which.
       const stood = new EngineError(known[0], known[1]);
       stood.status = resp.status;
+      if (parsedBody) stood.response = parsedBody;
       throw stood;
     }
 
@@ -220,11 +248,7 @@ export async function voyagerFetch(path, options = {}) {
     // is folded into the response envelope: raw LinkedIn JSON is ours to read,
     // not something to hand to every client.
     error.status = resp.status;
-    try {
-      if (text) error.response = JSON.parse(text);
-    } catch {
-      /* not JSON; the message already carries the text */
-    }
+    if (parsedBody) error.response = parsedBody;
     throw error;
   }
 

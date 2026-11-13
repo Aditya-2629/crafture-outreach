@@ -273,6 +273,18 @@ describe('voyagerFetch — the statuses it already knew', () => {
     expect(state.challenge).toBeUndefined();
   });
 
+  it('excludes CUSTOM_INVITE_LIMIT_REACHED from 429 rate limit backoff', async () => {
+    net.push(status(429, { data: { code: 'CUSTOM_INVITE_LIMIT_REACHED', status: 429 } }));
+
+    const error = await caught(voyagerFetch('/me'));
+
+    expect(error.code).toBe('CUSTOM_INVITE_LIMIT_REACHED');
+    expect(error.status).toBe(429);
+    expect(error.isCustomInviteLimit).toBe(true);
+    const state = await quota.pauseState();
+    expect(state.backoffUntil).toBeUndefined();
+  });
+
   it('a 400 still hands its parsed body to the caller', async () => {
     net.push(status(400, { data: { code: 'CANT_RESEND_YET' } }));
 

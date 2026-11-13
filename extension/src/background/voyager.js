@@ -1213,12 +1213,23 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
   try {
     raw = await sendPost(message);
   } catch (e) {
+    const isCustomInviteLimit =
+      e?.code === 'CUSTOM_INVITE_LIMIT_REACHED' ||
+      e?.isCustomInviteLimit ||
+      /CUSTOM_INVITE_LIMIT_REACHED|personalized.*invitation|custom.*message.*limit|note limit/i.test(
+        e?.message || e?.response?.data?.code || ''
+      );
+
+    if (isCustomInviteLimit) {
+      await setNoteLimitActive(24 * 60 * 60 * 1000);
+    }
+
     // If a personalized note was attempted and rejected, retry blank once without tripping bucket cooldown
-    if (attemptedNote) {
+    if (attemptedNote || isCustomInviteLimit) {
       logDebug(
         'warn',
         'Outreach',
-        `[Outreach] Note rejected (status=${e?.status || 'unknown'}, msg=${e?.message || 'none'}). Retrying blank connection request...`,
+        `[Outreach] Note rejected (status=${e?.status || 'unknown'}, code=${e?.code || 'none'}, msg=${e?.message || 'none'}). Retrying blank connection request...`,
       );
       try {
         raw = await sendPost('');
@@ -1226,7 +1237,7 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
         const blankUrn = val['*invitation'] || val.invitationUrn || '';
         if (blankUrn) {
           sentWithoutNote = true;
-          await setNoteLimitActive();
+          await setNoteLimitActive(24 * 60 * 60 * 1000);
         } else {
           throw inviteFailure(raw || e?.response, 'LinkedIn answered with no invitation urn.');
         }
@@ -1253,9 +1264,15 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
         }
 
         // Only trip RATE_LIMITED / bucket cooldown if the BLANK invitation also fails with 429 or weekly limit
+        // (CUSTOM_INVITE_LIMIT_REACHED is NOT a weekly limit)
+        const isBlankCustomLimit =
+          blankErr?.code === 'CUSTOM_INVITE_LIMIT_REACHED' ||
+          blankErr?.isCustomInviteLimit ||
+          /CUSTOM_INVITE_LIMIT_REACHED/i.test(bMsg || bCode);
+
         if (
-          blankErr?.status === 429 ||
-          /weekly.*limit|429/i.test(blankErr?.message || '')
+          !isBlankCustomLimit &&
+          (blankErr?.status === 429 || /weekly.*limit/i.test(blankErr?.message || ''))
         ) {
           try {
             await noteBucketBackoff('invite', 24 * 60 * 60 * 1000);
@@ -1269,9 +1286,14 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
       }
     } else {
       // It was already blank when it failed
+      const isBlankCustomLimit =
+        e?.code === 'CUSTOM_INVITE_LIMIT_REACHED' ||
+        e?.isCustomInviteLimit ||
+        /CUSTOM_INVITE_LIMIT_REACHED/i.test(e?.message || '');
+
       if (
-        e?.status === 429 ||
-        /weekly.*limit|429/i.test(e?.message || '')
+        !isBlankCustomLimit &&
+        (e?.status === 429 || /weekly.*limit/i.test(e?.message || ''))
       ) {
         try {
           await noteBucketBackoff('invite', 24 * 60 * 60 * 1000);

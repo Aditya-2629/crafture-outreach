@@ -1261,7 +1261,10 @@ export async function tick() {
             errorCode === ERROR.INVALID_PARAMS ||
             /not found|invalid|blacklisted|already (been )?(sent|invited)|pending invitation|duplicate|withdr(ew|awn)|recently withdrew|email (required|address)|cannot connect/i.test(errorMsg);
 
-          const isNoteLimitOnly = /personalized.*invitation|custom.*message.*limit|note limit/i.test(errorMsg);
+          const isNoteLimitOnly =
+            errorCode === 'CUSTOM_INVITE_LIMIT_REACHED' ||
+            res.error?.isCustomInviteLimit ||
+            /CUSTOM_INVITE_LIMIT_REACHED|personalized.*invitation|custom.*message.*limit|note limit/i.test(errorMsg);
           const isRateLimit =
             !isPermanent &&
             !isNoteLimitOnly &&

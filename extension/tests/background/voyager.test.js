@@ -1037,6 +1037,27 @@ describe('writes', () => {
       });
     });
 
+    it('handles HTTP 429 CUSTOM_INVITE_LIMIT_REACHED by immediately retrying blank invite without global rate-limit cooldown', async () => {
+      // 1st call (note): LinkedIn returns 429 CUSTOM_INVITE_LIMIT_REACHED
+      net.push(status(429, { data: { code: 'CUSTOM_INVITE_LIMIT_REACHED', status: 429 } }));
+      // 2nd call (blank retry): succeeds
+      net.push(inviteCreated);
+
+      const res = await v.sendInvite({ profileUrn: 'urn:li:fsd_profile:ACoAAAada', note: 'Hi Ada' });
+      expect(res.invitationUrn).toBe('urn:li:fsd_invitation:7000000000000000001');
+      expect(res.sentWithoutNote).toBe(true);
+
+      // Verify 1st call had note, 2nd call was blank
+      expect(net.calls[0].json.customMessage).toBe('Hi Ada');
+      expect(net.calls[1].json.customMessage).toBeUndefined();
+
+      // Subsequent call automatically skips note upfront
+      net.push(inviteCreated);
+      const res2 = await v.sendInvite({ profileUrn: 'urn:li:fsd_profile:ACoAAAbob', note: 'Hi Bob' });
+      expect(res2.sentWithoutNote).toBe(true);
+      expect(net.calls[2].json.customMessage).toBeUndefined();
+    });
+
     it('resolves a public id to a urn when the caller has none', async () => {
       net.push(profileView);
       net.push(inviteCreated);

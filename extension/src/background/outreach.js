@@ -106,11 +106,16 @@ export async function send(action, params, origin = 'approved', context = {}) {
   try {
     sendResult = await SENDERS[action](params);
   } catch (e) {
+    const isCustomInviteLimit =
+      e?.code === 'CUSTOM_INVITE_LIMIT_REACHED' ||
+      e?.isCustomInviteLimit ||
+      /CUSTOM_INVITE_LIMIT_REACHED|personalized.*invitation|custom.*message.*limit|note limit/i.test(e?.message || '');
     const isRateLimited =
-      e?.status === 429 ||
-      e?.code === ERROR.RATE_LIMITED ||
-      e?.code === ERROR.CHALLENGE_DETECTED ||
-      /weekly.*limit|too many/i.test(e?.message || '');
+      !isCustomInviteLimit &&
+      (e?.status === 429 ||
+       e?.code === ERROR.RATE_LIMITED ||
+       e?.code === ERROR.CHALLENGE_DETECTED ||
+       /weekly.*limit|too many/i.test(e?.message || ''));
     if (kind === 'invite' && isRateLimited) {
       try {
         await quota.noteBucketBackoff('invite', 24 * 60 * 60 * 1000);

@@ -566,8 +566,8 @@ function ensureCampaignsStyles() {
     .planet-avatar { width: 44px; height: 44px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; position: relative; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #ff6b00; }
     .planet-avatar img { width: 28px; height: 28px; border-radius: 6px; object-fit: contain; }
     .planet-ring { display: none; }
-    .camp-card-meta { flex: 1; }
-    .camp-card-name { font-size: 14.5px; font-weight: 700; color: #14142b; display: block; margin-bottom: 6px; }
+    .camp-card-meta { flex: 1; min-width: 0; }
+    .camp-card-name { font-size: 14.5px; font-weight: 700; color: #14142b; display: block; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .camp-card-badges-row { display: flex; align-items: center; gap: 8px; }
     .camp-leads-pill { font-size: 11px; font-weight: 700; background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 9999px; }
     .camp-status-dot { width: 8px; height: 8px; border-radius: 50%; }
@@ -968,6 +968,11 @@ export async function renderCampaignsView(container, ctx = {}) {
       currentList = currentList.filter((c) => c.name && c.name.toLowerCase().includes(q));
     }
 
+    const outfoxLogoUrl =
+      typeof chrome !== 'undefined' && chrome.runtime?.getURL
+        ? chrome.runtime.getURL('icons/icon48.png')
+        : '../../icons/icon48.png';
+
     container.innerHTML = `
       <div class="campaigns-view-shell">
         <div class="campaigns-top-bar">
@@ -1014,7 +1019,7 @@ export async function renderCampaignsView(container, ctx = {}) {
               ? `
             <div class="empty-camp-pane">
               <div class="planet-avatar" style="opacity:0.6; margin-bottom:12px;">
-                <img src="../../icons/icon48.png" width="28" height="28" alt="OutFox" />
+                <img src="${outfoxLogoUrl}" width="28" height="28" alt="OutFox" />
               </div>
               <h3>No ${activeStateTab} campaigns</h3>
               <p>Create an automated sequence to reach out to leads at scale.</p>
@@ -1034,15 +1039,13 @@ export async function renderCampaignsView(container, ctx = {}) {
                     return `
               <div class="waalaxy-camp-card" data-camp-id="${id}">
                 <div class="planet-avatar">
-                  <img src="../../icons/icon48.png" width="28" height="28" alt="OutFox" />
+                  <img src="${outfoxLogoUrl}" width="28" height="28" alt="OutFox" />
                 </div>
 
                 <div class="camp-card-meta">
                   <span class="camp-card-name">${camp.name}</span>
                   <div class="camp-card-badges-row">
-                    <button type="button" class="btn-camp-live-badge btn-trigger-live-drawer" data-id="${id}" title="Click to view live prospects status">
-                      ⚡ ${leads} leads · Live Status
-                    </button>
+                    <span class="camp-leads-pill">⚡ ${leads} leads</span>
                     <span class="camp-status-dot ${statusClass}" title="Status: ${camp.status || 'running'}"></span>
                   </div>
                 </div>
@@ -1103,8 +1106,8 @@ export async function renderCampaignsView(container, ctx = {}) {
         <div class="camp-drawer" id="camp-live-drawer">
           <div class="camp-drawer-head">
             <div class="camp-drawer-head-info">
-              <div class="planet-avatar" style="width:36px; height:36px; color:#ff6b00;">
-                ⚡
+              <div class="planet-avatar" style="width:36px; height:36px;">
+                <img src="${outfoxLogoUrl}" width="22" height="22" alt="OutFox" />
               </div>
               <div>
                 <h3 class="camp-drawer-title" id="drawer-camp-name">Live Campaign Status</h3>

@@ -513,6 +513,36 @@ describe('already connected', () => {
     expect(log).not.toContain(ACTIONS.OUTREACH_FOLLOW);
   });
 
+  it('waits 12h for invite acceptance before executing a message step to an unaccepted prospect', async () => {
+    const c = await makeCampaign([
+      { type: 'invite', note: 'Hi' },
+      { type: 'message', body: 'Hey Ada, glad to connect!' },
+    ]);
+    net.push(inviteCreated); // the invite
+    await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+
+    // Simulate time elapsed so next step is immediately eligible
+    const enrolled = await enrollmentOf(c.campaignId);
+    enrolled.nextAt = 0;
+    await storage.set(storage.K.enrollments(c.campaignId), [enrolled]);
+
+    // Next tick: Step 2 (message)
+    // Ada is still 2nd degree (not accepted)
+    const res = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+    expect(res.data.executed).toBe(0);
+    expect(res.data.queued).toBe(1);
+
+    // No POST message call made (only 1 POST call for the invite)
+    expect(net.calls.filter((x) => x.method === 'POST')).toHaveLength(1);
+
+    const e = await enrollmentOf(c.campaignId);
+    expect(e.status).toBe('active');
+    expect(e.retryCount || 0).toBe(0);
+    expect(e.lastError).toBe('Waiting for invite acceptance');
+    expect(e.nextAt).toBe(Date.now() + 12 * 60 * 60 * 1000);
+    expect(e.history[e.history.length - 1].label).toBe('Waiting for invite acceptance (re-check in 12h)');
+  });
+
   it('spends exactly one profile view on an invite to a stranger', async () => {
     await makeCampaign([{ type: 'invite', note: 'Hi' }]);
     net.push(inviteCreated); // the invite

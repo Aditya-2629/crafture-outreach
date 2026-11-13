@@ -12,7 +12,7 @@
 import { ACTIONS, ERROR, EVENTS, EngineError, INVITE_NOTE_MAX } from '../lib/actions.js';
 import { getConfig } from '../lib/config.js';
 import { handle, register } from './engine.js';
-import { K, allActions, get, getStoredProfile, newId, remove, set, stamp, isBlacklisted, getBlacklist, addToBlacklist, removeFromBlacklist, logDebug, isCompanyBlacklisted, getCompanyBlacklist, addCompanyToBlacklist, removeCompanyFromBlacklist, isNoteLimitActive } from '../lib/storage.js';
+import { K, allActions, get, getStoredProfile, putProfile, newId, remove, set, stamp, isBlacklisted, getBlacklist, addToBlacklist, removeFromBlacklist, logDebug, isCompanyBlacklisted, getCompanyBlacklist, addCompanyToBlacklist, removeCompanyFromBlacklist, isNoteLimitActive } from '../lib/storage.js';
 import { pickVariant, renderTemplate } from '../lib/template.js';
 import { emit } from './events.js';
 import * as inbox from './inbox.js';
@@ -642,7 +642,10 @@ export async function getCampaignLiveStatus(campaignId) {
 /*  Step execution                                                    */
 /* ================================================================== */
 
-async function isConnected(publicId) {
+async function isConnected(publicId, enrollment = null) {
+  if (enrollment && enrollment.accepted === true) {
+    return true;
+  }
   try {
     const profile = await getStoredProfile(publicId);
     // 1. If stored profile has connectionDegree === 1 or was imported as 1st connection
@@ -652,7 +655,13 @@ async function isConnected(publicId) {
     // 2. Fallback to network status check
     const res = await handle(ACTIONS.NETWORK_STATUS, { publicIds: [publicId] }, 'campaign');
     if (res?.ok) {
-      return res.data?.statuses?.[publicId] === 'connected';
+      const isConn = res.data?.statuses?.[publicId] === 'connected';
+      if (isConn && profile) {
+        profile.connectionDegree = 1;
+        profile.isConnected = true;
+        await putProfile(profile).catch(() => {});
+      }
+      return isConn;
     }
   } catch (err) {
     console.warn('[isConnected check error]', err);
@@ -1138,37 +1147,35 @@ export async function tick() {
         // Non-Connection Message Guardrail:
         // Before executing an automated message step in a multi-step sequence containing an invite,
         // verify prospect is an active 1st-degree connection.
+        // If not connected yet, park enrollment for 12h without calling createMessage or incrementing retries.
         if (step.type === 'message') {
-          const hasInviteStep = campaign.steps?.some((s) => s.type === 'invite');
-          if (hasInviteStep && campaign.settings.autopilot) {
-            const connected = await isConnected(enrollment.publicId);
+          const hasInviteStep =
+            campaign.steps?.some((s) => s.type === 'invite') ||
+            Boolean(enrollment.history?.some((h) => h.step === 'invite'));
+
+          if (hasInviteStep && config.autopilot !== false) {
+            const connected = await isConnected(enrollment.publicId, enrollment);
             if (!connected) {
-              logDebug(
-                'warn',
-                'Runner',
-                `[Runner] Skipped messaging ${enrollment.publicId}: Not a 1st-degree connection yet. Connection request required.`,
-              );
-              enrollment.status = 'blocked_not_connected';
-              enrollment.error =
-                'Cannot message: Prospect is not a 1st-degree connection yet. Send a Connection Request (Invite) first.';
+              const wait12h = 12 * 60 * 60 * 1000;
+              enrollment.nextAt = Date.now() + wait12h;
+              enrollment.lastError = 'Waiting for invite acceptance';
               enrollment.updatedAt = Date.now();
               recordHistory(enrollment, {
                 step: 'message',
-                label: 'Blocked: Not a 1st-degree connection yet',
-                status: 'blocked',
-                error: enrollment.error,
+                label: 'Waiting for invite acceptance (re-check in 12h)',
+                status: 'waiting',
+                note: 'Prospect is not connected yet',
               });
               dirty = true;
-              await emit(EVENTS.CAMPAIGN_STEP_DONE, {
-                campaignId: campaign.campaignId,
-                publicId: enrollment.publicId,
-                stepIndex: enrollment.stepIndex,
-                type: 'message',
-                status: 'skipped',
-                reason: 'not_first_degree',
-              });
+              queued += 1;
+              logDebug(
+                'info',
+                'Runner',
+                `[Runner] Prospect ${enrollment.publicId} has not accepted connection yet. Parking message step for 12h (Waiting for invite acceptance).`,
+              );
               break;
             }
+            enrollment.accepted = true;
           }
         }
 
@@ -1255,6 +1262,28 @@ export async function tick() {
           const errorCode = res.error?.code;
           const errorMsg = res.error?.message || '';
           logDebug('warn', 'Runner', `[${step.type} Raw Error] publicId=${enrollment.publicId} code=${errorCode} msg=${errorMsg}`);
+
+          // Extra safety guard: If message step failed at LinkedIn because prospect is not a connection
+          if (step.type === 'message' && /not a connection|cannot be messaged because/i.test(errorMsg)) {
+            const wait12h = 12 * 60 * 60 * 1000;
+            enrollment.nextAt = Date.now() + wait12h;
+            enrollment.lastError = 'Waiting for invite acceptance';
+            enrollment.updatedAt = Date.now();
+            recordHistory(enrollment, {
+              step: 'message',
+              label: 'Waiting for invite acceptance (re-check in 12h)',
+              status: 'waiting',
+              note: errorMsg,
+            });
+            dirty = true;
+            queued += 1;
+            logDebug(
+              'info',
+              'Runner',
+              `[Runner] Prospect ${enrollment.publicId} is not connected. Parking message step for 12h (Waiting for invite acceptance).`,
+            );
+            break;
+          }
 
           const isPermanent =
             errorCode === ERROR.NOT_FOUND ||

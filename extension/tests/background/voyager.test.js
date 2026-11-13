@@ -928,6 +928,39 @@ describe('withdraw invitation', () => {
     }
   });
 
+  it('calls withdrawViaDomFallback when SDUI returns 500 server error and returns method dom_fallback', async () => {
+    net.push(status(500, { message: 'Internal Server Error' }));
+    const origTabs = chrome.tabs;
+    const origScripting = chrome.scripting;
+
+    chrome.tabs = {
+      create: vi.fn().mockResolvedValue({ id: 99 }),
+      remove: vi.fn().mockResolvedValue(true),
+      get: vi.fn().mockResolvedValue({ id: 99, status: 'complete' }),
+      onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+    };
+    chrome.scripting = {
+      executeScript: vi.fn().mockResolvedValue([
+        { result: [{ invitationId: '7504239478362759168', success: true }] },
+      ]),
+    };
+
+    try {
+      const res = await v.withdrawInvitation({
+        invitationId: '7504239478362759168',
+        vanityName: 'adalovelace',
+      });
+      expect(res.ok).toBe(true);
+      expect(res.method).toBe('dom_fallback');
+      expect(chrome.tabs.create).toHaveBeenCalled();
+      expect(chrome.scripting.executeScript).toHaveBeenCalled();
+      expect(chrome.tabs.remove).toHaveBeenCalledWith(99);
+    } finally {
+      chrome.tabs = origTabs;
+      chrome.scripting = origScripting;
+    }
+  });
+
   it('throws cleanly when SDUI withdraw returns 400 and DOM fallback fails', async () => {
     net.push(status(400, { message: 'Invitation not found or already withdrawn' }));
     await expect(

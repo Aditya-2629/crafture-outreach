@@ -293,7 +293,12 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
 
       const status = err.status || err.response?.status || 0;
       const isSduiRejection =
-        status === 400 || status === 404 || status === 422 || /400|404|422/i.test(String(err.message));
+        status === 400 ||
+        status === 404 ||
+        status === 410 ||
+        status === 422 ||
+        status >= 500 ||
+        /400|404|410|422|500|502|503/i.test(String(err?.message || err.message));
 
       // If SDUI API fails twice with 400/404/422, hand off remaining eligible batch to single DOM fallback session
       if (consecutiveFailures >= 2 && isSduiRejection) {

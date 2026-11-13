@@ -16,6 +16,9 @@ import { ACTIONS } from '../lib/actions.js';
 import { ICONS } from '../ui/icons.js';
 import { downloadCsv, today } from '../ui/download.js';
 
+let selectedDays = '30';
+let selectedCampaignId = 'all';
+
 function ensureHomeStyles() {
   const STYLE_ID = 'waalaxy-home-view-css';
   if (document.getElementById(STYLE_ID)) return;
@@ -128,31 +131,11 @@ export async function renderHomeView(container, ctx = {}) {
   if (!container || !container.isConnected) return;
 
   const stats = statsRes || {};
-  const storage = storageRes || {};
+  let storage = storageRes || {};
 
   const profile = stats.profile || { name: 'Aditya Chaudhary' };
-  const kpis = stats.kpis || {
-    totalInvitesSent: 0,
-    totalMessagesSent: 0,
-    totalVisits: 0,
-    acceptedInvites: 0,
-    acceptanceRate: 0,
-    messageResponses: 0,
-    responseRate: 0,
-  };
-
-  const campaigns = Array.isArray(storage.campaigns) ? storage.campaigns : [];
-  const activeCampaignsCount = campaigns.filter((c) => c.status === 'running' || c.status === 'active' || !c.status).length;
-
-  let queuedActionsCount = 0;
-  campaigns.forEach((camp) => {
-    const enrollments = storage[`enrollments:${camp.campaignId}`] || [];
-    queuedActionsCount += enrollments.filter((e) => e.state === 'active' || e.state === 'running' || !e.state).length;
-  });
-
   const quotas = stats.quotas || {};
   const isQuotaReached = (quotas.invite?.remaining === 0) || (quotas.invite?.usedToday >= (quotas.invite?.max || 25));
-  const timeline = stats.activityTimeline || generateFallback30DayTimeline();
 
   const rawName = (profile.name || 'aditya').trim();
   const firstName = rawName.split(/[\s-_]+/)[0] || 'aditya';
@@ -162,6 +145,37 @@ export async function renderHomeView(container, ctx = {}) {
   let activeChartAction = 'invitations';
 
   function paint() {
+    const campaigns = Array.isArray(storage.campaigns) ? storage.campaigns : [];
+
+    // Ensure selectedCampaignId is valid
+    if (selectedCampaignId !== 'all' && !campaigns.some((c) => (c.campaignId || c.id) === selectedCampaignId)) {
+      selectedCampaignId = 'all';
+    }
+
+    const { kpis, timeline } = computeFilteredHomeStats(storage, {
+      days: selectedDays,
+      campaignId: selectedCampaignId,
+      fallbackStats: stats,
+    });
+
+    const activeCampaignsCount = selectedCampaignId === 'all'
+      ? campaigns.filter((c) => c.status === 'running' || c.status === 'active' || !c.status).length
+      : (() => {
+          const c = campaigns.find((x) => (x.campaignId || x.id) === selectedCampaignId);
+          return (c?.status === 'running' || c?.status === 'active' || !c?.status) ? 1 : 0;
+        })();
+
+    let queuedActionsCount = 0;
+    if (selectedCampaignId === 'all') {
+      campaigns.forEach((camp) => {
+        const enrollments = storage[`enrollments:${camp.campaignId || camp.id}`] || [];
+        queuedActionsCount += enrollments.filter((e) => e.state === 'active' || e.state === 'running' || e.status === 'active' || !e.status).length;
+      });
+    } else {
+      const enrollments = storage[`enrollments:${selectedCampaignId}`] || [];
+      queuedActionsCount = enrollments.filter((e) => e.state === 'active' || e.state === 'running' || e.status === 'active' || !e.status).length;
+    }
+
     container.innerHTML = `
       <div class="waalaxy-home-grid">
         <div class="home-main-col">
@@ -170,14 +184,16 @@ export async function renderHomeView(container, ctx = {}) {
             <div class="home-filters-row">
               <div class="filter-pill-wrap">
                 <select class="home-filter-select" id="home-filter-range">
-                  <option value="30">Last 30 days ⌵</option>
-                  <option value="7">Last 7 days ⌵</option>
+                  <option value="1" ${selectedDays === '1' ? 'selected' : ''}>Today ⌵</option>
+                  <option value="7" ${selectedDays === '7' ? 'selected' : ''}>Last 7 days ⌵</option>
+                  <option value="30" ${selectedDays === '30' ? 'selected' : ''}>Last 30 days ⌵</option>
+                  <option value="all" ${selectedDays === 'all' ? 'selected' : ''}>All time ⌵</option>
                 </select>
               </div>
               <div class="filter-pill-wrap">
                 <select class="home-filter-select" id="home-filter-campaign">
-                  <option value="all">MY CAMPAIGNS ⌵</option>
-                  ${campaigns.map((c) => `<option value="${c.campaignId}">${c.name}</option>`).join('')}
+                  <option value="all" ${selectedCampaignId === 'all' ? 'selected' : ''}>All campaigns ⌵</option>
+                  ${campaigns.map((c) => `<option value="${c.campaignId || c.id}" ${selectedCampaignId === (c.campaignId || c.id) ? 'selected' : ''}>${c.name || c.campaignId} ⌵</option>`).join('')}
                 </select>
               </div>
             </div>
@@ -334,13 +350,23 @@ export async function renderHomeView(container, ctx = {}) {
 
         <aside class="home-side-col">
           <div class="side-card profile-card-waalaxy">
-            <div class="card-plan-badge">Pro Plan · Free & Self-Hosted</div>
             <div class="avatar-center-wrapper">
               <div class="waalaxy-alien-avatar">
                 <span class="avatar-initials-txt">${initials}</span>
                 <span class="li-corner-badge">${ICONS.linkedin}</span>
               </div>
               <h3 class="profile-username">${profile.name}</h3>
+              <div style="display:flex; justify-content:center; gap:16px; margin-top:14px; border-top:1px solid #f1f5f9; padding-top:12px; width:100%;">
+                <div style="text-align:center;">
+                  <div style="font-size:14px; font-weight:800; color:#14142b;">${profile.connections ?? 0}</div>
+                  <div style="font-size:10px; color:#94a3b8; font-weight:600;">Connections · Account</div>
+                </div>
+                <div style="width:1px; background:#f1f5f9;"></div>
+                <div style="text-align:center;">
+                  <div style="font-size:14px; font-weight:800; color:#14142b;">${profile.pending ?? 0}</div>
+                  <div style="font-size:10px; color:#94a3b8; font-weight:600;">Pending · Account</div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -376,10 +402,24 @@ export async function renderHomeView(container, ctx = {}) {
       </div>
     `;
 
-    wireHomeEvents();
+    wireHomeEvents(timeline);
   }
 
-  function wireHomeEvents() {
+  function wireHomeEvents(currentTimeline) {
+    container.querySelector('#home-filter-range')?.addEventListener('change', async (e) => {
+      selectedDays = e.target.value;
+      const latestStorage = await new Promise((r) => chrome.storage.local.get(null, r)).catch(() => null);
+      if (latestStorage && typeof latestStorage === 'object') storage = latestStorage;
+      paint();
+    });
+
+    container.querySelector('#home-filter-campaign')?.addEventListener('change', async (e) => {
+      selectedCampaignId = e.target.value;
+      const latestStorage = await new Promise((r) => chrome.storage.local.get(null, r)).catch(() => null);
+      if (latestStorage && typeof latestStorage === 'object') storage = latestStorage;
+      paint();
+    });
+
     container.querySelectorAll('.action-type-pill').forEach((pill) => {
       pill.addEventListener('click', () => {
         activeChartAction = pill.dataset.action;
@@ -388,7 +428,7 @@ export async function renderHomeView(container, ctx = {}) {
     });
 
     container.querySelector('#btn-export-timeline')?.addEventListener('click', async () => {
-      const rows = timeline.map((slot) => ({
+      const rows = (currentTimeline || []).map((slot) => ({
         Date: slot.date,
         Day: slot.label,
         Invitations: slot.invitations || 0,
@@ -441,7 +481,7 @@ function renderSvg30DayChart(timeline, activeAction) {
   const maxVal = Math.max(...seriesData, 1);
   const numDays = timeline.length || 30;
   const stepX = chartW / numDays;
-  const colW = Math.max(6, Math.min(12, stepX * 0.5));
+  const colW = Math.max(6, Math.min(24, stepX * 0.5));
 
   const colors = {
     invitations: '#ff6b00',
@@ -467,7 +507,7 @@ function renderSvg30DayChart(timeline, activeAction) {
     const x = padL + idx * stepX + (stepX - colW) / 2;
     const y = padT + chartH - barH;
 
-    const showDate = idx % 2 === 0 || idx === numDays - 1;
+    const showDate = numDays <= 7 ? true : (idx % 2 === 0 || idx === numDays - 1);
     const dateTextSvg = showDate ? `
       <text x="${x + colW / 2}" y="${padT + chartH + 18}" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="sans-serif">
         ${slot.label}
@@ -492,6 +532,235 @@ function renderSvg30DayChart(timeline, activeAction) {
       <div id="chart-live-tooltip" class="chart-tooltip hidden"></div>
     </div>
   `;
+}
+
+/**
+ * Filter action records & enrollments by date cutoff and campaign,
+ * computing filtered KPIs and matching time-series timeline.
+ */
+export function computeFilteredHomeStats(storage = {}, { days = '30', campaignId = 'all', fallbackStats = {} } = {}) {
+  const now = Date.now();
+  let cutoff = 0;
+  let numDays = 30;
+
+  if (days === '1') {
+    numDays = 1;
+    cutoff = now - 86400000;
+  } else if (days === '7') {
+    numDays = 7;
+    cutoff = now - 7 * 86400000;
+  } else if (days === '30') {
+    numDays = 30;
+    cutoff = now - 30 * 86400000;
+  } else if (days === 'all') {
+    numDays = 30;
+    cutoff = 0;
+  } else {
+    numDays = Number(days) || 30;
+    cutoff = now - numDays * 86400000;
+  }
+
+  const rawActions = Array.isArray(storage.actions) ? storage.actions : [];
+  const campaigns = Array.isArray(storage.campaigns) ? storage.campaigns : [];
+
+  // Identify targeted campaigns and enrolled prospects
+  const targetCampaigns = campaignId === 'all'
+    ? campaigns
+    : campaigns.filter((c) => (c.campaignId || c.id) === campaignId);
+
+  const enrolledProspectsSet = new Set();
+  const allTargetEnrollments = [];
+
+  targetCampaigns.forEach((camp) => {
+    const cId = camp.campaignId || camp.id;
+    const enrollments = Array.isArray(storage[`enrollments:${cId}`]) ? storage[`enrollments:${cId}`] : [];
+    enrollments.forEach((e) => {
+      if (e.publicId) enrolledProspectsSet.add(e.publicId);
+      allTargetEnrollments.push(e);
+    });
+  });
+
+  // Filter actions by date cutoff and campaign
+  const filteredActions = rawActions.filter((act) => {
+    if (!act) return false;
+    const at = act.at || act.updatedAt || 0;
+    if (cutoff > 0 && at < cutoff) return false;
+
+    if (campaignId !== 'all') {
+      const actCamp = act.campaignId || act.result?.campaignId;
+      if (actCamp && actCamp === campaignId) return true;
+      if (act.publicId && enrolledProspectsSet.has(act.publicId)) return true;
+      return false;
+    }
+    return true;
+  });
+
+  // Count sent actions
+  let totalInvitesSent = 0;
+  let totalMessagesSent = 0;
+  let totalVisits = 0;
+  let totalFollows = 0;
+  let totalEmailsSent = 0;
+
+  filteredActions.forEach((act) => {
+    const isSent = act.result?.status === 'sent' || act.result?.ok === true || (!act.result && act.status === 'sent');
+    if (!isSent && act.action !== 'invite_accepted') return;
+
+    if (act.action === 'outreach.invite') totalInvitesSent++;
+    else if (act.action === 'outreach.message') totalMessagesSent++;
+    else if (act.action === 'outreach.view') totalVisits++;
+    else if (act.action === 'outreach.follow') totalFollows++;
+    else if (act.action === 'outreach.email') totalEmailsSent++;
+  });
+
+  // Count accepted invitations:
+  // 1. From action log
+  // 2. From enrollments marked accepted
+  const acceptedPublicIds = new Set();
+  filteredActions.forEach((act) => {
+    if (act.action === 'invite_accepted' || act.action === 'events.invite_accepted' || act.result?.status === 'accepted') {
+      if (act.publicId) acceptedPublicIds.add(act.publicId);
+    }
+  });
+
+  allTargetEnrollments.forEach((enr) => {
+    if (enr.accepted === true || enr.status === 'accepted') {
+      const at = enr.acceptedAt || enr.updatedAt || enr.lastActionAt || enr.enrolledAt || 0;
+      if (cutoff === 0 || at >= cutoff) {
+        if (enr.publicId) acceptedPublicIds.add(enr.publicId);
+      }
+    }
+  });
+
+  let acceptedInvites = acceptedPublicIds.size;
+
+  // Count replies received:
+  // 1. From target enrollments with status 'replied' or replied: true
+  // 2. From threads
+  const repliedSet = new Set();
+  allTargetEnrollments.forEach((enr) => {
+    if (enr.status === 'replied' || enr.replied === true) {
+      const at = enr.repliedAt || enr.updatedAt || enr.lastActionAt || 0;
+      if (cutoff === 0 || at >= cutoff) {
+        if (enr.publicId) repliedSet.add(enr.publicId);
+      }
+    }
+  });
+
+  const rawThreads = Array.isArray(storage.threads) ? storage.threads : [];
+  rawThreads.forEach((t) => {
+    const at = t.updatedAt || t.lastActivityAt || 0;
+    if (cutoff > 0 && at > 0 && at < cutoff) return;
+    const hasIncoming =
+      (t.messages && t.messages.some((m) => !m.fromMe && (cutoff === 0 || (m.timestamp || m.at || at) >= cutoff))) ||
+      t.unread ||
+      t.unreadCount > 0;
+    if (!hasIncoming) return;
+
+    if (campaignId !== 'all') {
+      const isTarget = t.participants?.some((p) => enrolledProspectsSet.has(p.publicId || p.id));
+      if (isTarget) repliedSet.add(t.threadId || t.id || Math.random());
+    } else {
+      repliedSet.add(t.threadId || t.id || Math.random());
+    }
+  });
+
+  let messageResponses = repliedSet.size;
+
+  // Fallbacks if storage.actions is empty on initial load
+  if (rawActions.length === 0 && days === 'all' && campaignId === 'all' && fallbackStats.kpis) {
+    totalInvitesSent = fallbackStats.kpis.totalInvitesSent || 0;
+    totalMessagesSent = fallbackStats.kpis.totalMessagesSent || 0;
+    totalVisits = fallbackStats.kpis.totalVisits || 0;
+    acceptedInvites = fallbackStats.kpis.acceptedInvites || 0;
+    messageResponses = fallbackStats.kpis.messageResponses || 0;
+  } else if (days === 'all' && campaignId !== 'all' && totalInvitesSent === 0 && totalMessagesSent === 0) {
+    const targetCamp = targetCampaigns[0];
+    if (targetCamp?.stats) {
+      if (targetCamp.stats.sent) totalInvitesSent = targetCamp.stats.sent;
+      if (targetCamp.stats.accepted) acceptedInvites = targetCamp.stats.accepted;
+      if (targetCamp.stats.replied) messageResponses = targetCamp.stats.replied;
+    }
+  }
+
+  const acceptanceRate = totalInvitesSent > 0 ? Math.min(100, Math.round((acceptedInvites / totalInvitesSent) * 100)) : 0;
+  const responseRate = totalMessagesSent > 0 ? Math.min(100, Math.round((messageResponses / totalMessagesSent) * 100)) : 0;
+
+  // Adjust numDays for 'all' time if older actions exist
+  if (days === 'all' && filteredActions.length > 0) {
+    const oldestAt = Math.min(...filteredActions.map((a) => a.at || now));
+    const spanDays = Math.ceil((now - oldestAt) / 86400000);
+    if (spanDays > 30) {
+      numDays = Math.min(60, Math.max(30, spanDays));
+    }
+  }
+
+  let timeline = buildFilteredTimeline(filteredActions, numDays);
+  if (filteredActions.length === 0 && days === 'all' && campaignId === 'all' && fallbackStats.activityTimeline) {
+    timeline = fallbackStats.activityTimeline;
+  }
+
+  return {
+    kpis: {
+      invitesSent: totalInvitesSent,
+      totalInvitesSent,
+      messagesSent: totalMessagesSent,
+      totalMessagesSent,
+      profileViews: totalVisits,
+      totalVisits,
+      follows: totalFollows,
+      totalFollows,
+      emailsSent: totalEmailsSent,
+      totalEmailsSent,
+      invitesAccepted: acceptedInvites,
+      acceptedInvites,
+      acceptanceRate,
+      repliesReceived: messageResponses,
+      messageResponses,
+      responseRate,
+    },
+    timeline,
+  };
+}
+
+function buildFilteredTimeline(filteredActions, numDays = 30) {
+  const timeline = [];
+  const now = new Date();
+
+  for (let i = numDays - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const label = d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
+    timeline.push({
+      date: dateStr,
+      label,
+      invitations: 0,
+      messages: 0,
+      visits: 0,
+      follows: 0,
+      emails: 0,
+    });
+  }
+
+  const slotMap = new Map(timeline.map((s) => [s.date, s]));
+  filteredActions.forEach((act) => {
+    if (!act.at) return;
+    const isSent = act.result?.status === 'sent' || act.result?.ok === true || (!act.result && act.status === 'sent');
+    if (!isSent) return;
+
+    const actDate = new Date(act.at).toISOString().slice(0, 10);
+    const slot = slotMap.get(actDate);
+    if (!slot) return;
+
+    if (act.action === 'outreach.invite') slot.invitations++;
+    else if (act.action === 'outreach.message') slot.messages++;
+    else if (act.action === 'outreach.view') slot.visits++;
+    else if (act.action === 'outreach.follow') slot.follows++;
+    else if (act.action === 'outreach.email') slot.emails++;
+  });
+
+  return timeline;
 }
 
 function generateFallback30DayTimeline() {

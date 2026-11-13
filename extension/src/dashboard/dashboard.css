@@ -5290,6 +5290,7 @@ input:checked + .slider:before {
 .waalaxy-camp-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 18px 22px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02); transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); position: relative; cursor: pointer; }
 .waalaxy-camp-card:hover { border-color: #c7d2fe; box-shadow: 0 10px 30px rgba(255, 107, 0, 0.08); transform: translateY(-1px); }
 .planet-avatar { width: 44px; height: 44px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; position: relative; color: #ff6b00; flex-shrink: 0; }
+.planet-avatar img { width: 28px; height: 28px; border-radius: 6px; object-fit: contain; }
 .planet-ring { display: none; }
 .camp-card-meta { display: flex; flex-direction: column; gap: 6px; flex: 1; margin-left: 16px; }
 .camp-card-name { font-size: 15px; font-weight: 700; color: #14142b; }

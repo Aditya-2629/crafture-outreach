@@ -564,6 +564,7 @@ function ensureCampaignsStyles() {
     .waalaxy-camp-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; position: relative; box-shadow: 0 2px 6px rgba(0,0,0,0.02); transition: all 0.2s ease; cursor: pointer; display: flex; align-items: center; gap: 14px; }
     .waalaxy-camp-card:hover { border-color: #c7d2fe; box-shadow: 0 6px 18px rgba(255, 107, 0, 0.08); transform: translateY(-1px); }
     .planet-avatar { width: 44px; height: 44px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; position: relative; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #ff6b00; }
+    .planet-avatar img { width: 28px; height: 28px; border-radius: 6px; object-fit: contain; }
     .planet-ring { display: none; }
     .camp-card-meta { flex: 1; }
     .camp-card-name { font-size: 14.5px; font-weight: 700; color: #14142b; display: block; margin-bottom: 6px; }
@@ -1013,7 +1014,7 @@ export async function renderCampaignsView(container, ctx = {}) {
               ? `
             <div class="empty-camp-pane">
               <div class="planet-avatar" style="opacity:0.6; margin-bottom:12px;">
-                <div class="planet-ring"></div>
+                <img src="../../icons/icon48.png" width="28" height="28" alt="OutFox" />
               </div>
               <h3>No ${activeStateTab} campaigns</h3>
               <p>Create an automated sequence to reach out to leads at scale.</p>
@@ -1033,7 +1034,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                     return `
               <div class="waalaxy-camp-card" data-camp-id="${id}">
                 <div class="planet-avatar">
-                  <div class="planet-ring"></div>
+                  <img src="../../icons/icon48.png" width="28" height="28" alt="OutFox" />
                 </div>
 
                 <div class="camp-card-meta">
@@ -1103,7 +1104,6 @@ export async function renderCampaignsView(container, ctx = {}) {
           <div class="camp-drawer-head">
             <div class="camp-drawer-head-info">
               <div class="planet-avatar" style="width:36px; height:36px; color:#ff6b00;">
-                <div class="planet-ring"></div>
                 ⚡
               </div>
               <div>

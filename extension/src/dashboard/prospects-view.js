@@ -400,11 +400,17 @@ export async function renderProspectsView(container, ctx = {}) {
               `}
             </div>
 
-            <!-- Import Prospects Button (Opens Slide-in Drawer) -->
-            <button type="button" id="btn-open-import-drawer" class="btn-import-prospects" title="Import prospects from LinkedIn or CSV">
-              <span style="display:flex;">${ICONS.download}</span>
-              <span>Import prospects</span>
-            </button>
+            <!-- Import Actions -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button type="button" id="btn-import-profile-viewers" class="btn-import-prospects" style="background: #f0fdf4; color: #16a34a; border-color: #bbf7d0;" title="Import recent LinkedIn profile viewers into prospects">
+                <span style="display:flex;">${ICONS.search || ICONS.download}</span>
+                <span>Import Profile Viewers</span>
+              </button>
+              <button type="button" id="btn-open-import-drawer" class="btn-import-prospects" title="Import prospects from LinkedIn or CSV">
+                <span style="display:flex;">${ICONS.download}</span>
+                <span>Import prospects</span>
+              </button>
+            </div>
           </div>
 
           ${currentListId === 'blacklist' ? `
@@ -562,6 +568,33 @@ export async function renderProspectsView(container, ctx = {}) {
     `;
 
     // 4. Wire Interactive Events
+    // Import Profile Viewers Button
+    container.querySelector('#btn-import-profile-viewers')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      const originalHtml = btn.innerHTML;
+      btn.innerHTML = `<span style="display:inline-block; animation:spin 0.8s linear infinite;">${ICONS.refresh || '⟳'}</span> <span>Importing...</span>`;
+      try {
+        const res = await call(ACTIONS.IMPORT_PROFILE_VIEWERS, {}, { timeoutMs: 30000 });
+        if (res?.ok) {
+          const count = res.count || 0;
+          if (count > 0) {
+            ctx.showToast?.(`Imported ${count} profile viewers into "Auto-Import: Profile Viewers"`, 'success');
+          } else {
+            ctx.showToast?.('No new profile viewers found on LinkedIn', 'info');
+          }
+          renderProspectsView(container, ctx);
+        } else {
+          ctx.showToast?.(`Failed to import profile viewers: ${res?.error || 'Unknown error'}`, 'error');
+        }
+      } catch (err) {
+        ctx.showToast?.(`Import error: ${err?.message || err}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    });
+
     // Open Import Drawer Button
     container.querySelector('#btn-open-import-drawer')?.addEventListener('click', () => {
       importDrawer.openDrawer(rawLists, currentListId);

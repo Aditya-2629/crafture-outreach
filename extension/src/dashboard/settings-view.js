@@ -94,6 +94,18 @@ function maskKey(key = '') {
   return `${prefix}••••••••`;
 }
 
+export function formatTimeAgo(ts) {
+  if (!ts) return 'Never';
+  const diffSec = Math.floor((Date.now() - Number(ts)) / 1000);
+  if (diffSec < 60) return 'Just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  return `${diffDays}d ago`;
+}
+
 export async function testAiConnection(provider, modelId, apiKey) {
   const start = Date.now();
   try {
@@ -468,6 +480,12 @@ export async function renderSettingsView(container, ctx = {}) {
     const bridgePort = statusData.bridge?.port || config.bridge?.port || 47829;
     const bridgeConnected = Boolean(statusData.bridge?.connected);
 
+    const remoteEndpointsData = storage.outfox_remote_endpoints || {};
+    const vaultEndpoints = remoteEndpointsData.endpoints || {};
+    const vaultEndpointCount = Object.keys(vaultEndpoints).length || 7;
+    const vaultLastSyncAt = Number(remoteEndpointsData.lastSyncAt) || 0;
+    const vaultLastSyncText = formatTimeAgo(vaultLastSyncAt);
+
     container.innerHTML = `
       <div class="waalaxy-settings-layout">
         <!-- SUB-SIDEBAR (4 Working Tabs Only) -->
@@ -788,6 +806,35 @@ export async function renderSettingsView(container, ctx = {}) {
                   <div id="storage-health-badge" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; background: ${storageHealth.isIdbActive ? '#ecfdf5' : '#f8fafc'}; color: ${storageHealth.isIdbActive ? '#059669' : '#64748b'}; border: 1px solid ${storageHealth.isIdbActive ? '#a7f3d0' : '#e2e8f0'};">
                     <span class="live-dot-circle" style="background: currentColor;"></span>
                     ${storageHealth.isIdbActive ? `⚡ High-Speed IndexedDB Active · ${storageHealth.profileCount} Profiles Cached` : `💾 LocalStorage Active · ${storageHealth.profileCount} Profiles Cached`}
+                  </div>
+                </div>
+              </div>
+
+              <!-- LinkedIn Endpoints (Vault) -->
+              <div class="settings-block-section" style="background: #ffffff; border: 1px solid #e2e8f0; margin-top: 16px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: #eff6ff; color: #2563eb;">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    </span>
+                    <div>
+                      <div style="font-size: 13px; font-weight: 700; color: #14142b;">
+                        LinkedIn Endpoints (Vault)
+                      </div>
+                      <div style="font-size: 12px; color: #64748b;">
+                        Dynamic endpoints synchronized with Vault to stay ahead of LinkedIn changes
+                      </div>
+                    </div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <div id="vault-endpoints-badge" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0;">
+                      <span class="live-dot-circle" style="background: currentColor;"></span>
+                      <span id="vault-endpoints-status">${vaultEndpointCount} Active Endpoints · Synced ${vaultLastSyncText}</span>
+                    </div>
+                    <button type="button" class="btn-primary-settings" id="btn-sync-endpoints-now" style="padding: 7px 16px; font-size: 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                      Sync Endpoints Now
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1418,6 +1465,31 @@ export async function renderSettingsView(container, ctx = {}) {
         ctx.showToast?.(`Cross-campaign deduplication turned ${dedupeAcrossCampaigns ? 'ON' : 'OFF'}.`, 'info');
       } catch (err) {
         console.warn('Failed to update dedupeAcrossCampaigns config', err);
+      }
+    });
+
+    container.querySelector('#btn-sync-endpoints-now')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      const originalHtml = btn.innerHTML;
+      btn.innerHTML = `<span style="display:inline-block; animation:spin 0.8s linear infinite;">${ICONS.refresh || '⟳'}</span> Syncing...`;
+      try {
+        const res = await call(ACTIONS.VAULT_SYNC_ENDPOINTS, { force: true }, { timeoutMs: 15000 });
+        if (res?.ok) {
+          const count = Object.keys(res.endpoints || {}).length || 7;
+          const statusEl = container.querySelector('#vault-endpoints-status');
+          if (statusEl) {
+            statusEl.textContent = `${count} Active Endpoints · Synced Just now`;
+          }
+          ctx.showToast?.(`Endpoints synchronized from Vault (${count} active)`, 'success');
+        } else {
+          ctx.showToast?.(`Vault sync failed: ${res?.error || 'Unknown error'}`, 'error');
+        }
+      } catch (err) {
+        ctx.showToast?.(`Vault sync error: ${err?.message || err}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
       }
     });
 

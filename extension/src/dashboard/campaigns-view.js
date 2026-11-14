@@ -885,13 +885,21 @@ export async function renderCampaignsView(container, ctx = {}) {
   let lists = [];
   let profiles = [];
   let activeSenderEmail = '';
+  let noteLimitUntil = 0;
 
   try {
-    const [cRes, lRes, pRes, cfg] = await Promise.all([
+    const [cRes, lRes, pRes, cfg, sRes] = await Promise.all([
       call(ACTIONS.CAMPAIGN_GET_ALL, {}).catch(() => []),
       call(ACTIONS.LIST_GET_ALL, {}).catch(() => []),
       allProfiles().catch(() => []),
       getConfig().catch(() => ({})),
+      new Promise((r) => {
+        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+          chrome.storage.local.get(['outfox_note_limit_until'], r);
+        } else {
+          r({});
+        }
+      }),
     ]);
     campaigns = Array.isArray(cRes) ? cRes : (cRes?.campaigns || []);
     const rawLists = Array.isArray(lRes) ? lRes : (lRes?.lists || []);
@@ -902,6 +910,7 @@ export async function renderCampaignsView(container, ctx = {}) {
     }));
     profiles = Array.isArray(pRes) ? pRes : [];
     activeSenderEmail = cfg?.mailbox?.email || cfg?.googleWorkspace?.email || '';
+    noteLimitUntil = Number(sRes?.outfox_note_limit_until) || 0;
   } catch (e) {
     console.warn('[Campaigns View] Read error', e);
   }
@@ -973,6 +982,15 @@ export async function renderCampaignsView(container, ctx = {}) {
         ? chrome.runtime.getURL('icons/icon48.png')
         : '../../icons/icon48.png';
 
+    const isNoteLimitActive = Date.now() < noteLimitUntil;
+    let noteLimitRemaining = '';
+    if (isNoteLimitActive) {
+      const diffMs = Math.max(0, noteLimitUntil - Date.now());
+      const h = Math.floor(diffMs / 3600000);
+      const m = Math.floor((diffMs % 3600000) / 60000);
+      noteLimitRemaining = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    }
+
     container.innerHTML = `
       <div class="campaigns-view-shell">
         <div class="campaigns-top-bar">
@@ -988,6 +1006,15 @@ export async function renderCampaignsView(container, ctx = {}) {
             </button>
           </div>
         </div>
+
+        ${isNoteLimitActive ? `
+          <div class="note-limit-fallback-banner" style="display: flex; align-items: center; gap: 10px; padding: 12px 18px; margin-bottom: 20px; border-radius: 12px; background: #fffbeb; border: 1.5px solid #fef3c7; color: #b45309; font-size: 13px; font-weight: 600; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.08);">
+            <span style="display: inline-flex; color: #f59e0b; flex-shrink: 0;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </span>
+            <span>Monthly personalized note limit reached — sending blank invites automatically for the next <strong>${noteLimitRemaining}</strong></span>
+          </div>
+        ` : ''}
 
         <!-- Sub-Tabs & Search Bar (Screenshot 3) -->
         <div class="camp-tabs-and-search-row">

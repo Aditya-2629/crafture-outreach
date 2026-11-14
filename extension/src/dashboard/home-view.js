@@ -176,6 +176,16 @@ export async function renderHomeView(container, ctx = {}) {
       queuedActionsCount = enrollments.filter((e) => e.state === 'active' || e.state === 'running' || e.status === 'active' || !e.status).length;
     }
 
+    const noteLimitUntil = Number(storage.outfox_note_limit_until) || 0;
+    const isNoteLimitActive = Date.now() < noteLimitUntil;
+    let noteLimitRemaining = '';
+    if (isNoteLimitActive) {
+      const diffMs = Math.max(0, noteLimitUntil - Date.now());
+      const h = Math.floor(diffMs / 3600000);
+      const m = Math.floor((diffMs % 3600000) / 60000);
+      noteLimitRemaining = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    }
+
     container.innerHTML = `
       <div class="waalaxy-home-grid">
         <div class="home-main-col">
@@ -198,6 +208,15 @@ export async function renderHomeView(container, ctx = {}) {
               </div>
             </div>
           </div>
+
+          ${isNoteLimitActive ? `
+            <div class="note-limit-fallback-banner" style="display: flex; align-items: center; gap: 10px; padding: 12px 18px; margin-bottom: 20px; border-radius: 12px; background: #fffbeb; border: 1.5px solid #fef3c7; color: #b45309; font-size: 13px; font-weight: 600; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.08);">
+              <span style="display: inline-flex; color: #f59e0b; flex-shrink: 0;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </span>
+              <span>Monthly personalized note limit reached — sending blank invites automatically for the next <strong>${noteLimitRemaining}</strong></span>
+            </div>
+          ` : ''}
 
           <div class="hero-blue-banner">
             <div class="hero-banner-left">

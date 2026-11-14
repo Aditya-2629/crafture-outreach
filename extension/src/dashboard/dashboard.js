@@ -11,6 +11,7 @@ import { renderCampaignsView } from './campaigns-view.js';
 import { renderQueueView } from './queue-view.js';
 import { renderTemplatesView } from './templates-view.js';
 import { renderInboxView } from './inbox-view.js';
+import { renderResearchView } from './research-view.js';
 import { renderSettingsView } from './settings-view.js';
 
 let currentViewId = 'home';
@@ -80,6 +81,7 @@ export async function switchView(viewId, options = {}) {
       queue: 'Queue',
       templates: 'Message Templates',
       inbox: 'Inbox',
+      research: 'Research',
       settings: 'Settings',
     };
     crumb.textContent = titles[viewId] || 'Overview';
@@ -144,6 +146,9 @@ export async function switchView(viewId, options = {}) {
       break;
     case 'inbox':
       await renderInboxView(appRoot, ctx);
+      break;
+    case 'research':
+      await renderResearchView(appRoot, ctx);
       break;
     case 'settings':
       await renderSettingsView(appRoot, ctx);

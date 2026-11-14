@@ -1115,35 +1115,124 @@ async function domWithdrawInPage(targetInvites) {
   const results = [];
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  for (const target of targetInvites) {
+  if (!Array.isArray(targetInvites) || targetInvites.length === 0) {
+    return { results: [], matchedInDom: 0, loadMoreClicks: 0 };
+  }
+
+  // 1. Wait for Hydration: poll up to 15s until invitation cards or "Withdraw" buttons appear in DOM
+  const hydrationStart = Date.now();
+  while (Date.now() - hydrationStart < 15000) {
+    const hasCards = document.querySelector(
+      '.invitation-card, li.invitation-card, .mn-invitation-list li, [data-view-name="invitation-card"], .mn-invitation-card, .artdeco-list__item, ul.mn-invitation-list > li',
+    );
+    const hasWithdrawBtn = Array.from(document.querySelectorAll('button')).some((b) => {
+      const txt = (b.innerText || b.textContent || '').trim().toLowerCase();
+      const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+      return txt === 'withdraw' || aria.includes('withdraw');
+    });
+
+    if (hasCards || hasWithdrawBtn) {
+      break;
+    }
+    await sleep(400);
+  }
+
+  function isCardMatch(card, target) {
     const vanity = String(target.vanityName || target.publicId || '').toLowerCase().trim();
     const firstName = String(target.firstName || '').toLowerCase().trim();
     const lastName = String(target.lastName || '').toLowerCase().trim();
     const fullName = `${firstName} ${lastName}`.trim();
 
-    // 1. Locate all invitation cards on the page
-    const candidateCards = Array.from(
+    const links = Array.from(card.querySelectorAll('a[href*="/in/"]')).map((a) =>
+      (a.getAttribute('href') || '').toLowerCase(),
+    );
+    const text = (card.textContent || '').toLowerCase();
+
+    if (vanity) {
+      const matchUrl = links.some((href) =>
+        href.includes(`/in/${vanity}/`) ||
+        href.includes(`/in/${vanity}?`) ||
+        href.endsWith(`/in/${vanity}`) ||
+        href.includes(`/${vanity}`),
+      );
+      if (matchUrl) return true;
+    }
+
+    if (fullName && fullName.length >= 3 && text.includes(fullName)) {
+      return true;
+    }
+
+    if (firstName && lastName && firstName.length >= 2 && lastName.length >= 2 && text.includes(firstName) && text.includes(lastName)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  function getCandidateCards() {
+    return Array.from(
       document.querySelectorAll(
-        '.invitation-card, li.invitation-card, .mn-invitation-list li, [data-view-name="invitation-card"], .mn-invitation-card',
+        '.invitation-card, li.invitation-card, .mn-invitation-list li, [data-view-name="invitation-card"], .mn-invitation-card, .artdeco-list__item, ul.mn-invitation-list > li',
       ),
     );
+  }
 
-    let matchedCard = null;
-
-    for (const card of candidateCards) {
-      const cardText = (card.textContent || '').toLowerCase();
-      const profileLinks = Array.from(card.querySelectorAll('a[href*="/in/"]')).map((a) =>
-        (a.getAttribute('href') || '').toLowerCase(),
+  function getLoadMoreButton() {
+    const buttons = Array.from(document.querySelectorAll('button'));
+    return buttons.find((btn) => {
+      const isVisible = btn.offsetWidth > 0 || btn.offsetHeight > 0 || btn.getClientRects().length > 0;
+      if (!isVisible) return false;
+      const txt = (btn.innerText || btn.textContent || '').trim().toLowerCase();
+      const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+      return (
+        txt.includes('load more') ||
+        txt.includes('see more') ||
+        txt.includes('show more') ||
+        aria.includes('load more') ||
+        btn.classList.contains('scaffold-finite-scroll__load-button')
       );
+    });
+  }
 
-      const matchesVanity = vanity && profileLinks.some((href) => href.includes(`/in/${vanity}`));
-      const matchesName = fullName && cardText.includes(fullName);
+  // 2. Click "Load more" to reach stale invites if any targets are missing from DOM
+  const MAX_LOAD_MORE_CLICKS = 20;
+  let loadMoreClicks = 0;
 
-      if (matchesVanity || matchesName) {
-        matchedCard = card;
-        break;
-      }
+  while (loadMoreClicks < MAX_LOAD_MORE_CLICKS) {
+    const currentCards = getCandidateCards();
+    const unmatchedTargets = targetInvites.filter((t) => !currentCards.some((c) => isCardMatch(c, t)));
+    if (unmatchedTargets.length === 0) {
+      break; // All targets found!
     }
+
+    const loadMoreBtn = getLoadMoreButton();
+    if (!loadMoreBtn) {
+      break; // No visible "Load more" button left
+    }
+
+    try {
+      loadMoreBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await sleep(300);
+      loadMoreBtn.click();
+      loadMoreClicks++;
+      await sleep(2000); // wait ~2s for new cards to append
+    } catch {
+      break;
+    }
+  }
+
+  // 3. Process each target invitation
+  const currentCards = getCandidateCards();
+  let matchedInDom = 0;
+
+  for (const target of targetInvites) {
+    const vanity = String(target.vanityName || target.publicId || '').toLowerCase().trim();
+    const firstName = String(target.firstName || '').toLowerCase().trim();
+    const lastName = String(target.lastName || '').toLowerCase().trim();
+    const fullName = `${firstName} ${lastName}`.trim();
+    const identifier = vanity || fullName || target.invitationId || 'unknown';
+
+    let matchedCard = currentCards.find((c) => isCardMatch(c, target));
 
     // Secondary fallback: search any anchor pointing to vanity and get its closest card container
     if (!matchedCard && vanity) {
@@ -1152,6 +1241,7 @@ async function domWithdrawInPage(targetInvites) {
         matchedCard =
           link.closest('li') ||
           link.closest('.invitation-card') ||
+          link.closest('.artdeco-list__item') ||
           link.closest('div[class*="invitation"]') ||
           link.parentElement?.parentElement;
       }
@@ -1160,14 +1250,16 @@ async function domWithdrawInPage(targetInvites) {
     if (!matchedCard) {
       results.push({
         invitationId: target.invitationId,
-        publicId: vanity || fullName,
+        publicId: identifier,
         success: false,
         reason: 'Invitation card not found in DOM',
       });
       continue;
     }
 
-    // 2. Find the "Withdraw" button inside the matched card
+    matchedInDom++;
+
+    // Find the "Withdraw" button inside the matched card
     const buttons = Array.from(matchedCard.querySelectorAll('button'));
     const withdrawBtn = buttons.find((btn) => {
       const txt = (btn.innerText || btn.textContent || '').trim().toLowerCase();
@@ -1178,57 +1270,72 @@ async function domWithdrawInPage(targetInvites) {
     if (!withdrawBtn) {
       results.push({
         invitationId: target.invitationId,
-        publicId: vanity || fullName,
+        publicId: identifier,
         success: false,
         reason: 'Withdraw button not found in card',
       });
       continue;
     }
 
-    // Click the card's Withdraw button
-    withdrawBtn.click();
-    await sleep(650);
+    try {
+      // Scroll into view & click the card's Withdraw button
+      withdrawBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await sleep(350);
+      withdrawBtn.click();
 
-    // 3. Find and click modal confirmation "Withdraw" button
-    const modal =
-      document.querySelector('[role="dialog"]') ||
-      document.querySelector('.artdeco-modal') ||
-      document.querySelector('#artdeco-modal-outlet');
+      // Wait ~600–1200ms for confirmation dialog
+      const waitModalMs = Math.round(600 + Math.random() * 600);
+      await sleep(waitModalMs);
 
-    let confirmBtn = null;
-    if (modal) {
-      const modalButtons = Array.from(modal.querySelectorAll('button'));
-      confirmBtn = modalButtons.find((btn) => {
-        const txt = (btn.innerText || btn.textContent || '').trim().toLowerCase();
-        const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
-        return txt === 'withdraw' || aria.includes('withdraw');
+      // Find and click confirmation modal "Withdraw" button
+      const dialogSelectors = '[role="dialog"], .artdeco-modal, #artdeco-modal-outlet';
+      const dialogs = Array.from(document.querySelectorAll(dialogSelectors));
+      let confirmBtn = null;
+
+      for (const dialog of dialogs) {
+        const modalButtons = Array.from(dialog.querySelectorAll('button'));
+        confirmBtn = modalButtons.find((btn) => {
+          const txt = (btn.innerText || btn.textContent || '').trim();
+          const aria = (btn.getAttribute('aria-label') || '').trim();
+          return /^withdraw$/i.test(txt) || /^withdraw$/i.test(aria);
+        });
+        if (confirmBtn) break;
+      }
+
+      if (confirmBtn) {
+        confirmBtn.click();
+        await sleep(800);
+        results.push({
+          invitationId: target.invitationId,
+          publicId: identifier,
+          success: true,
+          method: 'dom_fallback',
+        });
+      } else {
+        // If modal didn't appear or withdrawal was instant
+        results.push({
+          invitationId: target.invitationId,
+          publicId: identifier,
+          success: true,
+          method: 'dom_fallback',
+          note: 'Card withdraw clicked without modal confirmation',
+        });
+      }
+    } catch (clickErr) {
+      results.push({
+        invitationId: target.invitationId,
+        publicId: identifier,
+        success: false,
+        reason: clickErr?.message || 'Error clicking withdraw button',
       });
     }
 
-    if (confirmBtn) {
-      confirmBtn.click();
-      await sleep(1000);
-      results.push({
-        invitationId: target.invitationId,
-        publicId: vanity || fullName,
-        success: true,
-      });
-    } else {
-      // If modal didn't appear or withdrawal was instant
-      results.push({
-        invitationId: target.invitationId,
-        publicId: vanity || fullName,
-        success: true,
-        note: 'Card withdraw clicked without modal confirmation',
-      });
-    }
-
-    // Delay between cards (3-5s)
-    const cardDelay = Math.round(3000 + Math.random() * 2000);
-    await sleep(cardDelay);
+    // Wait ~1500–2500ms before next invite
+    const nextDelay = Math.round(1500 + Math.random() * 1000);
+    await sleep(nextDelay);
   }
 
-  return results;
+  return { results, matchedInDom, loadMoreClicks };
 }
 
 /**
@@ -1276,11 +1383,11 @@ function waitForTabLoad(tabId, maxWaitMs = 15000) {
  * Fallback to clicking native Withdraw buttons in a background tab session via chrome.scripting.
  *
  * @param {Array<{invitationId: string, vanityName?: string, firstName?: string, lastName?: string, publicId?: string}>} invitesBatch
- * @returns {Promise<{withdrawn: number, failed: number, results: Array}>}
+ * @returns {Promise<{withdrawn: number, failed: number, matchedInDom: number, results: Array}>}
  */
 export async function withdrawViaDomFallback(invitesBatch) {
   if (!Array.isArray(invitesBatch) || invitesBatch.length === 0) {
-    return { withdrawn: 0, failed: 0, results: [] };
+    return { withdrawn: 0, failed: 0, matchedInDom: 0, results: [] };
   }
 
   if (typeof chrome === 'undefined' || !chrome.tabs?.create || !chrome.scripting?.executeScript) {
@@ -1311,17 +1418,23 @@ export async function withdrawViaDomFallback(invitesBatch) {
       func: domWithdrawInPage,
     });
 
-    const results = execResults && execResults[0] ? execResults[0].result || [] : [];
+    const rawResult = execResults && execResults[0] ? execResults[0].result : null;
+    const results = Array.isArray(rawResult) ? rawResult : (rawResult?.results || []);
+    const matchedInDom = typeof rawResult?.matchedInDom === 'number'
+      ? rawResult.matchedInDom
+      : results.filter((r) => r.reason !== 'Invitation card not found in DOM').length;
+    const loadMoreClicks = typeof rawResult?.loadMoreClicks === 'number' ? rawResult.loadMoreClicks : 0;
+
     const withdrawn = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
 
     logDebug(
       'good',
       'AutoWithdraw',
-      `[AutoWithdraw] DOM fallback completed: ${withdrawn} withdrawn, ${failed} failed.`,
+      `[AutoWithdraw] DOM fallback completed: matchedInDom=${matchedInDom}, withdrawn=${withdrawn}, failed=${failed}. (targets=${invitesBatch.length}, loadMoreClicks=${loadMoreClicks})`,
     );
 
-    return { withdrawn, failed, results };
+    return { withdrawn, failed, matchedInDom, results };
   } catch (err) {
     logDebug('error', 'AutoWithdraw', `[AutoWithdraw] DOM fallback error: ${err.message || err}`);
     throw err;

@@ -989,6 +989,55 @@ describe('withdraw invitation', () => {
       v.withdrawInvitation('7504239478362759168', { allowDomFallback: false }),
     ).rejects.toThrow();
   });
+
+  it('withdrawViaDomFallback tracks matchedInDom, loadMoreClicks, and withdrawn counts', async () => {
+    const origTabs = chrome.tabs;
+    const origScripting = chrome.scripting;
+
+    chrome.tabs = {
+      create: vi.fn().mockResolvedValue({ id: 88 }),
+      remove: vi.fn().mockResolvedValue(true),
+      get: vi.fn().mockResolvedValue({ id: 88, status: 'complete' }),
+      onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+    };
+    chrome.scripting = {
+      executeScript: vi.fn().mockResolvedValue([
+        {
+          result: {
+            matchedInDom: 2,
+            loadMoreClicks: 3,
+            results: [
+              { invitationId: 'inv_1', publicId: 'ada', success: true, method: 'dom_fallback' },
+              { invitationId: 'inv_2', publicId: 'bob', success: true, method: 'dom_fallback' },
+            ],
+          },
+        },
+      ]),
+    };
+
+    try {
+      const targets = [
+        { invitationId: 'inv_1', vanityName: 'ada', firstName: 'Ada', lastName: 'Lovelace' },
+        { invitationId: 'inv_2', vanityName: 'bob', firstName: 'Bob', lastName: 'Bright' },
+      ];
+      const res = await v.withdrawViaDomFallback(targets);
+
+      expect(res.withdrawn).toBe(2);
+      expect(res.failed).toBe(0);
+      expect(res.matchedInDom).toBe(2);
+      expect(res.results).toHaveLength(2);
+      expect(chrome.tabs.create).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'https://www.linkedin.com/mynetwork/invitation-manager/sent/' }),
+      );
+      expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+        expect.objectContaining({ args: [targets] }),
+      );
+      expect(chrome.tabs.remove).toHaveBeenCalledWith(88);
+    } finally {
+      chrome.tabs = origTabs;
+      chrome.scripting = origScripting;
+    }
+  });
 });
 
 /* ================================================================== */

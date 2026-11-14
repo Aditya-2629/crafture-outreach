@@ -140,4 +140,41 @@ describe('withdrawStaleInvites', () => {
     fetchSpy.mockRestore();
     withdrawSpy.mockRestore();
   });
+
+  it('paginates fetchSentInvitations until a batch returns < 100 items', async () => {
+    const now = Date.now();
+    const freshTime = now - 2 * 24 * 60 * 60 * 1000;
+    const staleTime = now - 60 * 24 * 60 * 60 * 1000; // 60 days old
+
+    // Page 1: 100 fresh invites
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      invitationId: `fresh_${i}`,
+      sentTime: freshTime,
+      publicId: `fresh_user_${i}`,
+    }));
+
+    // Page 2: 2 stale invites (2-month-old)
+    const page2 = [
+      { invitationId: 'stale_1', sentTime: staleTime, publicId: 'stale_user_1' },
+      { invitationId: 'stale_2', sentTime: staleTime, publicId: 'stale_user_2' },
+    ];
+
+    const fetchSpy = vi.spyOn(voyager, 'fetchSentInvitations')
+      .mockResolvedValueOnce(page1)
+      .mockResolvedValueOnce(page2);
+
+    const withdrawSpy = vi.spyOn(voyager, 'withdrawInvitation').mockResolvedValue({ ok: true, method: 'sdui_api' });
+
+    const res = await outreach.withdrawStaleInvites({ olderThanDays: 14, maxCount: 10 });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenNthCalledWith(1, { start: 0, count: 100 });
+    expect(fetchSpy).toHaveBeenNthCalledWith(2, { start: 100, count: 100 });
+    expect(res.totalPending).toBe(102);
+    expect(res.staleCount).toBe(2);
+    expect(res.withdrawnCount).toBe(2);
+
+    fetchSpy.mockRestore();
+    withdrawSpy.mockRestore();
+  });
 });

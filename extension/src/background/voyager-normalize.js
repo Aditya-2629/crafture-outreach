@@ -1110,6 +1110,27 @@ export function normalizeTotal(raw) {
  * turn at the invitee's `MiniProfile`. The older inline shapes are still read
  * so a stored response from an earlier build does not break.
  */
+function parseRelativeTime(text) {
+  if (!text || typeof text !== 'string') return undefined;
+  const t = text.trim();
+  if (/^today/i.test(t)) return Date.now();
+  if (/^yesterday/i.test(t)) return Date.now() - 24 * 60 * 60 * 1000;
+  const match = t.match(/(\d+)\s+(minute|hour|day|week|month|year)s?\s+ago/i);
+  if (!match) return undefined;
+  const count = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+  const now = Date.now();
+  const MS = {
+    minute: 60 * 1000,
+    hour: 60 * 60 * 1000,
+    day: 24 * 60 * 60 * 1000,
+    week: 7 * 24 * 60 * 60 * 1000,
+    month: 30 * 24 * 60 * 60 * 1000,
+    year: 365 * 24 * 60 * 60 * 1000,
+  };
+  return now - count * (MS[unit] || MS.day);
+}
+
 export function normalizeSentInvitations(raw) {
   const idx = index(raw);
   const out = [];
@@ -1132,8 +1153,8 @@ export function normalizeSentInvitations(raw) {
     const publicId =
       mini.publicIdentifier ||
       publicIdFromUrl(mini.publicProfileUrl) ||
-      publicIdFromUrl(element.cardActionTarget);
-    if (!publicId) continue;
+      publicIdFromUrl(element.cardActionTarget) ||
+      '';
 
     const toMemberUrn =
       mini.dashEntityUrn ||
@@ -1152,7 +1173,25 @@ export function normalizeSentInvitations(raw) {
 
     const numericMatch = String(invitationUrn).match(/\d+/);
     const invitationId = numericMatch ? numericMatch[0] : String(invitationUrn).replace(/^urn:li:[^:]+:/, '');
-    const sentTime = invitation.sentTime || invitation.createdAt || undefined;
+
+    // Allow keeping the item as long as invitationUrn (or invitationId) exists even if publicId is empty
+    if (!publicId && !invitationUrn && !invitationId) continue;
+
+    const rawSent =
+      invitation.sentTime ||
+      invitation.createdAt ||
+      element.sentTime ||
+      element.createdAt ||
+      invitation.sentTimestamp ||
+      element.sentTimestamp ||
+      parseRelativeTime(element.timeText?.text) ||
+      parseRelativeTime(element.subtitle?.text) ||
+      parseRelativeTime(element.caption?.text) ||
+      parseRelativeTime(element.subline?.text) ||
+      parseRelativeTime(invitation.sentTimeText?.text) ||
+      undefined;
+    const sentTime = typeof rawSent === 'number' ? rawSent : (Number(rawSent) || undefined);
+
     const profileUrn = (mini.dashEntityUrn || mini.entityUrn || toMemberUrn || invitation.toMemberId || '')
       .replace(/^urn:li:(?:fsd?_profile|member):/, '');
     const titleParts = (element.title?.text || '').trim().split(/\s+/);

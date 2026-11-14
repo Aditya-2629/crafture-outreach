@@ -241,8 +241,31 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
   const cutoffMs = olderThanDays * 24 * 60 * 60 * 1000;
   const now = Date.now();
 
-  const invitations = await voyager.fetchSentInvitations({ start: 0, count: 100 });
-  const stale = invitations.filter(
+  const seenIds = new Set();
+  const allInvitations = [];
+  const pageStarts = [0, 100, 200, 300, 400];
+  for (const start of pageStarts) {
+    try {
+      const batch = await voyager.fetchSentInvitations({ start, count: 100 });
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      for (const inv of batch) {
+        const id = inv.invitationId || inv.invitationUrn;
+        if (id && !seenIds.has(id)) {
+          seenIds.add(id);
+          allInvitations.push(inv);
+        } else if (!id) {
+          allInvitations.push(inv);
+        }
+      }
+      if (batch.length < 100) break;
+    } catch (err) {
+      logDebug('warn', 'Outreach', `[withdrawStaleInvites] Error fetching page at start=${start}: ${err.message}`);
+      break;
+    }
+  }
+
+  const withSentAtCount = allInvitations.filter((inv) => Boolean(inv.sentTime || inv.sentAt)).length;
+  const stale = allInvitations.filter(
     (inv) => (inv.sentTime || inv.sentAt) && now - (inv.sentTime || inv.sentAt) > cutoffMs,
   );
 
@@ -374,7 +397,7 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
   logDebug(
     'info',
     'Outreach',
-    `[withdrawStaleInvites] Finished run: scanned=${scannedCount}, withdrawn=${withdrawnCount}, skipped=${skippedCount}, method=${usedMethod}`,
+    `[withdrawStaleInvites] Finished run: fetched=${allInvitations.length}, withSentAt=${withSentAtCount}, stale=${stale.length}, withdrawn=${withdrawnCount}, skipped=${skippedCount}, method=${usedMethod}`,
   );
 
   return {
@@ -383,7 +406,7 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
     skippedCount,
     withdrawn: withdrawnCount,
     attempted: scannedCount,
-    totalPending: invitations.length,
+    totalPending: allInvitations.length,
     staleCount: stale.length,
     method: usedMethod,
     ...(errors.length > 0 ? { errors } : {}),

@@ -857,6 +857,28 @@ describe('sent invitations', () => {
     expect(item.lastName).toBeTruthy();
     expect(item.vanityName).toBe(item.publicId);
   });
+
+  it('keeps invitations without publicId as long as invitationId exists and parses relative times', async () => {
+    const raw = {
+      data: {
+        elements: [
+          {
+            entityUrn: 'urn:li:fs_relSentInvitationView:urn:li:invitation:999888777',
+            title: { text: 'Anonymous Executive' },
+            timeText: { text: 'Sent 3 weeks ago' },
+          },
+        ],
+      },
+    };
+    const out = v.normalizeSentInvitations(raw);
+    expect(out).toHaveLength(1);
+    expect(out[0].invitationId).toBe('999888777');
+    expect(out[0].publicId).toBe('');
+    expect(typeof out[0].sentTime).toBe('number');
+    const threeWeeksAgo = Date.now() - 21 * 24 * 60 * 60 * 1000;
+    // Should be close to 3 weeks ago (within 5 seconds)
+    expect(Math.abs(out[0].sentTime - threeWeeksAgo)).toBeLessThan(5000);
+  });
 });
 
 /* ================================================================== */

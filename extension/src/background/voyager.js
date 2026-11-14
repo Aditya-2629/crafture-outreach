@@ -1006,9 +1006,10 @@ export async function getMutualConnectionsCount({ profileUrn }) {
  */
 export async function getSentInvitations({ start = 0, count = 100 } = {}) {
   const sentPath = getEndpoint('listSentInvitations') || ENDPOINTS.sentInvitations;
+  const basePath = sentPath.split('?')[0];
   try {
     const raw = await voyagerFetch(
-      `${sentPath}?${qs({
+      `${basePath}?${qs({
         q: 'invitationType',
         invitationType: 'CONNECTION',
         start,
@@ -1018,12 +1019,22 @@ export async function getSentInvitations({ start = 0, count = 100 } = {}) {
     return normalizeSentInvitations(requireCollection('sentInvitations', raw));
   } catch (e) {
     if (e instanceof EngineError && ACT_ON_THESE.has(e.code)) throw e;
-    const raw = await graphql(ENDPOINTS.queryIds.sentInvitations, {
-      start,
-      count,
-      invitationType: 'CONNECTION',
-    });
-    return normalizeSentInvitations(raw);
+    console.warn(
+      `[Voyager] voyagerFetch on sentInvitationViewsV2 failed (status=${e?.status || e?.response?.status || 'unknown'}, message=${e?.message || e})`,
+    );
+    try {
+      const raw = await graphql(ENDPOINTS.queryIds.sentInvitations, {
+        start,
+        count,
+        invitationType: 'CONNECTION',
+      });
+      return normalizeSentInvitations(raw);
+    } catch (gErr) {
+      console.warn(
+        `[Voyager] GraphQL fallback for sentInvitations failed (status=${gErr?.status || gErr?.response?.status || 'unknown'}, message=${gErr?.message || gErr})`,
+      );
+      return [];
+    }
   }
 }
 
@@ -1034,10 +1045,16 @@ export async function getSentInvitations({ start = 0, count = 100 } = {}) {
  * @returns {Promise<{invitationId: string, sentTime: number, sentAt: number, profileUrn: string, firstName: string, lastName: string, vanityName: string, toMemberUrn: string, toPublicId: string, invitationUrn?: string, recipientPublicId?: string, publicId?: string}[]>}
  */
 export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
-  const listPath = getEndpoint('listSentInvitations') || '/voyager/api/relationships/invitations';
+  const listPath = getEndpoint('listSentInvitations') || ENDPOINTS.sentInvitations;
+  const basePath = listPath.split('?')[0];
   try {
     const raw = await voyagerFetch(
-      `${listPath}?start=${start}&count=${count}&invitationType=SENT`,
+      `${basePath}?${qs({
+        q: 'invitationType',
+        invitationType: 'CONNECTION',
+        start,
+        count,
+      })}`,
     );
     const normalized = normalizeSentInvitations(raw);
     if (normalized.length > 0) {
@@ -1062,6 +1079,9 @@ export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
     }
   } catch (e) {
     if (e instanceof EngineError && ACT_ON_THESE.has(e.code)) throw e;
+    console.warn(
+      `[Voyager] fetchSentInvitations sentInvitationViewsV2 failed (status=${e?.status || e?.response?.status || 'unknown'}, message=${e?.message || e})`,
+    );
   }
 
   const fallback = await getSentInvitations({ start, count });

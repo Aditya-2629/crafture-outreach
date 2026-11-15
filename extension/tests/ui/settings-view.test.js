@@ -77,4 +77,23 @@ describe('SettingsView — Import History Tab', () => {
     expect(host.textContent).toContain('2');
     expect(host.querySelector('#btn-clear-import-history')).toBeTruthy();
   });
+
+  it('removes internal infrastructure cards from Activity tab and provides Developer Logs shortcut', async () => {
+    setupEngine();
+    const host = mountPoint();
+
+    await renderSettingsView(host, { tab: 'activity', showToast: () => {} });
+    await flush(6);
+
+    // Activity tab is default
+    expect(host.textContent).not.toContain('High-Speed IndexedDB Engine');
+    expect(host.textContent).not.toContain('LinkedIn Endpoints (Vault)');
+    expect(host.querySelector('#btn-sync-endpoints-now')).toBeNull();
+    expect(host.querySelector('#storage-health-badge')).toBeNull();
+
+    // Verify Developer Logs link is present
+    const devLogsBtn = host.querySelector('#btn-open-dev-logs');
+    expect(devLogsBtn).toBeTruthy();
+    expect(devLogsBtn.textContent).toContain('Developer Logs');
+  });
 });

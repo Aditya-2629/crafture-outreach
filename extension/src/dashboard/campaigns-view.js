@@ -2661,14 +2661,14 @@ export async function renderCampaignsView(container, ctx = {}) {
                   `}
                 </div>
 
-                <!-- Vault Auto-enrichment toggle card -->
+                <!-- Auto-enrichment toggle card -->
                 <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 14px 16px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 12px; margin-top: 16px;">
                   <div style="display: flex; gap: 12px; align-items: flex-start;">
                     <span style="font-size: 20px; line-height: 1; display:inline-flex; color:#ff6b00;">${ICONS.lightning}</span>
                     <div>
-                      <strong style="font-size: 13.5px; color: #9a3412; display: block; margin-bottom: 3px;">Auto-enrich missing emails via Vault</strong>
+                      <strong style="font-size: 13.5px; color: #9a3412; display: block; margin-bottom: 3px;">Auto-enrich missing work emails</strong>
                       <span style="font-size: 12px; color: #c2410c; line-height: 1.4; display: block;">
-                        If an enrolled prospect doesn't have an email address, OutFox will automatically waterfall-enrich them via Vault before sending email steps.
+                        If an enrolled prospect doesn't have an email address, OutFox will automatically find and verify their work email before sending email steps.
                       </span>
                     </div>
                   </div>

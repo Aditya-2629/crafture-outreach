@@ -312,7 +312,7 @@ async function initDashboard() {
  * Initialize Centralized Real-Time Terminal Drawer (Non-intrusive floating pill)
  */
 function initTerminalDrawer() {
-  const pill = document.getElementById('outfox-logs-pill');
+  const pill = document.getElementById('outfox-logs-pill') || document.getElementById('btn-toggle-terminal');
   const modal = document.getElementById('outfox-terminal-modal');
   const stream = document.getElementById('terminal-log-stream');
   const countBadge = document.getElementById('terminal-log-count');
@@ -320,7 +320,42 @@ function initTerminalDrawer() {
   const copyBtn = document.getElementById('btn-copy-logs');
   const clearBtn = document.getElementById('btn-clear-logs');
 
-  if (!pill || !modal || !stream) return;
+  if (!modal || !stream) return;
+
+  function toggleTerminal() {
+    if (pill) pill.classList.remove('hidden');
+    const isHidden = modal.classList.toggle('hidden');
+    if (!isHidden) stream.scrollTop = stream.scrollHeight;
+  }
+
+  function openTerminal() {
+    if (pill) pill.classList.remove('hidden');
+    modal.classList.remove('hidden');
+    stream.scrollTop = stream.scrollHeight;
+  }
+
+  // Expose toggle helpers for Settings and developer shortcuts
+  if (typeof window !== 'undefined') {
+    window.outfoxToggleTerminal = toggleTerminal;
+    window.outfoxOpenTerminal = openTerminal;
+  }
+
+  // Keyboard shortcut: Ctrl+Shift+L or Alt+L toggles terminal drawer anytime
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey && e.shiftKey && (e.key === 'L' || e.key === 'l')) || (e.altKey && (e.key === 'L' || e.key === 'l'))) {
+      e.preventDefault();
+      toggleTerminal();
+    }
+  });
+
+  // Check if developer logs pill is explicitly enabled in storage
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    chrome.storage.local.get('outfox_dev_logs_enabled', (res) => {
+      if (res?.outfox_dev_logs_enabled && pill) {
+        pill.classList.remove('hidden');
+      }
+    });
+  }
 
   let inMemoryLogs = [];
 
@@ -380,10 +415,9 @@ function initTerminalDrawer() {
   }
 
   // Toggle Modal via Pill
-  pill.addEventListener('click', (e) => {
+  pill?.addEventListener('click', (e) => {
     e.stopPropagation();
-    const isHidden = modal.classList.toggle('hidden');
-    if (!isHidden) stream.scrollTop = stream.scrollHeight;
+    toggleTerminal();
   });
 
   // Close via X button

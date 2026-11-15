@@ -993,4 +993,85 @@ describe('v1 migration', () => {
     expect(lead.history.length).toBeGreaterThanOrEqual(2);
     expect(lead.history.some((h) => h.step === 'view' || h.step === 'action')).toBe(true);
   });
+
+  it('unparks mistakenly postponed non-invite steps when their bucket is healthy', async () => {
+    await storage.putProfile({ publicId: 'lead_view_postponed', firstName: 'Lead View' });
+    const c = (await handle(ACTIONS.CAMPAIGN_CREATE, {
+      name: 'UnparkTest',
+      steps: [{ type: 'view' }],
+      publicIds: ['lead_view_postponed'],
+      settings: { autopilot: true },
+    })).data;
+
+    // Manually park this enrollment 6 hours in the future with a postponed error
+    const enrollments = await campaigns.readEnrollments(c.campaignId);
+    enrollments[0].nextAt = Date.now() + 6 * 3600 * 1000;
+    enrollments[0].lastError = 'Postponed: Daily invite quota reached';
+    await campaigns.writeEnrollments(c.campaignId, enrollments);
+
+    // Call unparkNonInviteEnrollments
+    const unparked = await campaigns.unparkNonInviteEnrollments();
+    expect(unparked).toBe(1);
+
+    const updated = await campaigns.readEnrollments(c.campaignId);
+    expect(updated[0].nextAt).toBeLessThanOrEqual(Date.now());
+    expect(updated[0].lastError).toBeNull();
+  });
+
+  it('strictly isolates invite quota exhaustion and executes view step in same tick without break', async () => {
+    await storage.putProfile({ publicId: 'lead_invite_cap', firstName: 'Lead Invite' });
+    await storage.putProfile({ publicId: 'lead_view_ok', firstName: 'Lead View' });
+
+    campaigns.setMaxActionsPerTick(5);
+
+    // Lead 1 is on invite step, Lead 2 is on view step
+    const c1 = (await handle(ACTIONS.CAMPAIGN_CREATE, {
+      name: 'InviteCamp',
+      steps: [{ type: 'invite', note: 'Hi' }],
+      publicIds: ['lead_invite_cap'],
+      settings: { autopilot: true },
+    })).data;
+
+    const c2 = (await handle(ACTIONS.CAMPAIGN_CREATE, {
+      name: 'ViewCamp',
+      steps: [{ type: 'view' }],
+      publicIds: ['lead_view_ok'],
+      settings: { autopilot: true },
+    })).data;
+
+    // Mock engine.handle so OUTREACH_INVITE fails with QUOTA_EXCEEDED, while OUTREACH_VIEW succeeds
+    vi.spyOn(engine, 'handle').mockImplementation(async (action, params, origin) => {
+      if (action === ACTIONS.OUTREACH_INVITE) {
+        return {
+          ok: false,
+          error: { code: ERROR.QUOTA_EXCEEDED, message: 'Daily invite cap reached' },
+        };
+      }
+      if (action === ACTIONS.OUTREACH_VIEW) {
+        return {
+          ok: true,
+          data: { status: 'sent' },
+        };
+      }
+      return { ok: true, data: {} };
+    });
+
+    const res = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+    // View step in ViewCamp MUST execute (executed = 1) even though InviteCamp hit quota in the same tick!
+    expect(res.data.executed).toBe(1);
+
+    // Verify lead_invite_cap was postponed to tomorrow's window
+    const inviteEnrollments = await campaigns.readEnrollments(c1.campaignId);
+    expect(inviteEnrollments[0].nextAt).toBeGreaterThan(Date.now() + 2 * 3600 * 1000);
+    expect(inviteEnrollments[0].lastError).toContain('Daily quota reached');
+
+    // Verify lead_view_ok completed its step and was NOT postponed to tomorrow
+    const viewEnrollments = await campaigns.readEnrollments(c2.campaignId);
+    expect(viewEnrollments[0].stepIndex).toBe(1);
+
+    // Clean up
+    vi.restoreAllMocks();
+    campaigns.setMaxActionsPerTick(campaigns.DEFAULT_MAX_ACTIONS_PER_TICK);
+    await chrome.storage.local.remove('outfox_bucket_cooldowns');
+  });
 });

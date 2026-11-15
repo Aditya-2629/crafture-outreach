@@ -246,7 +246,7 @@ export async function readEnrollments(campaignId) {
   return get(K.enrollments(campaignId), []);
 }
 
-async function writeEnrollments(campaignId, enrollments) {
+export async function writeEnrollments(campaignId, enrollments) {
   await set(K.enrollments(campaignId), enrollments);
   return enrollments;
 }
@@ -877,6 +877,60 @@ async function stepParams(campaign, step, enrollment, routed = null) {
 /* ================================================================== */
 
 /**
+ * Un-parks mistakenly postponed non-invite steps (e.g. view, visit, follow, like, message, email)
+ * if nextAt is far in the future (> Date.now() + 2 * 3600 * 1000) while their own bucket is healthy.
+ * Resets enrollment.nextAt = Date.now() so those steps execute immediately.
+ * @returns {Promise<number>} number of enrollments un-parked
+ */
+export async function unparkNonInviteEnrollments(now = Date.now()) {
+  try {
+    const campaigns = await readCampaigns();
+    const bucketCooldowns = await getBucketCooldowns();
+    let unparkedCount = 0;
+
+    for (const campaign of campaigns) {
+      if (campaign.status !== 'active') continue;
+      const enrollments = await readEnrollments(campaign.campaignId);
+      let dirty = false;
+
+      for (const enrollment of enrollments) {
+        if (enrollment.status !== 'active') continue;
+        const steps = stepsAt(campaign, enrollment.path);
+        const step = steps[enrollment.stepIndex];
+        if (
+          step &&
+          step.type !== 'invite' &&
+          step.type !== 'wait' &&
+          ['view', 'visit', 'follow', 'like', 'comment', 'endorse', 'message', 'inmail', 'email'].includes(step.type) &&
+          (enrollment.nextAt || 0) > now + 2 * 3600 * 1000
+        ) {
+          const stepBucket = normalizeBucket(step.type);
+          const isResting = (bucketCooldowns[stepBucket] || 0) > now;
+          if (!isResting) {
+            enrollment.nextAt = now;
+            if (enrollment.lastError?.includes('Daily quota reached') || enrollment.lastError?.includes('Postponed')) {
+              enrollment.lastError = null;
+            }
+            dirty = true;
+            unparkedCount += 1;
+            logDebug('good', 'Runner', `[Un-park] Reset mistakenly postponed ${step.type} step for ${enrollment.publicId} to execute immediately.`);
+          }
+        }
+      }
+
+      if (dirty) {
+        await writeEnrollments(campaign.campaignId, enrollments);
+        emit(EVENTS.CAMPAIGN_LIVE_UPDATE, { campaignId: campaign.campaignId }).catch(() => {});
+      }
+    }
+    return unparkedCount;
+  } catch (err) {
+    logDebug('warn', 'Runner', `[Un-park] Error during un-parking check: ${err.message}`);
+    return 0;
+  }
+}
+
+/**
  * Move every due enrollment forward.
  * @returns {Promise<{executed: number, queued: number}>}
  */
@@ -912,6 +966,10 @@ export async function tick() {
   // 500 pointless reads. Individual writes are still gated by quota.check.
   let halted = config.businessHoursOnly && !isWithinBusinessHours(config);
   const haltedBuckets = new Set();
+
+  // Un-park mistakenly postponed non-invite steps on every tick run
+  await unparkNonInviteEnrollments(now);
+
   const bucketCooldowns = await getBucketCooldowns();
 
   // Populate haltedBuckets from persistent cooldowns
@@ -934,7 +992,7 @@ export async function tick() {
     const cursorBefore = campaign.variantCursor || 0;
     let dirty = false;
 
-    for (const enrollment of enrollments) {
+    enrollmentLoop: for (const enrollment of enrollments) {
       if (halted || executed >= maxActionsPerTick || attemptedWrites >= maxActionsPerTick) break;
 
       // Check live storage status before processing prospect
@@ -946,6 +1004,31 @@ export async function tick() {
       }
 
       if (enrollment.status !== 'active') continue;
+
+      // Un-park mistakenly postponed non-invite steps (e.g. view, visit, follow, like, message, email):
+      // If an active enrollment's current step is a healthy non-invite step mistakenly parked > 2h in the future,
+      // reset nextAt = now so it executes immediately in this tick.
+      const pendingSteps = stepsAt(campaign, enrollment.path);
+      const nextPendingStep = pendingSteps[enrollment.stepIndex];
+      if (
+        nextPendingStep &&
+        nextPendingStep.type !== 'invite' &&
+        nextPendingStep.type !== 'wait' &&
+        ['view', 'visit', 'follow', 'like', 'comment', 'endorse', 'message', 'inmail', 'email'].includes(nextPendingStep.type) &&
+        (enrollment.nextAt || 0) > now + 2 * 3600 * 1000
+      ) {
+        const stepBucket = normalizeBucket(nextPendingStep.type);
+        const isResting = (bucketCooldowns[stepBucket] || 0) > now || haltedBuckets.has(stepBucket);
+        if (!isResting) {
+          logDebug('good', 'Runner', `[Un-park] Resetting mistakenly postponed ${nextPendingStep.type} step for ${enrollment.publicId} to execute immediately.`);
+          enrollment.nextAt = now;
+          if (enrollment.lastError?.includes('Daily quota reached') || enrollment.lastError?.includes('Postponed')) {
+            enrollment.lastError = null;
+          }
+          dirty = true;
+        }
+      }
+
       if ((enrollment.nextAt || 0) > now) continue;
 
       // Prevent concurrent execution of the same prospect
@@ -953,21 +1036,22 @@ export async function tick() {
 
       totalDueEnrollments += 1;
 
-      // Peek at next pending step before logging or executing
-      const pendingSteps = stepsAt(campaign, enrollment.path);
-      const nextPendingStep = pendingSteps[enrollment.stepIndex];
-
-      // If next step belongs to a resting bucket, silently skip without error spam
+      // Strict per-bucket isolation: If next step belongs to a resting bucket (e.g. invite reached quota/rate limit),
+      // ONLY postpone invite enrollments to nextAllowedAt / tomorrow's window, and continue to next enrollment.
+      // NEVER set tomorrow's nextAt on view, follow, like, message, or email steps.
       if (nextPendingStep && !['wait', 'branch'].includes(nextPendingStep.type)) {
         const normBucket = normalizeBucket(nextPendingStep.type);
         const cooldownUntil = bucketCooldowns[normBucket] || 0;
         if (cooldownUntil > now || haltedBuckets.has(normBucket)) {
           restingBucketSkippedCount += 1;
-          if (cooldownUntil > now && (enrollment.nextAt || 0) < cooldownUntil) {
-            enrollment.nextAt = cooldownUntil;
-            dirty = true;
+          if (normBucket === 'invite') {
+            const nextAllowedAt = cooldownUntil > now ? cooldownUntil : getNextActiveWindowStart(config);
+            if ((enrollment.nextAt || 0) < nextAllowedAt) {
+              enrollment.nextAt = nextAllowedAt;
+              dirty = true;
+            }
           }
-          continue;
+          continue enrollmentLoop;
         }
       }
 
@@ -1089,11 +1173,20 @@ export async function tick() {
           continue;
         }
 
-        // If this action bucket is halted for this tick (e.g. invite reached quota/rate limit), skip this enrollment so other types (view, message, email) can proceed
+        // Strict per-bucket isolation: If this action bucket is halted for this tick (e.g. invite reached quota/rate limit),
+        // ONLY postpone invite enrollments to nextAllowedAt / tomorrow's window, and continue to next enrollment.
+        // NEVER set tomorrow's nextAt on view, follow, like, message, or email steps.
         const normBucket = normalizeBucket(step.type);
         if (haltedBuckets.has(normBucket) || haltedBuckets.has(step.type)) {
           restingBucketSkippedCount += 1;
-          break;
+          if (normBucket === 'invite') {
+            const nextAllowedAt = (bucketCooldowns['invite'] > now) ? bucketCooldowns['invite'] : getNextActiveWindowStart(config);
+            if ((enrollment.nextAt || 0) < nextAllowedAt) {
+              enrollment.nextAt = nextAllowedAt;
+              dirty = true;
+            }
+          }
+          continue enrollmentLoop;
         }
 
         if (step.type === 'wait') {
@@ -1288,7 +1381,7 @@ export async function tick() {
           lastProspectActionAt.set(enrollment.publicId, Date.now());
         }
         wrote = true;
-        if (!res.ok || res.data?.status !== 'queued') {
+        if (res.ok && res.data?.status !== 'queued') {
           attemptedWrites += 1;
         }
 
@@ -1316,7 +1409,7 @@ export async function tick() {
               'Runner',
               `[Runner] Prospect ${enrollment.publicId} is not connected. Parking message step for 12h (Waiting for invite acceptance).`,
             );
-            break;
+            continue enrollmentLoop;
           }
 
           const isPermanent =
@@ -1349,6 +1442,7 @@ export async function tick() {
             await setBucketCooldown(bucket, nextActiveStart);
             haltedBuckets.add(bucket);
             if (bucket === 'view') haltedBuckets.add('visit');
+            if (bucket === 'visit') haltedBuckets.add('view');
             bucketCooldowns[bucket] = nextActiveStart;
 
             enrollment.nextAt = nextActiveStart;
@@ -1363,7 +1457,7 @@ export async function tick() {
             dirty = true;
 
             logDebug('info', 'Runner', `${bucketTitle} daily quota reached. Resting until tomorrow's active window (${new Date(nextActiveStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).`);
-            break;
+            continue enrollmentLoop;
           }
 
           // 2. Rate Limited / Safety Cooldown: cooldown for 45m + 5–15m jitter
@@ -1373,6 +1467,7 @@ export async function tick() {
             await setBucketCooldown(bucket, cooldownUntil);
             haltedBuckets.add(bucket);
             if (bucket === 'view') haltedBuckets.add('visit');
+            if (bucket === 'visit') haltedBuckets.add('view');
             bucketCooldowns[bucket] = cooldownUntil;
 
             const mins = Math.round((cooldownUntil - Date.now()) / 60000);
@@ -1388,13 +1483,16 @@ export async function tick() {
             dirty = true;
 
             logDebug('info', 'Runner', `${bucketTitle} bucket resting for ~${mins}m (human pacing)`);
-            break;
+            continue enrollmentLoop;
           }
 
           if (STOP_THE_TICK.has(errorCode)) {
             halted = true;
             break;
           }
+
+          // Non-quota, non-rate-limit errors count as an attempted write to bound retries per tick
+          attemptedWrites += 1;
 
           let friendlyError = errorMsg || 'Unknown error';
           logDebug('error', 'Runner', `Step failed: ${friendlyError}`);
@@ -1414,7 +1512,7 @@ export async function tick() {
             });
             dirty = true;
             logDebug('warn', 'Runner', `[Retry ${enrollment.retryCount}/3] ${enrollment.publicId} scheduled in ${backoffMins}m`);
-            break;
+            continue enrollmentLoop;
           }
 
           // Permanent failure or max retries exceeded stops that prospect.
@@ -1428,7 +1526,7 @@ export async function tick() {
             error: friendlyError,
           });
           dirty = true;
-          break;
+          continue enrollmentLoop;
         }
 
         const doneIndex = enrollment.stepIndex;

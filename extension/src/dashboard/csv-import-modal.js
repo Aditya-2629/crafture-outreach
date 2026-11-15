@@ -7,6 +7,7 @@
 
 import { openUiAlert } from './modal-engine.js';
 import { ICONS } from '../ui/icons.js';
+import { recordImportHistory } from '../lib/storage.js';
 
 export function openCsvImportWizard(userLists = [], onImportSuccess) {
   let currentStep = 1; // 1: Upload, 2: Match data, 3: Finalize
@@ -360,6 +361,8 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
       const allData = await new Promise((r) => chrome.storage.local.get(null, r));
       const storageKey = `listMembers:${selectedListId}`;
       let existing = allData[storageKey] || [];
+      let addedCount = finalLeads.length;
+      let duplicateCount = 0;
 
       if (overwriteExisting) {
         const incomingMap = new Map(finalLeads.map((l) => [l.publicId, l]));
@@ -375,8 +378,20 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
       } else {
         const existingIds = new Set(existing.map((e) => e.publicId));
         const newOnes = finalLeads.filter((l) => !existingIds.has(l.publicId));
+        addedCount = newOnes.length;
+        duplicateCount = Math.max(0, finalLeads.length - newOnes.length);
         existing = [...existing, ...newOnes];
       }
+
+      const selectedList = (allData.lists || userLists || []).find((l) => (l.listId || l.id) === selectedListId);
+      const listName = selectedList?.name || 'Default List';
+      await recordImportHistory({
+        listName,
+        importType: 'CSV Import',
+        scanned: parsedCsvRows.length,
+        success: addedCount,
+        duplicate: duplicateCount,
+      }).catch(() => {});
 
       const storagePayload = { [storageKey]: existing };
 

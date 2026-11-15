@@ -232,3 +232,47 @@ describe('ensureList', () => {
     expect((await handle(ACTIONS.LIST_GET_ALL, {})).data.lists).toHaveLength(1);
   });
 });
+
+describe('import history actions', () => {
+  it('records, queries, and clears import history through contract actions', async () => {
+    await handle(ACTIONS.IMPORT_HISTORY_CLEAR, {});
+
+    const recordRes = await handle(ACTIONS.IMPORT_HISTORY_RECORD, {
+      listName: 'Contract Test List',
+      importType: 'LinkedIn Search',
+      scanned: 15,
+      success: 12,
+      duplicate: 3,
+    });
+    expect(recordRes.ok).toBe(true);
+
+    const getRes = await handle(ACTIONS.IMPORT_HISTORY_GET, {});
+    expect(getRes.ok).toBe(true);
+    expect(getRes.data.history).toHaveLength(1);
+    expect(getRes.data.history[0].listName).toBe('Contract Test List');
+    expect(getRes.data.history[0].importType).toBe('LinkedIn Search');
+    expect(getRes.data.history[0].scanned).toBe(15);
+    expect(getRes.data.history[0].success).toBe(12);
+    expect(getRes.data.history[0].duplicate).toBe(3);
+
+    const clearRes = await handle(ACTIONS.IMPORT_HISTORY_CLEAR, {});
+    expect(clearRes.ok).toBe(true);
+
+    const getRes2 = await handle(ACTIONS.IMPORT_HISTORY_GET, {});
+    expect(getRes2.data.history).toHaveLength(0);
+  });
+
+  it('records import history when list.importCsv runs', async () => {
+    await handle(ACTIONS.IMPORT_HISTORY_CLEAR, {});
+    const list = await newList('CSV Rec List');
+    const csv = 'url,first_name\nhttps://www.linkedin.com/in/adalovelace/,Ada';
+    await handle(ACTIONS.LIST_IMPORT_CSV, { listId: list.listId, csv });
+
+    const getRes = await handle(ACTIONS.IMPORT_HISTORY_GET, {});
+    expect(getRes.data.history).toHaveLength(1);
+    expect(getRes.data.history[0].listName).toBe('CSV Rec List');
+    expect(getRes.data.history[0].importType).toBe('CSV Import');
+    expect(getRes.data.history[0].success).toBe(1);
+  });
+});
+

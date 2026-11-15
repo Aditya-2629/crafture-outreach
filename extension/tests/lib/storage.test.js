@@ -153,3 +153,50 @@ describe('action log', () => {
     expect(recent.map((e) => e.publicId)).toEqual(['b']);
   });
 });
+
+describe('import history', () => {
+  it('formats import timestamp cleanly', () => {
+    const fixedTs = new Date(2026, 10, 15, 14, 30).getTime();
+    expect(storage.formatImportDate(fixedTs)).toContain('15/11/2026 at 14:30');
+  });
+
+  it('records, prepends, and caps history at 50 entries', async () => {
+    await storage.clearImportHistory();
+    const entry1 = await storage.recordImportHistory({
+      listName: 'List Alpha',
+      importType: 'CSV Import',
+      scanned: 10,
+      success: 8,
+      duplicate: 2,
+    });
+    expect(entry1).toHaveLength(1);
+    expect(entry1[0].listName).toBe('List Alpha');
+    expect(entry1[0].importType).toBe('CSV Import');
+    expect(entry1[0].scanned).toBe(10);
+    expect(entry1[0].success).toBe(8);
+    expect(entry1[0].duplicate).toBe(2);
+
+    const entry2 = await storage.recordImportHistory({
+      listName: 'List Beta',
+      importType: 'LinkedIn Search',
+      scanned: 25,
+      success: 25,
+      duplicate: 0,
+    });
+    expect(entry2).toHaveLength(2);
+    expect(entry2[0].listName).toBe('List Beta');
+    expect(entry2[1].listName).toBe('List Alpha');
+
+    // Test cap of 50
+    for (let i = 0; i < 55; i++) {
+      await storage.recordImportHistory({ listName: `Batch ${i}` });
+    }
+    const history = await storage.getImportHistory();
+    expect(history).toHaveLength(50);
+    expect(history[0].listName).toBe('Batch 54');
+
+    await storage.clearImportHistory();
+    expect(await storage.getImportHistory()).toEqual([]);
+  });
+});
+

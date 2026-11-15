@@ -9,7 +9,7 @@ import { ACTIONS } from '../lib/actions.js';
 import { ICONS } from '../ui/icons.js';
 import { openUiConfirm, openUiAlert, openUiPrompt } from './modal-engine.js';
 import { openTelegramGuideModal, openMcpGuideModal } from './guide-modal.js';
-import { getStorageHealth } from '../lib/storage.js';
+import { getStorageHealth, formatImportDate, clearImportHistory } from '../lib/storage.js';
 
 let activeSettingsTab = 'activity';
 let liveClockInterval = null;
@@ -484,20 +484,6 @@ export async function renderSettingsView(container, ctx = {}) {
   let aiModels = Array.isArray(storage.ai_models) ? storage.ai_models : [];
 
   let importHistory = Array.isArray(storage.importHistory) ? storage.importHistory : [];
-  if (importHistory.length === 0) {
-    importHistory = [
-      {
-        id: 'imp_initial',
-        dateTime: '10/11/2026 at 01:44',
-        listName: 'My First List',
-        importType: 'LinkedIn Search',
-        scanned: 20,
-        success: 20,
-        duplicate: 0,
-        falsePositives: 0,
-      },
-    ];
-  }
 
   function paint() {
     const tzData = getTzDetails(selectedTz);
@@ -1238,34 +1224,56 @@ export async function renderSettingsView(container, ctx = {}) {
           ` : `
             <!-- TAB 4: IMPORT HISTORY (Audit Log) -->
             <div class="settings-history-scroll">
-              <h1 class="activity-main-title" style="margin-bottom:24px;">Import history</h1>
-
-              <div class="history-table-card">
-                <table class="import-history-table">
-                  <thead>
-                    <tr>
-                      <th>DATE AND TIME</th>
-                      <th>LIST</th>
-                      <th>IMPORT TYPE</th>
-                      <th>SCANNED <span class="th-info-ico">${ICONS.info}</span></th>
-                      <th>SUCCESS <span class="th-info-ico">${ICONS.info}</span></th>
-                      <th>DUPLICATE <span class="th-info-ico">${ICONS.info}</span></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${importHistory.map((item) => `
-                      <tr>
-                        <td class="history-date-cell">${item.dateTime}</td>
-                        <td class="history-list-name">${item.listName}</td>
-                        <td><span style="font-size:12px; font-weight:600; color:#64748b;">${item.importType}</span></td>
-                        <td>${item.scanned}</td>
-                        <td class="history-success-val font-bold">${item.success}</td>
-                        <td style="color:#f59e0b; font-weight:600;">${item.duplicate}</td>
-                      </tr>
-                    `).join('')}
-                  </tbody>
-                </table>
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
+                <div>
+                  <h1 class="activity-main-title" style="margin:0 0 4px 0;">Import history</h1>
+                  <p style="margin:0; font-size:13px; color:#64748b;">Audit log of all CSV and LinkedIn prospect extractions.</p>
+                </div>
+                ${importHistory.length > 0 ? `
+                  <button type="button" class="btn-int-action" id="btn-clear-import-history" style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px; font-size:12px; border-radius:10px; color:#ef4444; border-color:#fee2e2; background:#fff; cursor:pointer;">
+                    ${ICONS.trash || ''} Clear History
+                  </button>
+                ` : ''}
               </div>
+
+              ${importHistory.length === 0 ? `
+                <div class="empty-state-card" style="padding:48px 24px; text-align:center; background:#ffffff; border-radius:20px; border:1px solid rgba(255, 255, 255, 0.85); box-shadow:0 12px 28px -6px rgba(15, 23, 42, 0.06), inset 0 2px 4px rgba(255, 255, 255, 0.9);">
+                  <div style="width:48px; height:48px; border-radius:14px; background:#f1f5f9; display:inline-flex; align-items:center; justify-content:center; color:#94a3b8; margin:0 auto 14px auto;">
+                    ${ICONS.download || ICONS.list || ''}
+                  </div>
+                  <h3 style="font-size:15px; font-weight:700; color:#1e293b; margin:0 0 6px 0;">No imports yet</h3>
+                  <p style="font-size:13px; color:#64748b; margin:0 auto; max-width:380px; line-height:1.5;">
+                    Prospects imported from CSV files, LinkedIn searches, post commenters, and profile viewers will appear here automatically.
+                  </p>
+                </div>
+              ` : `
+                <div class="history-table-card">
+                  <table class="import-history-table">
+                    <thead>
+                      <tr>
+                        <th>DATE AND TIME</th>
+                        <th>LIST</th>
+                        <th>IMPORT TYPE</th>
+                        <th>SCANNED <span class="th-info-ico">${ICONS.info}</span></th>
+                        <th>SUCCESS <span class="th-info-ico">${ICONS.info}</span></th>
+                        <th>DUPLICATE <span class="th-info-ico">${ICONS.info}</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${importHistory.map((item) => `
+                        <tr>
+                          <td class="history-date-cell">${item.dateText || item.dateTime || (item.timestamp ? formatImportDate(item.timestamp) : '—')}</td>
+                          <td class="history-list-name">${item.listName || 'Default List'}</td>
+                          <td><span style="font-size:12px; font-weight:600; color:#64748b;">${item.importType || 'Import'}</span></td>
+                          <td>${item.scanned ?? 0}</td>
+                          <td class="history-success-val font-bold">${item.success ?? 0}</td>
+                          <td style="color:#f59e0b; font-weight:600;">${item.duplicate ?? 0}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              `}
             </div>
           `}
         </main>
@@ -1289,6 +1297,35 @@ export async function renderSettingsView(container, ctx = {}) {
       wireEmailAccountsEvents();
     } else if (activeSettingsTab === 'integrations') {
       wireIntegrationsEvents();
+    } else if (activeSettingsTab === 'import_history') {
+      wireImportHistoryEvents();
+    }
+  }
+
+  function wireImportHistoryEvents() {
+    const btnClear = container.querySelector('#btn-clear-import-history');
+    if (btnClear) {
+      btnClear.addEventListener('click', () => {
+        openUiConfirm({
+          title: 'Clear Import History?',
+          message: 'Are you sure you want to clear your entire import audit log? This cannot be undone.',
+          confirmText: 'Clear All',
+          isDanger: true,
+          onConfirm: async () => {
+            try {
+              await call(ACTIONS.IMPORT_HISTORY_CLEAR, {}).catch(async () => {
+                await clearImportHistory();
+              });
+              importHistory = [];
+              storage.importHistory = [];
+              paint();
+              ctx.showToast?.('Import history cleared.', 'info');
+            } catch (err) {
+              console.warn('[clear history error]', err);
+            }
+          },
+        });
+      });
     }
   }
 

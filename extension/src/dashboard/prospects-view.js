@@ -9,6 +9,7 @@ import { ACTIONS } from '../lib/actions.js';
 import { openCsvImportWizard } from './csv-import-modal.js';
 import { openUiPrompt, openUiConfirm, openUiSelectModal, openUiAlert, openLeadTimelineModal } from './modal-engine.js';
 import { ICONS } from '../ui/icons.js';
+import { recordImportHistory } from '../lib/storage.js';
 export { openUiPrompt, openUiConfirm, openUiSelectModal, openUiAlert, openLeadTimelineModal };
 
 export async function renderProspectsView(container, ctx = {}) {
@@ -1589,6 +1590,8 @@ function mountOutFoxImportDrawer(container, onImportSuccess, ctx = {}) {
           const allData = await new Promise((r) => chrome.storage.local.get(null, r));
           const targetExisting = allData[targetListKey] || [];
           const newIds = new Set(newItems.map((p) => p.publicId));
+          let successCount = newItems.length;
+          let duplicateCount = 0;
 
           if (moveDuplicates) {
             const updates = {};
@@ -1610,12 +1613,33 @@ function mountOutFoxImportDrawer(container, onImportSuccess, ctx = {}) {
               }
             });
             const toAdd = newItems.filter((p) => !allExistingIds.has(p.publicId));
+            successCount = toAdd.length;
+            duplicateCount = Math.max(0, extractedMembers.length - toAdd.length);
             const targetMap = new Map(targetExisting.map((p) => [p.publicId, p]));
             toAdd.forEach((p) => targetMap.set(p.publicId, { ...(targetMap.get(p.publicId) || {}), ...p }));
             await chrome.storage.local.set({ [targetListKey]: Array.from(targetMap.values()) });
           }
 
-          const importedCount = newItems.length;
+          const methodLabels = {
+            commenters: 'Post Commenters',
+            reactors: 'Post Reactors',
+            events: 'Event Attendees',
+            groups: 'Group Members',
+            search: 'LinkedIn Search',
+          };
+          const importType = methodLabels[currentMethod] || 'LinkedIn Extraction';
+          const targetList = (rawLists || allData.lists || []).find((l) => (l.listId || l.id) === selectedListId);
+          const listName = targetList?.name || 'Default List';
+
+          await recordImportHistory({
+            listName,
+            importType,
+            scanned: extractedMembers.length,
+            success: successCount,
+            duplicate: duplicateCount,
+          }).catch(() => {});
+
+          const importedCount = successCount;
           if (importedCount > 0) {
             if (ctx.showToast) ctx.showToast(`Successfully imported ${importedCount} prospects!`, 'success');
             else openUiAlert({ title: 'Import Complete', message: `Successfully imported ${importedCount} prospects!` });

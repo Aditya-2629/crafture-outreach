@@ -9,7 +9,20 @@
 
 import { ACTIONS, ERROR, EngineError } from '../lib/actions.js';
 import { fromCsv } from '../lib/csv.js';
-import { K, contactedSet, get, getStoredProfile, newId, remove, set, stamp, putProfile } from '../lib/storage.js';
+import {
+  K,
+  contactedSet,
+  get,
+  getStoredProfile,
+  newId,
+  remove,
+  set,
+  stamp,
+  putProfile,
+  recordImportHistory,
+  clearImportHistory,
+  getImportHistory,
+} from '../lib/storage.js';
 import { publicIdFromUrl, toProfile } from './voyager-normalize.js';
 import { register } from './engine.js';
 
@@ -232,7 +245,7 @@ function columnMap(headers) {
  * A row with no readable LinkedIn profile URL is counted as invalid.
  */
 export async function importCsv(listId, csv) {
-  await requireList(listId);
+  const list = await requireList(listId);
   const { headers, rows } = fromCsv(csv);
   const map = columnMap(headers);
 
@@ -265,6 +278,14 @@ export async function importCsv(listId, csv) {
   }
 
   const { added, duplicates } = await add(listId, { profiles });
+  await recordImportHistory({
+    listName: list.name || 'CSV Import',
+    importType: 'CSV Import',
+    scanned: rows.length,
+    success: added,
+    duplicate: duplicates,
+  }).catch(() => {});
+
   return { added, duplicates, invalid };
 }
 
@@ -294,3 +315,15 @@ register(ACTIONS.LIST_MEMBERS, ({ listId, start, count }) => members(listId, { s
 register(ACTIONS.LIST_DELETE, ({ listId }) => del(listId));
 register(ACTIONS.LIST_IMPORT_CSV, ({ listId, csv }) => importCsv(listId, csv));
 register(ACTIONS.LIST_UPDATE, ({ listId, name, tags }) => update(listId, { name, tags }));
+register(ACTIONS.IMPORT_HISTORY_RECORD, async (params) => {
+  const history = await recordImportHistory(params || {});
+  return { ok: true, history };
+});
+register(ACTIONS.IMPORT_HISTORY_CLEAR, async () => {
+  await clearImportHistory();
+  return { ok: true };
+});
+register(ACTIONS.IMPORT_HISTORY_GET, async () => {
+  const history = await getImportHistory();
+  return { ok: true, history };
+});

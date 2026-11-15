@@ -789,7 +789,16 @@
           }
 
           if (targetListId) {
-            await call('list.add', { listId: targetListId, profiles: collected });
+            const addRes = await call('list.add', { listId: targetListId, profiles: collected });
+            const added = addRes?.added ?? collected.length;
+            const duplicates = addRes?.duplicates ?? 0;
+            await call('import.historyRecord', {
+              listName: finalListName,
+              importType: 'LinkedIn Search',
+              scanned: collected.length,
+              success: added,
+              duplicate: duplicates,
+            }).catch(() => {});
           }
 
           logDebug('good', 'Importer', `Successfully enrolled ${collected.length} leads across ${pageCount} pages!`);

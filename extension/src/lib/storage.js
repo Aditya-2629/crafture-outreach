@@ -48,6 +48,7 @@ export const K = Object.freeze({
   researchPacks: (jobId) => `researchPacks:${jobId}`,
 
   BRIDGE: 'bridgeState',
+  IMPORT_HISTORY: 'importHistory',
 });
 
 /** Page text is captured verbatim; cap it so the profile store stays sane. */
@@ -549,5 +550,86 @@ export async function logDebug(level, tag, message, data = null) {
 
   return entry;
 }
+
+/* ================================================================== */
+/*  Import History Audit Trail                                        */
+/* ================================================================== */
+
+export function formatImportDate(ts = Date.now()) {
+  const d = new Date(ts);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${yyyy} at ${hh}:${min}`;
+}
+
+/**
+ * Record an import event into rolling audit log (capped at 50 entries).
+ * @param {object} param0
+ * @param {string} [param0.listName]
+ * @param {string} [param0.importType]
+ * @param {number} [param0.scanned]
+ * @param {number} [param0.success]
+ * @param {number} [param0.duplicate]
+ * @param {number} [param0.timestamp]
+ */
+export async function recordImportHistory({
+  listName = 'Default List',
+  importType = 'CSV Import',
+  scanned = 0,
+  success = 0,
+  duplicate = 0,
+  timestamp = Date.now(),
+} = {}) {
+  const formatted = formatImportDate(timestamp);
+  const entry = {
+    id: `imp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    timestamp,
+    dateText: formatted,
+    dateTime: formatted,
+    listName: String(listName || 'Default List'),
+    importType: String(importType || 'General Import'),
+    scanned: Number(scanned) || 0,
+    success: Number(success) || 0,
+    duplicate: Number(duplicate) || 0,
+    falsePositives: 0,
+  };
+
+  try {
+    return await update(
+      K.IMPORT_HISTORY,
+      (current) => {
+        const list = Array.isArray(current) ? current : [];
+        return [entry, ...list].slice(0, 50);
+      },
+      [],
+    );
+  } catch (err) {
+    console.warn('[recordImportHistory] error saving to storage', err);
+    return [];
+  }
+}
+
+export async function clearImportHistory() {
+  try {
+    await set(K.IMPORT_HISTORY, []);
+    return [];
+  } catch (err) {
+    console.warn('[clearImportHistory] error clearing storage', err);
+    return [];
+  }
+}
+
+export async function getImportHistory() {
+  try {
+    const list = await get(K.IMPORT_HISTORY, []);
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
 
 

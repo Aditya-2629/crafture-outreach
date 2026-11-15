@@ -9,7 +9,15 @@
 
 import { ACTIONS, ERROR, EVENTS, EngineError } from '../lib/actions.js';
 import { register, handle } from './engine.js';
-import { allActions, allProfiles, getStoredProfile, logAction, putProfile, putProfiles } from '../lib/storage.js';
+import {
+  allActions,
+  allProfiles,
+  getStoredProfile,
+  logAction,
+  putProfile,
+  putProfiles,
+  recordImportHistory,
+} from '../lib/storage.js';
 import { emit } from './events.js';
 import * as quota from './quota.js';
 import * as lists from './lists.js';
@@ -394,10 +402,22 @@ register(ACTIONS.IMPORT_PROFILE_VIEWERS, async () => {
   }
 
   const list = await lists.ensureList('Auto-Import: Profile Viewers', ['auto-import', 'viewers']);
+  let added = 0;
+  let duplicates = 0;
   if (profiles.length > 0) {
-    await lists.add(list.listId, { profiles });
+    const res = await lists.add(list.listId, { profiles });
+    added = res?.added ?? profiles.length;
+    duplicates = res?.duplicates ?? 0;
     await putProfiles(profiles);
   }
+
+  await recordImportHistory({
+    listName: list.name || 'Auto-Import: Profile Viewers',
+    importType: 'Profile Viewers',
+    scanned: profiles.length,
+    success: added,
+    duplicate: duplicates,
+  }).catch(() => {});
 
   return { ok: true, listId: list.listId, count: profiles.length, profiles };
 });
@@ -412,10 +432,22 @@ register(ACTIONS.IMPORT_POST_COMMENTERS, async ({ postUrl }) => {
   }
 
   const list = await lists.ensureList('Auto-Import: Post Commenters', ['auto-import', 'commenters']);
+  let added = 0;
+  let duplicates = 0;
   if (profiles.length > 0) {
-    await lists.add(list.listId, { profiles });
+    const res = await lists.add(list.listId, { profiles });
+    added = res?.added ?? profiles.length;
+    duplicates = res?.duplicates ?? 0;
     await putProfiles(profiles);
   }
+
+  await recordImportHistory({
+    listName: list.name || 'Auto-Import: Post Commenters',
+    importType: 'Post Commenters',
+    scanned: profiles.length,
+    success: added,
+    duplicate: duplicates,
+  }).catch(() => {});
 
   return { ok: true, listId: list.listId, count: profiles.length, profiles };
 });

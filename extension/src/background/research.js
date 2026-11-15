@@ -13,7 +13,7 @@
 
 import { ACTIONS, ERROR, EVENTS, EngineError } from '../lib/actions.js';
 import { handle, register } from './engine.js';
-import { K, get, newId, set, stamp } from '../lib/storage.js';
+import { K, get, newId, set, stamp, recordImportHistory } from '../lib/storage.js';
 import { addTickHook } from './campaigns.js';
 import { emit } from './events.js';
 import { lookupEmail } from './enrich.js';
@@ -467,6 +467,14 @@ export async function startPack(rows, { listName, enrich = false, full = false }
   jobs.push(job);
   await writeJobs(jobs);
   await set(K.researchPacks(job.jobId), []);
+
+  await recordImportHistory({
+    listName: job.listName,
+    importType: 'Research CSV',
+    scanned: rows.length,
+    success: rows.length,
+    duplicate: 0,
+  }).catch(() => {});
 
   return { jobId: job.jobId, total: job.total, etaMs: etaFor(job) };
 }

@@ -108,6 +108,9 @@ export const ACTIONS = Object.freeze({
 
   IMPORT_PROFILE_VIEWERS: 'import.profileViewers',
   IMPORT_POST_COMMENTERS: 'import.postCommenters',
+  IMPORT_HISTORY_RECORD: 'import.historyRecord',
+  IMPORT_HISTORY_CLEAR: 'import.historyClear',
+  IMPORT_HISTORY_GET: 'import.historyGet',
 
   DASHBOARD_LIVE_STATS: 'dashboard.live_stats',
 
@@ -649,6 +652,18 @@ const PARAM_SPECS = {
 
   [ACTIONS.IMPORT_PROFILE_VIEWERS]: {},
   [ACTIONS.IMPORT_POST_COMMENTERS]: { required: { postUrl: 'string' } },
+  [ACTIONS.IMPORT_HISTORY_RECORD]: {
+    optional: {
+      listName: 'string',
+      importType: 'string',
+      scanned: 'number',
+      success: 'number',
+      duplicate: 'number',
+      timestamp: 'number',
+    },
+  },
+  [ACTIONS.IMPORT_HISTORY_CLEAR]: {},
+  [ACTIONS.IMPORT_HISTORY_GET]: {},
 
   [ACTIONS.DASHBOARD_LIVE_STATS]: {},
   [ACTIONS.QUOTA_RESET]: { optional: { kinds: 'array' } },

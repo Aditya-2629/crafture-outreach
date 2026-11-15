@@ -208,6 +208,46 @@ describe('Google Workspace Auth & User Actions', () => {
     expect(item.expiresAt).toBeGreaterThan(Date.now() + 3000000);
   });
 
+  it('deduplicates concurrent refresh requests using inFlightRefreshes', async () => {
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.WORKSPACE_TOKEN]: {
+        accessToken: 'expired-token-123',
+        token: 'expired-token-123',
+        refreshToken: 'saved-refresh-token-456',
+        expiresAt: Date.now() - 5000,
+        email: 'test@example.com',
+      },
+    });
+
+    let refreshCallCount = 0;
+    globalThis.fetch = vi.fn(async (url) => {
+      if (String(url).includes('/google/refresh')) {
+        refreshCallCount += 1;
+        await new Promise((r) => setTimeout(r, 20));
+        return {
+          ok: true,
+          json: async () => ({
+            access_token: 'new-refreshed-token-999',
+            refresh_token: 'saved-refresh-token-456',
+            expires_in: 3600,
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    const [t1, t2, t3] = await Promise.all([
+      getGoogleWorkspaceToken(false),
+      getGoogleWorkspaceToken(false),
+      getGoogleWorkspaceToken(false),
+    ]);
+
+    expect(t1).toBe('new-refreshed-token-999');
+    expect(t2).toBe('new-refreshed-token-999');
+    expect(t3).toBe('new-refreshed-token-999');
+    expect(refreshCallCount).toBe(1);
+  });
+
   it('clears stored token and prompts interactive re-connect on invalid_grant', async () => {
     await chrome.storage.local.set({
       [STORAGE_KEYS.WORKSPACE_TOKEN]: {

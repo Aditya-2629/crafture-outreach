@@ -429,7 +429,7 @@ export function openEditMessageModal({ template = null, category = 'message', on
   renderModal();
 }
 
-export function openEditObjectionModal({ objection = null, onSave }) {
+export function openEditObjectionModal({ objection = null, onSave, ctx = {} }) {
   ensureTemplatesStyles();
   const existing = document.getElementById('modal-edit-objection-backdrop');
   if (existing) existing.remove();
@@ -496,7 +496,13 @@ export function openEditObjectionModal({ objection = null, onSave }) {
     const newAnswer = backdrop.querySelector('#textarea-obj-answer')?.value?.trim();
 
     if (!newTitle || !newAnswer) {
-      alert('Please fill in Title and Base Answer.');
+      if (typeof ctx?.showToast === 'function') {
+        ctx.showToast('Please fill in Title and Base Answer.', 'warn');
+      } else if (typeof window?.openUiAlert === 'function') {
+        window.openUiAlert('Please fill in Title and Base Answer.');
+      } else if (typeof window?.showToast === 'function') {
+        window.showToast('Please fill in Title and Base Answer.', 'warn');
+      }
       return;
     }
 
@@ -888,6 +894,7 @@ export async function renderTemplatesView(container, ctx = {}) {
     container.querySelector('#btn-create-objection-main')?.addEventListener('click', () => {
       openEditObjectionModal({
         objection: null,
+        ctx,
         onSave: async (newObj) => {
           try {
             const res = await call(ACTIONS.OBJECTION_SAVE, { objection: newObj });
@@ -911,6 +918,7 @@ export async function renderTemplatesView(container, ctx = {}) {
 
         openEditObjectionModal({
           objection: target,
+          ctx,
           onSave: async (updated) => {
             try {
               const res = await call(ACTIONS.OBJECTION_SAVE, { objection: updated });

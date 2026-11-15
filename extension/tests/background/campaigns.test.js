@@ -28,6 +28,8 @@ let net;
 let seen;
 
 beforeEach(async () => {
+  campaigns.clearProspectLocks();
+  campaigns.setProspectCooldownMs(0);
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(START);
   quota.setSleepFn(() => Promise.resolve());
@@ -59,6 +61,7 @@ beforeEach(async () => {
 afterEach(() => {
   events.setSink(null);
   vi.useRealTimers();
+  campaigns.setProspectCooldownMs(60 * 1000);
 });
 
 const names = () => seen.map((f) => f.event);
@@ -1073,5 +1076,36 @@ describe('v1 migration', () => {
     vi.restoreAllMocks();
     campaigns.setMaxActionsPerTick(campaigns.DEFAULT_MAX_ACTIONS_PER_TICK);
     await chrome.storage.local.remove('outfox_bucket_cooldowns');
+  });
+
+  it('enforces PROSPECT_COOLDOWN_MS between actions for the same prospect', async () => {
+    campaigns.setProspectCooldownMs(60 * 1000);
+    await storage.putProfile({ publicId: 'lead_cooldown', firstName: 'Lead Cooldown' });
+    const c = (await handle(ACTIONS.CAMPAIGN_CREATE, {
+      name: 'CooldownTest',
+      steps: [{ type: 'view' }, { type: 'follow' }],
+      publicIds: ['lead_cooldown'],
+      settings: { autopilot: true },
+    })).data;
+
+    net.push(profileView);
+    const tick1 = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+    expect(tick1.data.executed).toBe(1);
+    expect(campaigns.lastProspectActionAt.get('lead_cooldown')).toBeGreaterThan(0);
+
+    // Reset nextAt to now so step 2 is due
+    const enrollments = await campaigns.readEnrollments(c.campaignId);
+    enrollments[0].nextAt = Date.now();
+    await campaigns.writeEnrollments(c.campaignId, enrollments);
+
+    // Immediate second tick within 60s cooldown: step 2 is skipped due to cooldown
+    net.push({});
+    const tick2 = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+    expect(tick2.data.executed).toBe(0);
+
+    // After 61s passes: step 2 executes
+    jump(61000);
+    const tick3 = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+    expect(tick3.data.executed).toBe(1);
   });
 });

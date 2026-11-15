@@ -206,6 +206,9 @@ export async function removeCachedToken(token) {
   });
 }
 
+/** In-flight token refresh promises keyed by storage key to deduplicate concurrent refresh requests */
+export const inFlightRefreshes = new Map();
+
 /**
  * Core token acquisition logic:
  * 1. Checks valid cache (>60s before expiresAt).
@@ -231,29 +234,40 @@ async function acquireToken(key, scopes, interactive = false) {
       return token;
     }
 
-    // 2. Silent refresh with refreshToken
+    // 2. Silent refresh with refreshToken (deduplicating concurrent in-flight requests)
     if (existing.refreshToken) {
-      try {
-        const refreshed = await refreshGoogleToken(existing.refreshToken);
-        const updated = {
-          ...existing,
-          accessToken: refreshed.accessToken,
-          token: refreshed.accessToken,
-          refreshToken: refreshed.refreshToken || existing.refreshToken,
-          expiresAt: refreshed.expiresAt,
-        };
-        await setStoredToken(key, updated);
-        return refreshed.accessToken;
-      } catch (refreshErr) {
-        if (refreshErr.isInvalidGrant) {
-          await clearStoredToken(key);
-          if (!interactive) {
-            throw new Error('User interaction required');
-          }
-        } else if (!interactive) {
-          throw refreshErr;
-        }
+      if (inFlightRefreshes.has(key)) {
+        return await inFlightRefreshes.get(key);
       }
+      const refreshPromise = (async () => {
+        try {
+          const refreshed = await refreshGoogleToken(existing.refreshToken);
+          const updated = {
+            ...existing,
+            accessToken: refreshed.accessToken,
+            token: refreshed.accessToken,
+            refreshToken: refreshed.refreshToken || existing.refreshToken,
+            expiresAt: refreshed.expiresAt,
+          };
+          await setStoredToken(key, updated);
+          return refreshed.accessToken;
+        } catch (refreshErr) {
+          if (refreshErr.isInvalidGrant) {
+            await clearStoredToken(key);
+            if (!interactive) {
+              throw new Error('User interaction required');
+            }
+          } else if (!interactive) {
+            throw refreshErr;
+          }
+        } finally {
+          inFlightRefreshes.delete(key);
+        }
+      })();
+
+      inFlightRefreshes.set(key, refreshPromise);
+      const res = await refreshPromise;
+      if (res) return res;
     }
   }
 

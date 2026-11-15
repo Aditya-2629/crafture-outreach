@@ -501,14 +501,10 @@ export async function startPack(rows, { listName, enrich = false, full = false }
   // so single-prospect dossiers resolve in 2-5s without waiting for a campaign tick.
   // For larger bulk CSV jobs (> 3), run the first batch immediately AND schedule the 1-minute alarm.
   if (rows.length <= 3) {
-    setTimeout(() => {
-      progress().catch((err) => console.warn('[Research] Quick progress error:', err.message));
-    }, 0);
+    await progress().catch((err) => console.warn('[Research] Quick progress error:', err.message));
   } else {
     scheduleResearchAlarm();
-    setTimeout(() => {
-      progress().catch((err) => console.warn('[Research] Initial bulk progress error:', err.message));
-    }, 0);
+    progress().catch((err) => console.warn('[Research] Initial bulk progress error:', err.message));
   }
 
   return res;

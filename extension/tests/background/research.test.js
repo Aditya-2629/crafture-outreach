@@ -314,16 +314,14 @@ describe('research.pack end to end', () => {
     net.push(profileView); // network.status
   }
 
-  it('creates a job with an ETA and processes it on the tick', async () => {
+  it('creates a job with an ETA and processes it immediately', async () => {
+    pushOneRow();
     const started = await handle(ACTIONS.RESEARCH_PACK, {
       rows: [{ linkedinUrl: 'https://www.linkedin.com/in/adalovelace/' }],
     });
     expect(started.data.total).toBe(1);
     expect(started.data.jobId).toMatch(/^job_/);
     expect(started.data.etaMs).toBeGreaterThan(0);
-
-    pushOneRow();
-    await research.progress();
 
     const job = (await handle(ACTIONS.RESEARCH_GET, { jobId: started.data.jobId })).data;
     expect(job.status).toBe('done');
@@ -345,12 +343,11 @@ describe('research.pack end to end', () => {
   });
 
   it('records recentPosts even for a company row, so empty means empty', async () => {
+    net.push(company); // the resolution
+    net.push(company); // company.get
     const started = await handle(ACTIONS.RESEARCH_PACK, {
       rows: [{ domain: 'analytical-engines.com' }],
     });
-    net.push(company); // the resolution
-    net.push(company); // company.get
-    await research.progress();
 
     const job = (await handle(ACTIONS.RESEARCH_GET, { jobId: started.data.jobId })).data;
     expect(job.packs[0].resolved.kind).toBe('company');
@@ -358,11 +355,10 @@ describe('research.pack end to end', () => {
   });
 
   it('writes a dossier with every section', async () => {
+    pushOneRow();
     const started = await handle(ACTIONS.RESEARCH_PACK, {
       rows: [{ linkedinUrl: 'https://www.linkedin.com/in/adalovelace/' }],
     });
-    pushOneRow();
-    await research.progress();
 
     const { markdown } = (await handle(ACTIONS.RESEARCH_GET, { jobId: started.data.jobId })).data
       .packs[0];
@@ -386,11 +382,10 @@ describe('research.pack end to end', () => {
   });
 
   it('writes a csvRow carrying the input columns and the resolution', async () => {
+    pushOneRow();
     const started = await handle(ACTIONS.RESEARCH_PACK, {
       rows: [{ linkedinUrl: 'https://www.linkedin.com/in/adalovelace/', ownerNote: 'from event' }],
     });
-    pushOneRow();
-    await research.progress();
 
     const { csvRow } = (await handle(ACTIONS.RESEARCH_GET, { jobId: started.data.jobId })).data
       .packs[0];
@@ -406,11 +401,10 @@ describe('research.pack end to end', () => {
   });
 
   it('adds everyone it resolved to a dated Research Pack list', async () => {
+    pushOneRow();
     const started = await handle(ACTIONS.RESEARCH_PACK, {
       rows: [{ linkedinUrl: 'https://www.linkedin.com/in/adalovelace/' }],
     });
-    pushOneRow();
-    await research.progress();
 
     const { lists } = (await handle(ACTIONS.LIST_GET_ALL, {})).data;
     expect(lists[0].name).toBe('Research Pack 2026-09-09');
@@ -421,12 +415,11 @@ describe('research.pack end to end', () => {
   });
 
   it('honours a listName override', async () => {
+    pushOneRow();
     await handle(ACTIONS.RESEARCH_PACK, {
       rows: [{ linkedinUrl: 'https://www.linkedin.com/in/adalovelace/' }],
       listName: 'Q4 targets',
     });
-    pushOneRow();
-    await research.progress();
     expect((await handle(ACTIONS.LIST_GET_ALL, {})).data.lists[0].name).toBe('Q4 targets');
   });
 
@@ -503,11 +496,8 @@ describe('pacing', () => {
 
   it('stops the job the moment the quota is already gone, without half-built packs', async () => {
     await setConfig({ accountPreset: 'free', dailyVisitCap: 1 });
-    const started = await handle(ACTIONS.RESEARCH_PACK, { rows: rows(3) });
     await quota.record('visit', 1);
-
-    const out = await research.progress();
-    expect(out.processed).toBe(0);
+    const started = await handle(ACTIONS.RESEARCH_PACK, { rows: rows(3) });
 
     const job = (await handle(ACTIONS.RESEARCH_GET, { jobId: started.data.jobId })).data;
     expect(job.status).toBe('running');
@@ -520,20 +510,17 @@ describe('pacing', () => {
       delays.push(ms);
       return Promise.resolve();
     });
-    await handle(ACTIONS.RESEARCH_PACK, { rows: rows(3) });
     pushRows(3);
-    await research.progress();
+    await handle(ACTIONS.RESEARCH_PACK, { rows: rows(3) });
     // Two profile reads per row, plus a pause between rows.
     expect(delays.length).toBeGreaterThanOrEqual(3 * 2 + 2);
   });
 
   it('spends exactly one profile view per row', async () => {
+    pushRows(1);
     await handle(ACTIONS.RESEARCH_PACK, {
       rows: [{ linkedinUrl: 'https://www.linkedin.com/in/adalovelace/' }],
     });
-    pushRows(1);
-
-    await research.progress();
 
     expect((await quota.snapshot('visit')).dailyUsed).toBe(1);
     expect(net.calls.filter((x) => x.url.includes('/identity/dash/profiles'))).toHaveLength(1);
@@ -573,7 +560,6 @@ describe('pacing', () => {
   it('runs immediate progress execution for small jobs (<= 3 rows)', async () => {
     pushRows(1);
     await handle(ACTIONS.RESEARCH_PACK, { rows: rows(1) });
-    await new Promise((resolve) => setTimeout(resolve, 50));
     const jobs = await research.allJobs();
     expect(jobs[0].status).toBe('done');
   });
@@ -581,17 +567,17 @@ describe('pacing', () => {
 
 describe('enrichment', () => {
   it('is off unless the job asks and a provider is configured', async () => {
-    await handle(ACTIONS.RESEARCH_PACK, {
-      rows: [{ linkedinUrl: 'https://www.linkedin.com/in/adalovelace/' }],
-      enrich: true,
-    });
     net.push(profileView);
     net.push(company);
     net.push(memberPosts);
     net.push(mutualConnections);
     net.push(profileView);
 
-    await research.progress();
+    await handle(ACTIONS.RESEARCH_PACK, {
+      rows: [{ linkedinUrl: 'https://www.linkedin.com/in/adalovelace/' }],
+      enrich: true,
+    });
+
     const packs = await storage.get(storage.K.researchPacks((await research.allJobs())[0].jobId));
     expect(packs[0].enrichment).toEqual({ provider: 'none' });
   });

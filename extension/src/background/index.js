@@ -157,7 +157,19 @@ try {
   chrome.alarms?.clear?.('campaignTick');
 } catch {}
 
-chrome.alarms.create(OUTFOX_CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
+// Only create fallback campaign alarm if no scheduled alarm currently exists,
+// so campaigns.js randomized 1–2.5m human-spacing jitter is preserved.
+try {
+  if (chrome.alarms?.get) {
+    chrome.alarms.get(OUTFOX_CAMPAIGN_TICK_ALARM, (existing) => {
+      if (!existing) {
+        chrome.alarms.create(OUTFOX_CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
+      }
+    });
+  } else if (chrome.alarms?.create) {
+    chrome.alarms.create(OUTFOX_CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
+  }
+} catch {}
 chrome.alarms.create(QUEUE_TICK_ALARM, { periodInMinutes: QUEUE_TICK_MINUTES });
 chrome.alarms.create(STALE_WITHDRAW_ALARM, { periodInMinutes: 720 });
 chrome.alarms.create(SNOOZE_CHECK_ALARM, { periodInMinutes: 60 });
@@ -228,6 +240,15 @@ function onStartup() {
     chrome.alarms?.clear?.('campaignTick');
   } catch {}
   initEndpoints().then(() => syncEndpointsFromVault(false)).catch(() => {});
+  try {
+    if (chrome.alarms?.get) {
+      chrome.alarms.get(OUTFOX_CAMPAIGN_TICK_ALARM, (existing) => {
+        if (!existing) {
+          chrome.alarms.create(OUTFOX_CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
+        }
+      });
+    }
+  } catch {}
   allResearchJobs().then((jobs) => {
     if (jobs?.some((j) => j.status === 'pending' || j.status === 'running')) {
       chrome.alarms?.create(RESEARCH_TICK_ALARM, { periodInMinutes: 1 });

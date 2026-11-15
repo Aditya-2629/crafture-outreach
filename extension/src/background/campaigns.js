@@ -56,7 +56,11 @@ export function getMaxActionsPerTick() {
   return maxActionsPerTick;
 }
 
-export const PROSPECT_COOLDOWN_MS = 60 * 1000;
+export let PROSPECT_COOLDOWN_MS = 60 * 1000;
+
+export function setProspectCooldownMs(ms) {
+  PROSPECT_COOLDOWN_MS = ms;
+}
 export const activeProspectLocks = new Set();
 export const lastProspectActionAt = new Map();
 
@@ -1364,6 +1368,11 @@ export async function tick() {
         if (shouldRouteInMail) {
           action = ACTIONS.OUTREACH_INMAIL;
           routed = 'routed_free_inmail';
+        }
+
+        // Enforce PROSPECT_COOLDOWN_MS per prospect before executing an action step
+        if (Date.now() - (lastProspectActionAt.get(enrollment.publicId) || 0) < PROSPECT_COOLDOWN_MS) {
+          continue enrollmentLoop;
         }
 
         const { params, variantUsed } = await stepParams(campaign, step, enrollment, routed);

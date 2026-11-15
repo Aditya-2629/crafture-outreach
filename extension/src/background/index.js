@@ -26,6 +26,7 @@ import './quota.js';
 import './ai.js';
 import './inbox.js';
 import './campaigns.js';
+import { ensureCampaignAlarmWatchdog } from './campaigns.js';
 import './capture.js';
 import './research.js';
 import { RESEARCH_TICK_ALARM, progress as researchProgress, allJobs as allResearchJobs } from './research.js';
@@ -249,6 +250,7 @@ function onStartup() {
       });
     }
   } catch {}
+  ensureCampaignAlarmWatchdog().catch(() => {});
   allResearchJobs().then((jobs) => {
     if (jobs?.some((j) => j.status === 'pending' || j.status === 'running')) {
       chrome.alarms?.create(RESEARCH_TICK_ALARM, { periodInMinutes: 1 });

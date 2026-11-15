@@ -1174,4 +1174,70 @@ describe('v1 migration', () => {
 
     postsSpy.mockRestore();
   });
+
+  describe('ensureCampaignAlarmWatchdog & auto kick-off', () => {
+    it('creates alarm when active campaigns exist and alarm is missing', async () => {
+      await chrome.storage.local.set({
+        campaigns: [{ campaignId: 'c_active', status: 'active', name: 'Active Camp' }],
+      });
+      // Mock chrome.alarms.get to return null (alarm missing)
+      vi.spyOn(chrome.alarms, 'get').mockImplementation((name, cb) => cb(null));
+      const createSpy = vi.spyOn(chrome.alarms, 'create');
+
+      const reCreated = await campaigns.ensureCampaignAlarmWatchdog();
+      expect(reCreated).toBe(true);
+      expect(createSpy).toHaveBeenCalledWith(campaigns.CAMPAIGN_TICK_ALARM_NAME, expect.objectContaining({
+        delayInMinutes: 2,
+      }));
+    });
+
+    it('does not re-create alarm when alarm already exists', async () => {
+      await chrome.storage.local.set({
+        campaigns: [{ campaignId: 'c_active', status: 'active', name: 'Active Camp' }],
+      });
+      vi.spyOn(chrome.alarms, 'get').mockImplementation((name, cb) => cb({ name: 'outfox-campaign-tick', scheduledTime: Date.now() + 60000 }));
+      const createSpy = vi.spyOn(chrome.alarms, 'create');
+
+      const reCreated = await campaigns.ensureCampaignAlarmWatchdog();
+      expect(reCreated).toBe(false);
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when no active campaigns exist', async () => {
+      await chrome.storage.local.set({
+        campaigns: [{ campaignId: 'c_paused', status: 'paused', name: 'Paused Camp' }],
+      });
+      const createSpy = vi.spyOn(chrome.alarms, 'create');
+
+      const reCreated = await campaigns.ensureCampaignAlarmWatchdog();
+      expect(reCreated).toBe(false);
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    it('immediately schedules tick alarm on campaign resume and start', async () => {
+      const createAlarmSpy = vi.spyOn(chrome.alarms, 'create');
+      const c = (await handle(ACTIONS.CAMPAIGN_CREATE, {
+        name: 'AutoStartTest',
+        steps: [{ type: 'view' }],
+        publicIds: ['p_auto'],
+        settings: { autopilot: true },
+      })).data;
+
+      expect(createAlarmSpy).toHaveBeenCalledWith(campaigns.CAMPAIGN_TICK_ALARM_NAME, expect.any(Object));
+
+      // Pause campaign
+      await handle(ACTIONS.CAMPAIGN_PAUSE, { campaignId: c.campaignId });
+      createAlarmSpy.mockClear();
+
+      // Resume campaign
+      await handle(ACTIONS.CAMPAIGN_RESUME, { campaignId: c.campaignId });
+      expect(createAlarmSpy).toHaveBeenCalledWith(campaigns.CAMPAIGN_TICK_ALARM_NAME, expect.any(Object));
+
+      // Test CAMPAIGN_START alias
+      await handle(ACTIONS.CAMPAIGN_PAUSE, { campaignId: c.campaignId });
+      createAlarmSpy.mockClear();
+      await handle(ACTIONS.CAMPAIGN_START, { campaignId: c.campaignId });
+      expect(createAlarmSpy).toHaveBeenCalledWith(campaigns.CAMPAIGN_TICK_ALARM_NAME, expect.any(Object));
+    });
+  });
 });

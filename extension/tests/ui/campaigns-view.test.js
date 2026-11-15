@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   renderCampaignsView,
   computeCampaignStats,
+  computeAutoPilotStatus,
   renderMiniStepFlow,
 } from '../../src/dashboard/campaigns-view.js';
 import { ACTIONS } from '../../src/lib/actions.js';
@@ -160,6 +161,12 @@ describe('CampaignsView — Full Layout & Tab Switching', () => {
     expect(host.textContent).toContain('Completed:');
     expect(host.textContent).toContain('Total Leads:');
 
+    // Verify manual "Run Step Now" button is removed and replaced by Auto-Pilot status pill
+    expect(host.querySelector('#btn-manual-tick')).toBeNull();
+    const autoPilotPill = host.querySelector('#autopilot-status-pill');
+    expect(autoPilotPill).toBeTruthy();
+    expect(autoPilotPill.textContent).toContain('Auto-Pilot');
+
     // Verify Completed tab exists alongside Running, Paused, Draft, Archived
     const completedTab = host.querySelector('.camp-state-tab[data-tab="completed"]');
     expect(completedTab).toBeTruthy();
@@ -312,5 +319,73 @@ describe('CampaignsView — Full Layout & Tab Switching', () => {
       document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       expect(document.querySelector('.delay-dropdown-menu')).toBeNull();
     }
+  });
+
+  describe('computeAutoPilotStatus', () => {
+    const t0 = 1757000000000;
+
+    it('returns Auto-Pilot Idle when there are no active campaigns', () => {
+      const status = computeAutoPilotStatus([], {}, {}, null, t0);
+      expect(status.state).toBe('idle');
+      expect(status.text).toBe('Auto-Pilot Idle');
+      expect(status.pillClass).toBe('pill-autopilot-idle');
+
+      const pausedOnly = [{ campaignId: 'c_paused', status: 'paused' }];
+      const status2 = computeAutoPilotStatus(pausedOnly, {}, {}, null, t0);
+      expect(status2.state).toBe('idle');
+      expect(status2.text).toBe('Auto-Pilot Idle');
+    });
+
+    it('returns Auto-Pilot Resting with resume time when quota cooldown is active', () => {
+      const activeCamps = [{ campaignId: 'c1', status: 'active' }];
+      const storage = {
+        outfox_bucket_cooldowns: {
+          invite: t0 + 3600 * 1000, // Resting 1h
+        },
+      };
+      const status = computeAutoPilotStatus(activeCamps, storage, {}, null, t0);
+      expect(status.state).toBe('resting');
+      expect(status.text).toContain('Auto-Pilot Resting · Resumes at');
+      expect(status.pillClass).toBe('pill-autopilot-resting');
+    });
+
+    it('returns Auto-Pilot Active · Processing now... when due actions exist', () => {
+      const activeCamps = [{ campaignId: 'c1', status: 'active' }];
+      const storage = {
+        'enrollments:c1': [
+          { publicId: 'p_due', status: 'active', nextAt: t0 - 5000 },
+        ],
+      };
+      const status = computeAutoPilotStatus(activeCamps, storage, {}, null, t0);
+      expect(status.state).toBe('due');
+      expect(status.text).toBe('Auto-Pilot Active · Processing now...');
+      expect(status.pillClass).toBe('pill-autopilot-active');
+    });
+
+    it('returns Auto-Pilot Active with countdown when actions are scheduled in the future', () => {
+      const activeCamps = [{ campaignId: 'c1', status: 'active' }];
+      const storage = {
+        'enrollments:c1': [
+          { publicId: 'p_future', status: 'active', nextAt: t0 + 85 * 1000 }, // 1m 25s
+        ],
+      };
+      const status = computeAutoPilotStatus(activeCamps, storage, {}, null, t0);
+      expect(status.state).toBe('upcoming');
+      expect(status.text).toBe('Auto-Pilot Active · Next action in 1m 25s');
+      expect(status.pillClass).toBe('pill-autopilot-active');
+    });
+
+    it('aligns countdown with upcoming alarm if alarm is sooner than enrollment', () => {
+      const activeCamps = [{ campaignId: 'c1', status: 'active' }];
+      const storage = {
+        'enrollments:c1': [
+          { publicId: 'p_future', status: 'active', nextAt: t0 + 120 * 1000 }, // 2m
+        ],
+      };
+      const alarm = { scheduledTime: t0 + 45 * 1000 }; // 45s
+      const status = computeAutoPilotStatus(activeCamps, storage, {}, alarm, t0);
+      expect(status.state).toBe('upcoming');
+      expect(status.text).toBe('Auto-Pilot Active · Next action in 45s');
+    });
   });
 });

@@ -6,7 +6,7 @@
 
 import { allActions, allProfiles, get, K } from '../lib/storage.js';
 import { getConfig } from '../lib/config.js';
-import { readCampaigns, readEnrollments } from './campaigns.js';
+import { readCampaigns, readEnrollments, ensureCampaignAlarmWatchdog } from './campaigns.js';
 import { storedThreads } from './inbox.js';
 import { getNetworkStats, getProfileViewsCount, selfTest } from './voyager.js';
 import { isWithinBusinessHours } from './quota.js';
@@ -57,6 +57,7 @@ export function build30DayTimeline(actions = []) {
  * Aggregate all live metrics across storage and network
  */
 export async function getLiveDashboardStats() {
+  ensureCampaignAlarmWatchdog().catch(() => {});
   const [actions, campaigns, config, networkStats, profileViews, threads] = await Promise.all([
     allActions().catch(() => []),
     readCampaigns().catch(() => []),

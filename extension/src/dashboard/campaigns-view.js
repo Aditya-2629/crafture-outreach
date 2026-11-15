@@ -730,6 +730,108 @@ export function computeCampaignStats(camp = {}, allStorage = {}, now = Date.now(
   };
 }
 
+/**
+ * Computes live Auto-Pilot state for Campaigns:
+ * - Active & Due: "Auto-Pilot Active · Next action in <Xm Ys>" (or "Auto-Pilot Active · Processing now...")
+ * - Resting / Outside hours: "Auto-Pilot Resting · Resumes at <HH:MM>"
+ * - No active campaigns: "Auto-Pilot Idle"
+ */
+export function computeAutoPilotStatus(campaigns = [], allStorage = {}, config = {}, alarmRes = null, now = Date.now()) {
+  const activeCampaigns = (campaigns || []).filter((c) => c.status === 'active');
+  if (activeCampaigns.length === 0) {
+    return {
+      state: 'idle',
+      text: 'Auto-Pilot Idle',
+      dotClass: 'dot-idle',
+      pillClass: 'pill-autopilot-idle',
+      targetTime: null,
+    };
+  }
+
+  // Check resting / cooldown / outside schedule
+  const cooldowns = allStorage.outfox_bucket_cooldowns || {};
+  const buckets = ['invite', 'view', 'message', 'email'];
+  const resting = [];
+  for (const b of buckets) {
+    const until = cooldowns[b] || (b === 'view' ? cooldowns.visit : 0) || 0;
+    if (until > now) {
+      resting.push({ bucket: b, until, diffMs: until - now });
+    }
+  }
+
+  if (resting.length > 0) {
+    resting.sort((a, b) => b.diffMs - a.diffMs);
+    const top = resting[0];
+    const resumeTimeStr = new Date(top.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return {
+      state: 'resting',
+      text: `Auto-Pilot Resting · Resumes at ${resumeTimeStr}`,
+      dotClass: 'dot-resting',
+      pillClass: 'pill-autopilot-resting',
+      targetTime: top.until,
+    };
+  }
+
+  // Find due and upcoming enrollments across active campaigns
+  let minUpcoming = null;
+  let hasDue = false;
+
+  for (const camp of activeCampaigns) {
+    const enrollments = allStorage[`enrollments:${camp.campaignId}`] || [];
+    for (const e of enrollments) {
+      const st = e.status || e.state || 'active';
+      if (st === 'active' || st === 'running') {
+        const nextAt = e.nextAt || 0;
+        if (nextAt <= now) {
+          hasDue = true;
+        } else {
+          if (minUpcoming === null || nextAt < minUpcoming) {
+            minUpcoming = nextAt;
+          }
+        }
+      }
+    }
+  }
+
+  if (hasDue) {
+    return {
+      state: 'due',
+      text: 'Auto-Pilot Active · Processing now...',
+      dotClass: 'dot-active animated',
+      pillClass: 'pill-autopilot-active',
+      targetTime: now,
+    };
+  }
+
+  const alarmTime = alarmRes?.scheduledTime;
+  let targetTime = minUpcoming;
+  if (alarmTime && alarmTime > now) {
+    targetTime = targetTime ? Math.min(targetTime, alarmTime) : alarmTime;
+  }
+
+  if (targetTime && targetTime > now) {
+    const diffSec = Math.max(1, Math.round((targetTime - now) / 1000));
+    const m = Math.floor(diffSec / 60);
+    const s = diffSec % 60;
+    const timeText = m > 0 ? `${m}m ${s < 10 ? '0' : ''}${s}s` : `${s}s`;
+    return {
+      state: 'upcoming',
+      text: `Auto-Pilot Active · Next action in ${timeText}`,
+      dotClass: 'dot-active animated',
+      pillClass: 'pill-autopilot-active',
+      targetTime,
+    };
+  }
+
+  return {
+    state: 'active',
+    text: 'Auto-Pilot Active · Monitoring leads',
+    dotClass: 'dot-active',
+    pillClass: 'pill-autopilot-active',
+    targetTime: null,
+  };
+}
+
 
 function ensureCampaignsStyles() {
   const STYLE_ID = 'OutFox-campaigns-view-css';
@@ -1398,6 +1500,58 @@ function ensureCampaignsStyles() {
       color: #ffffff;
       border-color: #ff6b00;
     }
+    .autopilot-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+      user-select: none;
+    }
+    .pill-autopilot-active {
+      background: #ecfdf5 !important;
+      color: #047857 !important;
+      border: 1.5px solid #a7f3d0 !important;
+      box-shadow: 0 2px 6px rgba(16, 185, 129, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+    }
+    .pill-autopilot-resting {
+      background: #fffbeb !important;
+      color: #b45309 !important;
+      border: 1.5px solid #fde68a !important;
+      box-shadow: 0 2px 6px rgba(245, 158, 11, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+    }
+    .pill-autopilot-idle {
+      background: #f8fafc !important;
+      color: #64748b !important;
+      border: 1.5px solid #e2e8f0 !important;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+    }
+    .autopilot-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .autopilot-dot.dot-active {
+      background: #10b981;
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    }
+    .autopilot-dot.dot-active.animated {
+      animation: pulseGreen 2s infinite;
+    }
+    .autopilot-dot.dot-resting {
+      background: #f59e0b;
+      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+      animation: pulseOrange 2.5s infinite;
+    }
+    .autopilot-dot.dot-idle {
+      background: #94a3b8;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -1421,9 +1575,12 @@ export async function renderCampaignsView(container, ctx = {}) {
   let savedMessageTemplates = [];
   let isLivePreview = false;
   let allStorage = {};
+  let currentConfig = {};
+  let currentAlarm = null;
+  let autoPilotInterval = null;
 
   try {
-    const [cRes, lRes, pRes, cfg, sRes] = await Promise.all([
+    const [cRes, lRes, pRes, cfg, sRes, alarmRes] = await Promise.all([
       call(ACTIONS.CAMPAIGN_GET_ALL, {}).catch(() => []),
       call(ACTIONS.LIST_GET_ALL, {}).catch(() => []),
       allProfiles().catch(() => []),
@@ -1435,8 +1592,24 @@ export async function renderCampaignsView(container, ctx = {}) {
           r({});
         }
       }),
+      new Promise((r) => {
+        try {
+          if (typeof chrome !== 'undefined' && chrome.alarms?.get) {
+            chrome.alarms.get('outfox-campaign-tick', (a1) => {
+              if (a1 && a1.scheduledTime) return r(a1);
+              chrome.alarms.get('campaignTick', r);
+            });
+          } else {
+            r(null);
+          }
+        } catch {
+          r(null);
+        }
+      }),
     ]);
     allStorage = sRes || {};
+    currentConfig = cfg || {};
+    currentAlarm = alarmRes || null;
     campaigns = Array.isArray(cRes) ? cRes : (cRes?.campaigns || []);
     const rawLists = Array.isArray(lRes) ? lRes : (lRes?.lists || []);
     lists = rawLists.map((l) => ({
@@ -1596,6 +1769,7 @@ export async function renderCampaignsView(container, ctx = {}) {
   // =========================================================================
   function renderList() {
     const now = Date.now();
+    const autoPilotStatus = computeAutoPilotStatus(campaigns, allStorage, currentConfig, currentAlarm, now);
     const enrichedCampaigns = campaigns.map((camp) => {
       const stats = computeCampaignStats(camp, allStorage, now);
       return { ...camp, computed: stats };
@@ -1644,10 +1818,11 @@ export async function renderCampaignsView(container, ctx = {}) {
           <div>
             <h1 class="main-page-title">My campaigns</h1>
           </div>
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <button type="button" class="btn-pill btn-secondary btn-sm" id="btn-manual-tick" style="font-size: 12px; padding: 7px 14px;">
-              ${ICONS.lightning} Run Step Now
-            </button>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="autopilot-status-pill ${autoPilotStatus.pillClass}" id="autopilot-status-pill">
+              <span class="autopilot-dot ${autoPilotStatus.dotClass}"></span>
+              <span class="autopilot-text">${autoPilotStatus.text}</span>
+            </div>
             <button type="button" class="btn-primary-start-camp" id="btn-start-wizard" style="display:inline-flex; align-items:center; gap:6px;">
               Start a campaign ${ICONS.chevronDown}
             </button>
@@ -1864,9 +2039,10 @@ export async function renderCampaignsView(container, ctx = {}) {
               </div>
             </div>
             <div class="camp-drawer-actions">
-              <button type="button" class="btn-pill btn-secondary btn-sm" id="btn-drawer-tick" style="font-size: 11.5px; padding: 5px 12px; display:inline-flex; align-items:center; gap:4px;">
-                ${ICONS.lightning} Run Step Now
-              </button>
+              <div class="autopilot-status-pill ${autoPilotStatus.pillClass}" id="drawer-autopilot-pill" style="font-size: 11.5px; padding: 4px 10px;">
+                <span class="autopilot-dot ${autoPilotStatus.dotClass}" style="width:6px; height:6px;"></span>
+                <span class="autopilot-text">${autoPilotStatus.text}</span>
+              </div>
               <button type="button" class="btn-pill btn-secondary btn-sm" id="btn-drawer-refresh" style="font-size: 11.5px; padding: 5px 10px; display:inline-flex; align-items:center; gap:4px;">
                 ${ICONS.refresh} Refresh
               </button>
@@ -2120,31 +2296,32 @@ export async function renderCampaignsView(container, ctx = {}) {
       });
     });
 
-    // Manual step execution
-    container.querySelector('#btn-manual-tick')?.addEventListener('click', async () => {
-      const tickBtn = container.querySelector('#btn-manual-tick');
-      if (tickBtn) {
-        tickBtn.disabled = true;
-        tickBtn.innerHTML = `${ICONS.lightning} Triggering...`;
+    // Auto-Pilot Live Countdown Interval
+    if (autoPilotInterval) clearInterval(autoPilotInterval);
+    autoPilotInterval = setInterval(() => {
+      const pill = container.querySelector('#autopilot-status-pill');
+      const drawerPill = container.querySelector('#drawer-autopilot-pill');
+      if ((!pill && !drawerPill) || !container.isConnected) {
+        clearInterval(autoPilotInterval);
+        autoPilotInterval = null;
+        return;
       }
-      try {
-        if (typeof chrome !== 'undefined' && chrome.alarms?.create) {
-          chrome.alarms.create('campaignTick', { when: Date.now() + 100 });
-        }
-        await call(ACTIONS.CAMPAIGN_TICK, {}).catch(() => {});
-        ctx.showToast?.('Triggered immediate sequence tick!', 'success');
-        setTimeout(() => {
-          renderCampaignsView(container, ctx);
-        }, 600);
-      } catch (e) {
-        ctx.showToast?.(e.message || 'Tick failed', 'error');
-      } finally {
-        if (tickBtn) {
-          tickBtn.disabled = false;
-          tickBtn.innerHTML = `${ICONS.lightning} Run Step Now`;
-        }
+      const liveStatus = computeAutoPilotStatus(campaigns, allStorage, currentConfig, currentAlarm, Date.now());
+      if (pill) {
+        pill.className = `autopilot-status-pill ${liveStatus.pillClass}`;
+        pill.innerHTML = `
+          <span class="autopilot-dot ${liveStatus.dotClass}"></span>
+          <span class="autopilot-text">${liveStatus.text}</span>
+        `;
       }
-    });
+      if (drawerPill) {
+        drawerPill.className = `autopilot-status-pill ${liveStatus.pillClass}`;
+        drawerPill.innerHTML = `
+          <span class="autopilot-dot ${liveStatus.dotClass}" style="width:6px; height:6px;"></span>
+          <span class="autopilot-text">${liveStatus.text}</span>
+        `;
+      }
+    }, 1000);
 
     container.querySelector('#btn-close-flow-modal')?.addEventListener('click', () => {
       const fm = container.querySelector('#flow-modal');
@@ -2422,24 +2599,6 @@ export async function renderCampaignsView(container, ctx = {}) {
     container.querySelector('#btn-drawer-refresh')?.addEventListener('click', async () => {
       await fetchAndRenderDrawer();
       ctx.showToast?.('Refreshed live prospects status', 'info');
-    });
-
-    container.querySelector('#btn-drawer-tick')?.addEventListener('click', async () => {
-      const btn = container.querySelector('#btn-drawer-tick');
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.lightning} Running...</span>`;
-        try {
-          await call(ACTIONS.CAMPAIGN_TICK, {});
-          ctx.showToast?.('Step triggered! Refreshing live status...', 'success');
-          await fetchAndRenderDrawer();
-        } catch (err) {
-          ctx.showToast?.(`Tick error: ${err.message}`, 'error');
-        } finally {
-          btn.disabled = false;
-          btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.lightning} Run Step Now</span>`;
-        }
-      }
     });
 
     const drawerSearch = container.querySelector('#input-drawer-search');

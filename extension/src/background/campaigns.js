@@ -86,6 +86,36 @@ export function scheduleNextTickAlarm(minutes = null) {
   }
 }
 
+/**
+ * Lightweight Watchdog: if any active campaign exists and the 'outfox-campaign-tick'
+ * alarm is missing, automatically re-create it.
+ * @returns {Promise<boolean>} whether an alarm was re-created
+ */
+export async function ensureCampaignAlarmWatchdog() {
+  try {
+    const campaigns = await readCampaigns();
+    const hasActive = campaigns.some((c) => c.status === 'active');
+    if (!hasActive) return false;
+
+    if (typeof chrome !== 'undefined' && chrome.alarms?.get) {
+      return new Promise((resolve) => {
+        chrome.alarms.get(CAMPAIGN_TICK_ALARM_NAME, (existing) => {
+          if (!existing) {
+            scheduleNextTickAlarm(2);
+            logDebug('info', 'Runner', '[Watchdog] Re-created missing campaign tick alarm for active campaigns.');
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        });
+      });
+    }
+  } catch {
+    /* ignore in environments without alarms API */
+  }
+  return false;
+}
+
 /** Hooks run at the end of every tick (the Research Pack registers one). */
 const tickHooks = [];
 
@@ -360,6 +390,13 @@ export async function create({ name, steps, listId, publicIds, settings, sheetWe
   const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
   if (uniqueIds.length) await enroll(campaign.campaignId, uniqueIds);
 
+  if (campaign.status === 'active') {
+    scheduleNextTickAlarm();
+    setTimeout(() => {
+      tick().catch((err) => console.error('[Runner] Immediate tick error on create:', err));
+    }, 50);
+  }
+
   return withStats(campaign);
 }
 
@@ -463,9 +500,10 @@ export async function setStatus(campaignId, status) {
   await writeCampaigns(campaigns);
 
   if (status === 'active') {
+    scheduleNextTickAlarm();
     setTimeout(() => {
       tick().catch((err) => console.error('[Runner] Immediate tick error on resume:', err));
-    }, 100);
+    }, 50);
   }
 
   return withStats(campaign);
@@ -1726,6 +1764,7 @@ register(ACTIONS.CAMPAIGN_GET, ({ campaignId }) => getOne(campaignId));
 register(ACTIONS.CAMPAIGN_ENROLL, ({ campaignId, publicIds }) => enroll(campaignId, publicIds));
 register(ACTIONS.CAMPAIGN_PAUSE, ({ campaignId }) => setStatus(campaignId, 'paused'));
 register(ACTIONS.CAMPAIGN_RESUME, ({ campaignId }) => setStatus(campaignId, 'active'));
+register(ACTIONS.CAMPAIGN_START, ({ campaignId }) => setStatus(campaignId, 'active'));
 register(ACTIONS.CAMPAIGN_DELETE, ({ campaignId }) => del(campaignId));
 register(ACTIONS.CAMPAIGN_TICK, () => tick());
 register(ACTIONS.CAMPAIGN_LIVE_STATUS, async ({ campaignId }) => getCampaignLiveStatus(campaignId));

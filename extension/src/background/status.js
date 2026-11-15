@@ -10,7 +10,7 @@ import { ACTIONS } from '../lib/actions.js';
 import { getConfig, setConfig } from '../lib/config.js';
 import { register } from './engine.js';
 import { bridgeState, ensureConnected } from './bridge.js';
-import { readCampaigns } from './campaigns.js';
+import { readCampaigns, ensureCampaignAlarmWatchdog } from './campaigns.js';
 import { pendingCount } from './queue.js';
 import * as quota from './quota.js';
 import { isLoggedIn } from './voyager-core.js';
@@ -44,6 +44,7 @@ async function meterSelfCheck(kind, n) {
  * without one that single endpoint is reported `skipped`.
  */
 export async function status({ verify = false, postUrl } = {}) {
+  ensureCampaignAlarmWatchdog().catch(() => {});
   const config = await getConfig();
   const campaigns = await readCampaigns();
   const bridge = bridgeState();

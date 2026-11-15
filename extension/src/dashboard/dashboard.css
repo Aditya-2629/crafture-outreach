@@ -7801,3 +7801,77 @@ button:active,
 .content-body.view-enter-active > * {
   animation: viewFadeSlideUp 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
+
+/* Auto-Pilot Claymorphism Status Pill */
+.autopilot-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  user-select: none;
+}
+
+.pill-autopilot-active {
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+  border: 1.5px solid #a7f3d0 !important;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+}
+
+.pill-autopilot-resting {
+  background: #fffbeb !important;
+  color: #b45309 !important;
+  border: 1.5px solid #fde68a !important;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+}
+
+.pill-autopilot-idle {
+  background: #f8fafc !important;
+  color: #64748b !important;
+  border: 1.5px solid #e2e8f0 !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+}
+
+.autopilot-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.autopilot-dot.dot-active {
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+}
+
+.autopilot-dot.dot-active.animated {
+  animation: pulseGreen 2s infinite;
+}
+
+.autopilot-dot.dot-resting {
+  background: #f59e0b;
+  box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+  animation: pulseOrange 2.5s infinite;
+}
+
+.autopilot-dot.dot-idle {
+  background: #94a3b8;
+}
+
+@keyframes pulseGreen {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+@keyframes pulseOrange {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}

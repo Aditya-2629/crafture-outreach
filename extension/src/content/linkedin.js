@@ -16,6 +16,99 @@
   'use strict';
 
   /* ================================================================ */
+  /*  Extension Context & Stale Element Helpers                       */
+  /* ================================================================ */
+
+  function cleanupStaleElements() {
+    try {
+      document.getElementById('outfox-floating-import')?.remove();
+      document.getElementById('outfox-import-btn')?.remove();
+      document.getElementById('outfox-dossier-btn')?.remove();
+      document.getElementById('outfox-invalidated-notice')?.remove();
+      document.querySelectorAll('.outfox-dossier-overlay, .outfox-import-overlay').forEach((el) => el.remove());
+    } catch {}
+  }
+
+  function isContextInvalidated(err) {
+    if (typeof chrome === 'undefined' || !chrome?.runtime?.id) return true;
+    if (err) {
+      const msg = typeof err === 'string' ? err : err.message || String(err);
+      if (/extension context invalidated/i.test(msg)) return true;
+    }
+    return false;
+  }
+
+  let invalidatedNoticeShown = false;
+  function showContextInvalidatedNotice() {
+    if (invalidatedNoticeShown) return;
+    invalidatedNoticeShown = true;
+
+    try {
+      document.getElementById('outfox-invalidated-notice')?.remove();
+
+      const banner = document.createElement('div');
+      banner.id = 'outfox-invalidated-notice';
+      banner.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 2147483647;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 18px;
+        background: #0f172a;
+        color: #ffffff;
+        border: 1px solid #ff741f;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 116, 31, 0.3);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-size: 13.5px;
+        font-weight: 500;
+      `;
+
+      banner.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff741f;"></span>
+          <span>OutFox was just updated — refreshing or click to reload this LinkedIn tab.</span>
+        </div>
+        <button type="button" id="btn-reload-linkedin" style="
+          background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);
+          color: #ffffff;
+          border: none;
+          padding: 6px 14px;
+          border-radius: 8px;
+          font-weight: 600;
+          font-size: 12.5px;
+          cursor: pointer;
+          white-space: nowrap;
+        ">Reload Page</button>
+        <button type="button" id="btn-dismiss-invalidated" style="
+          background: transparent;
+          color: #94a3b8;
+          border: none;
+          font-size: 16px;
+          line-height: 1;
+          cursor: pointer;
+          padding: 2px 4px;
+        ">✕</button>
+      `;
+
+      (document.body || document.documentElement).appendChild(banner);
+
+      banner.querySelector('#btn-reload-linkedin')?.addEventListener('click', () => {
+        window.location.reload();
+      });
+      banner.querySelector('#btn-dismiss-invalidated')?.addEventListener('click', () => {
+        banner.remove();
+      });
+    } catch {}
+  }
+
+  // Initial cleanup of any stale floating elements
+  cleanupStaleElements();
+
+  /* ================================================================ */
   /*  Helpers                                                         */
   /* ================================================================ */
 
@@ -24,23 +117,39 @@
    * Resolves with `data`; rejects with the envelope's error message.
    */
   function call(action, params) {
+    if (isContextInvalidated()) {
+      showContextInvalidatedNotice();
+      return Promise.reject(new Error('Extension context invalidated.'));
+    }
     return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ action, params: params || {} }, (resp) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
+      try {
+        chrome.runtime.sendMessage({ action, params: params || {} }, (resp) => {
+          const lastErr = chrome.runtime.lastError;
+          if (lastErr) {
+            const msg = lastErr.message || String(lastErr);
+            if (isContextInvalidated(msg)) {
+              showContextInvalidatedNotice();
+            }
+            reject(new Error(msg));
+            return;
+          }
+          if (!resp) {
+            reject(new Error('The extension did not answer.'));
+            return;
+          }
+          if (resp.ok === false || resp.error) {
+            const error = resp.error || {};
+            reject(new Error(error.message || String(error) || 'Request failed'));
+            return;
+          }
+          resolve(resp.data === undefined ? resp : resp.data);
+        });
+      } catch (err) {
+        if (isContextInvalidated(err)) {
+          showContextInvalidatedNotice();
         }
-        if (!resp) {
-          reject(new Error('The extension did not answer.'));
-          return;
-        }
-        if (resp.ok === false || resp.error) {
-          const error = resp.error || {};
-          reject(new Error(error.message || String(error) || 'Request failed'));
-          return;
-        }
-        resolve(resp.data === undefined ? resp : resp.data);
-      });
+        reject(err);
+      }
     });
   }
 
@@ -50,6 +159,7 @@
   }
 
   function logDebug(level, tag, message, data = null) {
+    if (isContextInvalidated()) return;
     const entry = {
       timestamp: new Date().toLocaleTimeString(),
       level: level || 'info',
@@ -61,7 +171,11 @@
       chrome.runtime.sendMessage({ type: 'LOG_ENTRY', entry }, () => {
         if (chrome.runtime.lastError) {}
       });
-    } catch {}
+    } catch (e) {
+      if (isContextInvalidated(e)) {
+        showContextInvalidatedNotice();
+      }
+    }
   }
 
   /* ================================================================ */
@@ -78,6 +192,10 @@
   }
 
   function showToast(message, type = 'info', duration = 4000) {
+    if (type === 'error' && isContextInvalidated(message)) {
+      showContextInvalidatedNotice();
+      return;
+    }
     ensureToastContainer();
 
     const toast = document.createElement('div');
@@ -568,10 +686,11 @@
       location.search.includes('keywords');
     if (!isSearchPage) {
       document.getElementById('outfox-floating-import')?.remove();
+      document.getElementById('outfox-import-btn')?.remove();
       return;
     }
 
-    if (document.getElementById('outfox-floating-import')) return;
+    if (document.getElementById('outfox-floating-import') || document.getElementById('outfox-import-btn')) return;
 
     const badge = document.createElement('div');
     badge.id = 'outfox-floating-import';

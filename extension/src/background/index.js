@@ -257,5 +257,26 @@ function onStartup() {
   }).catch(() => {});
 }
 
+async function reinjectContentScripts() {
+  try {
+    if (!chrome?.tabs?.query || !chrome?.scripting?.executeScript) return;
+    const tabs = await chrome.tabs.query({ url: '*://*.linkedin.com/*' });
+    for (const tab of tabs) {
+      if (!tab.id || tab.url?.startsWith('chrome://')) continue;
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['src/content/capture.js', 'src/content/linkedin.js'],
+      }).catch(() => {
+        /* ignore tabs where execution is disallowed */
+      });
+    }
+  } catch {}
+}
+
+function onInstalled() {
+  onStartup();
+  reinjectContentScripts();
+}
+
 chrome.runtime.onStartup.addListener(onStartup);
-chrome.runtime.onInstalled.addListener(onStartup);
+chrome.runtime.onInstalled.addListener(onInstalled);

@@ -3788,44 +3788,54 @@ input:checked + .slider:before {
   transform: scale(1.15);
 }
 
+.flow-canvas-card {
+  position: relative;
+  z-index: 9999;
+}
+
+.step-insert-menu,
+.delay-dropdown-menu,
 .pipeline-popover-menu {
-  position: absolute !important;
-  top: calc(100% + 8px) !important;
-  left: 50% !important;
-  transform: translateX(-50%) !important;
+  position: fixed;
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
-  border-radius: 10px !important;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16) !important;
-  z-index: 999999 !important;
-  min-width: 200px !important;
-  max-height: 260px;
+  border-radius: 12px !important;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+  z-index: 9999 !important;
+  min-width: 180px;
+  max-height: 280px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 3px;
+  padding: 6px !important;
 }
 
 .pipeline-popover-item {
-  padding: 6px 10px;
+  padding: 8px 12px;
   border: none;
   background: transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   text-align: left;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--text-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: background 0.15s ease;
+  transition: all 0.15s ease;
   white-space: nowrap;
 }
 
 .pipeline-popover-item:hover {
   background: #fff7ed;
   color: #ff6b00;
+}
+
+.pipeline-popover-item.is-selected {
+  background: #ffedd5;
+  color: #c2410c;
 }
 
 /* ================================================================== */
@@ -5996,6 +6006,11 @@ input:checked + .slider:before {
   position: relative;
   cursor: pointer;
 }
+.OutFox-camp-card:has(.camp-3dots-menu.is-open),
+.OutFox-camp-card.has-open-menu {
+  z-index: 100 !important;
+  position: relative;
+}
 .OutFox-camp-card:hover {
   border-color: rgba(255, 107, 0, 0.25);
   box-shadow: 0 16px 32px -4px rgba(255, 107, 0, 0.1), inset 0 2px 4px rgba(255, 255, 255, 0.9);
@@ -6306,7 +6321,7 @@ input:checked + .slider:before {
   border-radius: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
   min-width: 190px;
-  z-index: 100;
+  z-index: 9999 !important;
   padding: 6px;
   display: none;
   flex-direction: column;

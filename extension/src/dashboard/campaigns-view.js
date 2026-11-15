@@ -528,11 +528,10 @@ export function renderHorizontalFlow(pipelineSteps = [], prospectCount = 12, isI
           </div>
         ` : ''}
         ${isInteractive ? `
-          <select class="delay-select-pill" data-connector-idx="${idx}" title="Change delay before this step">
-            ${DELAY_OPTIONS.map((opt) => `
-              <option value="${opt.ms}" ${Number(step.delayMs || 0) === opt.ms ? 'selected' : ''}>${opt.badge || opt.label}</option>
-            `).join('')}
-          </select>
+          <button type="button" class="delay-select-pill btn-delay-dropdown" data-connector-idx="${idx}" title="Change delay before this step">
+            <span>${formatDelayBadge(step.delayMs)}</span>
+            <span style="display: inline-flex; align-items: center; margin-left: 3px; opacity: 0.6;">${ICONS.chevronDown}</span>
+          </button>
         ` : `
           <div class="delay-pill-badge">${formatDelayBadge(step.delayMs)}</div>
         `}
@@ -762,6 +761,11 @@ function ensureCampaignsStyles() {
       justify-content: space-between;
       flex-wrap: wrap;
       gap: 20px;
+    }
+    .OutFox-camp-card:has(.camp-3dots-menu.is-open),
+    .OutFox-camp-card.has-open-menu {
+      z-index: 100 !important;
+      position: relative;
     }
     .OutFox-camp-card:hover {
       border-color: rgba(255, 107, 0, 0.25);
@@ -1001,7 +1005,7 @@ function ensureCampaignsStyles() {
     .dot-draft { background: #94a3b8; }
     .btn-camp-3dots { background: transparent; border: none; color: #94a3b8; font-size: 16px; cursor: pointer; padding: 6px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
     .btn-camp-3dots:hover { background: #f1f5f9; color: #14142b; }
-    .camp-3dots-menu { position: absolute; top: 48px; right: 16px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); padding: 6px; display: none; flex-direction: column; z-index: 50; min-width: 170px; }
+    .camp-3dots-menu { position: absolute; top: 48px; right: 16px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); padding: 6px; display: none; flex-direction: column; z-index: 9999 !important; min-width: 170px; }
     .camp-3dots-menu.is-open { display: flex; }
     .camp-menu-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600; color: #14142b; cursor: pointer; transition: background 0.12s; }
     .camp-menu-item:hover { background: #f8fafc; color: #ff6b00; }
@@ -1015,6 +1019,7 @@ function ensureCampaignsStyles() {
       overflow-y: visible !important;
       padding: 22px 26px 30px 26px !important;
       position: relative;
+      z-index: 9999;
     }
     .horizontal-node-canvas {
       display: flex;
@@ -1108,22 +1113,46 @@ function ensureCampaignsStyles() {
       z-index: 60;
       cursor: pointer;
     }
+    .step-insert-menu,
+    .delay-dropdown-menu,
     .pipeline-popover-menu {
-      position: absolute !important;
-      top: calc(100% + 8px) !important;
-      left: 50% !important;
-      transform: translateX(-50%) !important;
+      position: fixed;
       background: #ffffff !important;
       border: 1px solid #e2e8f0 !important;
-      border-radius: 10px !important;
-      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16) !important;
-      z-index: 999999 !important;
-      min-width: 200px !important;
-      max-height: 260px;
+      border-radius: 12px !important;
+      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+      z-index: 9999 !important;
+      min-width: 180px;
+      max-height: 280px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
       gap: 3px;
+      padding: 6px !important;
+    }
+    .pipeline-popover-item {
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      text-align: left;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #1e293b;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .pipeline-popover-item:hover {
+      background: #fff7ed;
+      color: #ff6b00;
+    }
+    .pipeline-popover-item.is-selected {
+      background: #ffedd5;
+      color: #c2410c;
     }
 
     /* Live Status Drawer */
@@ -1908,20 +1937,35 @@ export async function renderCampaignsView(container, ctx = {}) {
         e.stopPropagation();
         const id = btn.dataset.dotsId;
         const menu = container.querySelector(`#camp-menu-${id}`);
+        const card = btn.closest('.OutFox-camp-card');
+        const willBeOpen = menu && !menu.classList.contains('is-open');
+
         container.querySelectorAll('.camp-3dots-menu').forEach((m) => {
           if (m !== menu) m.classList.remove('is-open');
         });
-        if (menu) menu.classList.toggle('is-open');
+        container.querySelectorAll('.OutFox-camp-card').forEach((c) => {
+          if (c !== card) c.classList.remove('has-open-menu');
+        });
+
+        if (menu) {
+          menu.classList.toggle('is-open', willBeOpen);
+          if (card) {
+            card.classList.toggle('has-open-menu', willBeOpen);
+          }
+        }
       });
     });
 
     document.addEventListener('click', () => {
       container.querySelectorAll('.camp-3dots-menu').forEach((m) => m.classList.remove('is-open'));
+      container.querySelectorAll('.OutFox-camp-card').forEach((c) => c.classList.remove('has-open-menu'));
     });
 
     container.querySelectorAll('.camp-menu-item').forEach((item) => {
       item.addEventListener('click', async (e) => {
         e.stopPropagation();
+        container.querySelectorAll('.camp-3dots-menu').forEach((m) => m.classList.remove('is-open'));
+        container.querySelectorAll('.OutFox-camp-card').forEach((c) => c.classList.remove('has-open-menu'));
         const action = item.dataset.action;
         const id = item.dataset.id;
         const camp = campaigns.find((c) => (c.campaignId || c.id) === id);
@@ -2447,6 +2491,7 @@ export async function renderCampaignsView(container, ctx = {}) {
   // STATE B: 3-Step Campaign Creation Wizard (Frames 11–13)
   // =========================================================================
   function renderWizard() {
+    document.querySelectorAll('.pipeline-popover-menu, .step-insert-menu, .delay-dropdown-menu').forEach((p) => p.remove());
     const filterOptions = ['All', 'Custom', 'Gmail Only', 'Invitation', 'Message', 'Visit', 'Email', 'CRM Sync'];
     const filteredTemplates = activeFilter === 'All'
       ? CAMPAIGN_TEMPLATES
@@ -3422,7 +3467,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       container.querySelectorAll('.node-connector').forEach((c) => {
         c.style.zIndex = '';
       });
-      container.querySelectorAll('.pipeline-popover-menu').forEach((p) => p.remove());
+      document.querySelectorAll('.pipeline-popover-menu, .step-insert-menu, .delay-dropdown-menu').forEach((p) => p.remove());
     }
 
     function refreshCanvas() {
@@ -3434,13 +3479,38 @@ export async function renderCampaignsView(container, ctx = {}) {
       }
     }
 
+    function positionFloatingMenu(triggerBtn, menu, preferredWidth = 220) {
+      if (!triggerBtn || !menu) return;
+      document.body.appendChild(menu);
+
+      const rect = triggerBtn.getBoundingClientRect();
+      const menuWidth = preferredWidth;
+      let left = rect.left + (rect.width / 2) - (menuWidth / 2);
+      left = Math.max(12, Math.min(window.innerWidth - menuWidth - 12, left));
+
+      let top = rect.bottom + 8;
+      const approxHeight = 260;
+      if (top + approxHeight > window.innerHeight && rect.top > approxHeight + 10) {
+        top = Math.max(10, rect.top - approxHeight - 8);
+      }
+
+      menu.style.setProperty('position', 'fixed', 'important');
+      menu.style.setProperty('z-index', '9999', 'important');
+      menu.style.setProperty('top', `${Math.round(top)}px`, 'important');
+      menu.style.setProperty('left', `${Math.round(left)}px`, 'important');
+      menu.style.setProperty('transform', 'none', 'important');
+      menu.style.setProperty('min-width', `${menuWidth}px`, 'important');
+    }
+
     // Node Selection Click (Click node to open its editor drawer)
     canvasCard.querySelectorAll('.flow-node-card').forEach((card) => {
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.btn-delete-node') || e.target.closest('.btn-insert-node')) return;
+        const el = e.target instanceof Element ? e.target : e.target?.parentElement;
+        if (el?.closest('.btn-delete-node') || el?.closest('.btn-insert-node') || el?.closest('.delay-select-pill')) return;
         const sIdx = parseInt(card.dataset.stepIdx, 10);
         if (!isNaN(sIdx) && sIdx >= 0 && sIdx < pipelineSteps.length) {
           activeStepIdx = sIdx;
+          closeAnyPopover();
           renderWizard();
         }
       });
@@ -3462,19 +3532,48 @@ export async function renderCampaignsView(container, ctx = {}) {
       });
     });
 
-    // Inline Delay Select Pills (unclipped native dropdown)
-    canvasCard.querySelectorAll('.delay-select-pill').forEach((sel) => {
-      sel.addEventListener('change', (e) => {
+    // Delay Dropdown Menu Click (Floating popover)
+    canvasCard.querySelectorAll('.delay-select-pill').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const idx = parseInt(sel.dataset.connectorIdx, 10);
-        const ms = parseInt(sel.value, 10);
-        if (!isNaN(idx) && idx < pipelineSteps.length && !isNaN(ms)) {
-          pipelineSteps[idx].delayMs = ms;
-          const warmDelaySel = container.querySelector('.wizard-step-delay-select');
-          if (warmDelaySel && activeStepIdx === idx) {
-            warmDelaySel.value = String(ms);
-          }
+        const connectorIdx = parseInt(btn.dataset.connectorIdx, 10);
+        if (isNaN(connectorIdx) || !pipelineSteps[connectorIdx]) return;
+
+        const existing = document.querySelector(`.delay-dropdown-menu[data-connector-idx="${connectorIdx}"]`);
+        if (existing) {
+          closeAnyPopover();
+          return;
         }
+        closeAnyPopover();
+
+        const curStep = pipelineSteps[connectorIdx];
+        const popover = document.createElement('div');
+        popover.className = 'pipeline-popover-menu delay-dropdown-menu';
+        popover.dataset.connectorIdx = String(connectorIdx);
+        popover.innerHTML = DELAY_OPTIONS.map((opt) => `
+          <button type="button" class="pipeline-popover-item ${Number(curStep.delayMs || 0) === opt.ms ? 'is-selected' : ''}" data-delay-ms="${opt.ms}" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <span style="font-weight: 600;">${opt.badge || opt.label}</span>
+            <span style="font-size: 11px; opacity: 0.65; margin-left: 8px;">${opt.label}</span>
+          </button>
+        `).join('');
+
+        positionFloatingMenu(btn, popover, 190);
+
+        popover.querySelectorAll('.pipeline-popover-item').forEach((item) => {
+          item.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const ms = parseInt(item.dataset.delayMs, 10);
+            if (!isNaN(ms) && pipelineSteps[connectorIdx]) {
+              pipelineSteps[connectorIdx].delayMs = ms;
+              const warmDelaySel = container.querySelector('.wizard-step-delay-select');
+              if (warmDelaySel && activeStepIdx === connectorIdx) {
+                warmDelaySel.value = String(ms);
+              }
+              closeAnyPopover();
+              refreshCanvas();
+            }
+          });
+        });
       });
     });
 
@@ -3482,19 +3581,17 @@ export async function renderCampaignsView(container, ctx = {}) {
     canvasCard.querySelectorAll('.btn-insert-node').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const connector = btn.closest('.node-connector');
-        const existing = connector?.querySelector('.pipeline-popover-menu');
+        const insertIdx = parseInt(btn.dataset.insertIdx, 10);
+        const existing = document.querySelector(`.step-insert-menu[data-insert-idx="${insertIdx}"]`);
         if (existing) {
-          existing.remove();
-          if (connector) connector.style.zIndex = '';
+          closeAnyPopover();
           return;
         }
         closeAnyPopover();
-        if (connector) connector.style.zIndex = '999999';
 
-        const insertIdx = parseInt(btn.dataset.insertIdx, 10);
         const popover = document.createElement('div');
-        popover.className = 'pipeline-popover-menu insert-popover';
+        popover.className = 'pipeline-popover-menu step-insert-menu insert-popover';
+        popover.dataset.insertIdx = String(insertIdx);
         popover.innerHTML = INSERT_STEP_OPTIONS.map((opt, i) => `
           <button type="button" class="pipeline-popover-item" data-opt-idx="${i}">
             <span>${opt.icon}</span>
@@ -3502,12 +3599,7 @@ export async function renderCampaignsView(container, ctx = {}) {
           </button>
         `).join('');
 
-        if (connector) {
-          connector.style.position = 'relative';
-          connector.appendChild(popover);
-        } else {
-          btn.parentElement?.appendChild(popover);
-        }
+        positionFloatingMenu(btn, popover, 220);
 
         popover.querySelectorAll('.pipeline-popover-item').forEach((item) => {
           item.addEventListener('click', (ev) => {
@@ -3521,6 +3613,7 @@ export async function renderCampaignsView(container, ctx = {}) {
               };
               pipelineSteps.splice(insertIdx, 0, newStep);
               activeStepIdx = insertIdx;
+              closeAnyPopover();
               renderWizard();
             }
           });
@@ -3530,12 +3623,34 @@ export async function renderCampaignsView(container, ctx = {}) {
   }
 
   // Global dismiss for popovers
-  document.addEventListener('click', () => {
+  document.addEventListener('click', (e) => {
+    const el = e.target instanceof Element ? e.target : e.target?.parentElement;
+    if (
+      el?.closest('.btn-insert-node') ||
+      el?.closest('.delay-select-pill') ||
+      el?.closest('.step-insert-menu') ||
+      el?.closest('.delay-dropdown-menu') ||
+      el?.closest('.pipeline-popover-menu')
+    ) {
+      return;
+    }
     container.querySelectorAll('.node-connector').forEach((c) => {
       c.style.zIndex = '';
     });
-    container.querySelectorAll('.pipeline-popover-menu').forEach((p) => p.remove());
+    document.querySelectorAll('.pipeline-popover-menu, .step-insert-menu, .delay-dropdown-menu').forEach((p) => p.remove());
   });
+
+  window.addEventListener('scroll', (e) => {
+    const el = e.target instanceof Element ? e.target : e.target?.parentElement;
+    if (el?.closest && (el.closest('.step-insert-menu') || el.closest('.delay-dropdown-menu') || el.closest('.pipeline-popover-menu'))) {
+      return;
+    }
+    document.querySelectorAll('.pipeline-popover-menu, .step-insert-menu, .delay-dropdown-menu').forEach((p) => p.remove());
+  }, { passive: true, capture: true });
+
+  window.addEventListener('resize', () => {
+    document.querySelectorAll('.pipeline-popover-menu, .step-insert-menu, .delay-dropdown-menu').forEach((p) => p.remove());
+  }, { passive: true });
 
   render();
 }

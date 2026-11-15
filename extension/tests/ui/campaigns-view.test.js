@@ -210,4 +210,107 @@ describe('CampaignsView — Full Layout & Tab Switching', () => {
     expect(card.querySelector('.btn-camp-pause-toggle')).toBeTruthy();
     expect(card.querySelector('.btn-camp-3dots')).toBeTruthy();
   });
+
+  it('toggles has-open-menu on parent card when 3-dots menu is opened and dismissed', async () => {
+    setupEngine();
+    const host = mountPoint();
+
+    await renderCampaignsView(host, { showToast: () => {} });
+    await flush(6);
+
+    const cards = host.querySelectorAll('.OutFox-camp-card');
+    expect(cards.length).toBeGreaterThanOrEqual(2);
+
+    const card0 = cards[0];
+    const card1 = cards[1];
+    const btn0 = card0.querySelector('.btn-camp-3dots');
+    const menu0 = card0.querySelector('.camp-3dots-menu');
+
+    expect(btn0).toBeTruthy();
+    expect(menu0).toBeTruthy();
+    expect(card0.classList.contains('has-open-menu')).toBe(false);
+    expect(menu0.classList.contains('is-open')).toBe(false);
+
+    // Click 3-dots button on Card 0
+    btn0.click();
+    expect(card0.classList.contains('has-open-menu')).toBe(true);
+    expect(menu0.classList.contains('is-open')).toBe(true);
+
+    // Click 3-dots button on Card 1 -> Card 0 should close, Card 1 should open
+    const btn1 = card1.querySelector('.btn-camp-3dots');
+    const menu1 = card1.querySelector('.camp-3dots-menu');
+    btn1.click();
+
+    expect(card0.classList.contains('has-open-menu')).toBe(false);
+    expect(menu0.classList.contains('is-open')).toBe(false);
+    expect(card1.classList.contains('has-open-menu')).toBe(true);
+    expect(menu1.classList.contains('is-open')).toBe(true);
+
+    // Outside click -> closes Card 1
+    document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(card1.classList.contains('has-open-menu')).toBe(false);
+    expect(menu1.classList.contains('is-open')).toBe(false);
+  });
+
+  it('opens floating step-insert and delay dropdown menus with fixed positioning and dismisses on outside click', async () => {
+    setupEngine({
+      [ACTIONS.LIST_GET_ALL]: { lists: [{ listId: 'l1', name: 'Leads', count: 12 }] },
+    });
+    const host = mountPoint();
+
+    await renderCampaignsView(host, { showToast: () => {} });
+    await flush(6);
+
+    // Open wizard by clicking Edit on first campaign
+    const card = host.querySelector('.OutFox-camp-card');
+    const editItem = card.querySelector('.camp-menu-item[data-action="edit"]');
+    editItem.click();
+    await flush(6);
+
+    // Select a prospect list in Step 2 so we can advance
+    const listSelect = host.querySelector('#wizard-select-list');
+    if (listSelect) {
+      listSelect.value = 'l1';
+      listSelect.dispatchEvent(new Event('change'));
+      await flush(6);
+    }
+
+    // In Step 2, click Next to navigate to Step 3 (Flow Canvas)
+    const nextBtn = host.querySelector('#btn-step2-next');
+    expect(nextBtn).toBeTruthy();
+    nextBtn.click();
+    await flush(6);
+
+    // Check we are in Step 3 visual flow canvas
+    const canvasCard = host.querySelector('.flow-canvas-card');
+    expect(canvasCard).toBeTruthy();
+
+    const insertBtn = canvasCard.querySelector('.btn-insert-node');
+    expect(insertBtn).toBeTruthy();
+
+    // Click + insert button
+    insertBtn.click();
+    const insertMenu = document.querySelector('.step-insert-menu');
+    expect(insertMenu).toBeTruthy();
+    expect(insertMenu.style.position).toBe('fixed');
+    expect(insertMenu.style.zIndex).toBe('9999');
+
+    // Click outside -> dismisses insert menu
+    document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.querySelector('.step-insert-menu')).toBeNull();
+
+    // Click delay pill
+    const delayBtn = canvasCard.querySelector('.delay-select-pill');
+    if (delayBtn) {
+      delayBtn.click();
+      const delayMenu = document.querySelector('.delay-dropdown-menu');
+      expect(delayMenu).toBeTruthy();
+      expect(delayMenu.style.position).toBe('fixed');
+      expect(delayMenu.style.zIndex).toBe('9999');
+
+      // Click outside -> dismisses delay menu
+      document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(document.querySelector('.delay-dropdown-menu')).toBeNull();
+    }
+  });
 });

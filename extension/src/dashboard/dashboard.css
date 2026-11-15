@@ -1746,10 +1746,85 @@ table.prospects-table tr:hover td {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   padding: 0 4px;
   position: relative;
   z-index: 50;
+}
+
+.delay-select-pill {
+  appearance: none;
+  -webkit-appearance: none;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 18px 3px 8px;
+  border-radius: 9999px;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.delay-select-pill:hover, .delay-select-pill:focus {
+  background-color: #ffffff;
+  border-color: #ff6b00;
+  color: #ff6b00;
+  box-shadow: 0 2px 6px rgba(255, 107, 0, 0.15);
+}
+
+.flow-condition-pill {
+  font-size: 10px;
+  font-weight: 700;
+  color: #0369a1;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  border-radius: 9999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.btn-quick-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-quick-add:hover {
+  background: #fff7ed;
+  color: #ff6b00;
+  border-color: #fdba74;
+  transform: translateY(-1px);
+}
+
+.btn-quick-add:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.live-preview-box {
+  padding: 16px 18px;
+  background: #fdfefe;
+  border: 1.5px dashed #fed7aa;
+  border-radius: 14px;
+  margin-bottom: 14px;
 }
 
 .delay-pill-badge {
@@ -2742,10 +2817,85 @@ input:checked + .slider:before {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   padding: 0 4px;
   position: relative;
   z-index: 50;
+}
+
+.delay-select-pill {
+  appearance: none;
+  -webkit-appearance: none;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 18px 3px 8px;
+  border-radius: 9999px;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.delay-select-pill:hover, .delay-select-pill:focus {
+  background-color: #ffffff;
+  border-color: #ff6b00;
+  color: #ff6b00;
+  box-shadow: 0 2px 6px rgba(255, 107, 0, 0.15);
+}
+
+.flow-condition-pill {
+  font-size: 10px;
+  font-weight: 700;
+  color: #0369a1;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  border-radius: 9999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.btn-quick-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-quick-add:hover {
+  background: #fff7ed;
+  color: #ff6b00;
+  border-color: #fdba74;
+  transform: translateY(-1px);
+}
+
+.btn-quick-add:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.live-preview-box {
+  padding: 16px 18px;
+  background: #fdfefe;
+  border: 1.5px dashed #fed7aa;
+  border-radius: 14px;
+  margin-bottom: 14px;
 }
 
 .delay-pill-badge {

@@ -9,6 +9,7 @@ import { allProfiles } from '../lib/storage.js';
 import { openUiConfirm, openUiAlert, openUiSelectModal, openLeadTimelineModal } from './modal-engine.js';
 import { ICONS } from '../ui/icons.js';
 import { getConfig } from '../lib/config.js';
+import { renderTemplate, resolveSpintax } from '../lib/template.js';
 
 // Pre-built OutFox Campaign Templates (From Video Frame 11)
 export const CAMPAIGN_TEMPLATES = [
@@ -232,17 +233,20 @@ export const CAMPAIGN_TEMPLATES = [
 // Available delay presets for interactive connectors
 export const DELAY_OPTIONS = [
   { ms: 0, label: 'Immediate (No wait)', badge: 'Immediate' },
-  { ms: 900000, label: '15 minutes', badge: '15 min' },
-  { ms: 3600000, label: '1 hour', badge: '1 hour' },
-  { ms: 86400000, label: '1 day (24h)', badge: '1 day' },
-  { ms: 172800000, label: '2 days', badge: '2 days' },
+  { ms: 900000, label: '15 minutes', badge: '15m' },
+  { ms: 3600000, label: '1 hour', badge: '1h' },
+  { ms: 86400000, label: '1 day (24h)', badge: '1d' },
+  { ms: 172800000, label: '2 days', badge: '2d' },
+  { ms: 259200000, label: '3 days', badge: '3d' },
 ];
 
 // Available step templates for [+] step insertion
 export const INSERT_STEP_OPTIONS = [
   { type: 'view', title: 'View Profile', sub: 'Warm Touch', icon: ICONS.visit, delayMs: 0 },
-  { type: 'invite', title: 'Send Invite', sub: 'Connection Request', icon: ICONS.invitation, delayMs: 86400000, note: 'Hi {{firstName|there}} — would love to connect!' },
+  { type: 'follow', title: 'Follow Profile', sub: 'Warm Touch', icon: ICONS.user, delayMs: 0 },
+  { type: 'like', title: 'Like Post', sub: 'Warm Touch', icon: ICONS.lightning, delayMs: 0 },
   { type: 'endorse', title: 'Endorse Skill', sub: 'Auto-Warmup', icon: ICONS.sparkles, delayMs: 0 },
+  { type: 'invite', title: 'Send Invite', sub: 'Connection Request', icon: ICONS.invitation, delayMs: 86400000, note: 'Hi {{firstName|there}} — would love to connect!' },
   { type: 'message', title: 'LinkedIn Message', sub: 'Direct Message', icon: ICONS.message, delayMs: 172800000, body: 'Thanks for connecting, {{firstName|there}}! What is taking up most of your focus this quarter?' },
   { type: 'email', title: 'Cold Email', sub: 'Direct Email', icon: ICONS.email, delayMs: 172800000, subject: 'Quick question for {{firstName|there}}', body: 'Hi {{firstName|there}},\n\nWanted to follow up directly to see if you had 5 minutes this week to chat?\n\nBest,\nAditya' },
   { type: 'wait', title: 'Delay Timer', sub: 'Wait Period', icon: ICONS.clock, delayMs: 86400000 },
@@ -250,10 +254,10 @@ export const INSERT_STEP_OPTIONS = [
 
 export function formatDelayBadge(ms) {
   if (!ms || ms <= 0) return 'Immediate';
-  if (ms < 3600000) return `${Math.round(ms / 60000)} min`;
-  if (ms < 86400000) return `${Math.round(ms / 3600000)} hr`;
+  if (ms < 3600000) return `${Math.round(ms / 60000)}m`;
+  if (ms < 86400000) return `${Math.round(ms / 3600000)}h`;
   const days = Math.round(ms / 86400000);
-  return `${days} day${days > 1 ? 's' : ''}`;
+  return `${days}d`;
 }
 
 export function templateToPipeline(tpl) {
@@ -370,6 +374,8 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
         steps.push({ type: 'wait', waitMs: step.delayMs, delayLabel: formatDelayBadge(step.delayMs) });
       }
       if (step.type === 'view') steps.push({ type: 'view' });
+      else if (step.type === 'follow') steps.push({ type: 'follow' });
+      else if (step.type === 'like') steps.push({ type: 'like' });
       else if (step.type === 'endorse') steps.push({ type: 'endorse' });
       else if (step.type === 'message') steps.push({ type: 'message', body: step.body || 'Hi {{firstName|there}}!' });
       else if (step.type === 'email') steps.push({
@@ -395,20 +401,33 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
     }
     if (step.type === 'view') {
       steps.push({ type: 'view' });
+    } else if (step.type === 'follow') {
+      steps.push({ type: 'follow' });
+    } else if (step.type === 'like') {
+      steps.push({ type: 'like' });
     } else if (step.type === 'endorse') {
       steps.push({ type: 'endorse' });
     } else if (step.type === 'invite') {
-      let finalNote = customNote || step.note || 'Hi {{firstName|there}} — would love to connect!';
-      if (useAi) {
-        if (!finalNote.includes('{{ai_opener}}')) {
-          finalNote = `${finalNote} {{ai_opener}}`.trim();
+      if (step.sendBlank) {
+        steps.push({
+          type: 'invite',
+          note: '',
+          sendBlank: true,
+          useAi: false,
+        });
+      } else {
+        let finalNote = customNote || step.note || 'Hi {{firstName|there}} — would love to connect!';
+        if (useAi) {
+          if (!finalNote.includes('{{ai_opener}}')) {
+            finalNote = `${finalNote} {{ai_opener}}`.trim();
+          }
         }
+        steps.push({
+          type: 'invite',
+          note: finalNote,
+          useAi: Boolean(useAi),
+        });
       }
-      steps.push({
-        type: 'invite',
-        note: finalNote,
-        useAi: Boolean(useAi),
-      });
     } else if (step.type === 'wait') {
       steps.push({ type: 'wait', waitMs: step.delayMs || 86400000 });
     }
@@ -458,6 +477,8 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
       thenBranch.push({ type: 'wait', waitMs: s.delayMs, delayLabel: formatDelayBadge(s.delayMs) });
     }
     if (s.type === 'view') thenBranch.push({ type: 'view' });
+    else if (s.type === 'follow') thenBranch.push({ type: 'follow' });
+    else if (s.type === 'like') thenBranch.push({ type: 'like' });
     else if (s.type === 'endorse') thenBranch.push({ type: 'endorse' });
   }
 
@@ -479,6 +500,7 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
 }
 
 export function renderHorizontalFlow(pipelineSteps = [], prospectCount = 12, isInteractive = true, activeStepIdx = 0) {
+  let hasInvite = false;
   let html = `
     <div class="horizontal-node-canvas">
       <!-- Prospects Source Node -->
@@ -495,11 +517,25 @@ export function renderHorizontalFlow(pipelineSteps = [], prospectCount = 12, isI
 
   // Render each pipeline step with connector before it
   pipelineSteps.forEach((step, idx) => {
+    const isFollowupAfterInvite = hasInvite && (step.type === 'message' || step.type === 'email');
+    if (step.type === 'invite') hasInvite = true;
+
     html += `
       <div class="node-connector">
-        <div class="delay-pill-badge" data-connector-idx="${idx}" title="${isInteractive ? 'Click to change delay' : ''}">
-          ${formatDelayBadge(step.delayMs)}${isInteractive ? ' ▾' : ''}
-        </div>
+        ${isFollowupAfterInvite ? `
+          <div class="flow-condition-pill" title="OutFox auto-parks messages until invite is accepted">
+            ${ICONS.clock} On Invite → Wait for Acceptance (auto-parks 12h)
+          </div>
+        ` : ''}
+        ${isInteractive ? `
+          <select class="delay-select-pill" data-connector-idx="${idx}" title="Change delay before this step">
+            ${DELAY_OPTIONS.map((opt) => `
+              <option value="${opt.ms}" ${Number(step.delayMs || 0) === opt.ms ? 'selected' : ''}>${opt.badge || opt.label}</option>
+            `).join('')}
+          </select>
+        ` : `
+          <div class="delay-pill-badge">${formatDelayBadge(step.delayMs)}</div>
+        `}
         <div class="connector-arrow-line" style="position: relative; width: 100%; display: flex; align-items: center; justify-content: center;">
           →
           ${isInteractive ? `<button type="button" class="btn-insert-node" data-insert-idx="${idx}" title="Insert Step">+</button>` : ''}
@@ -521,9 +557,7 @@ export function renderHorizontalFlow(pipelineSteps = [], prospectCount = 12, isI
   // Final connector and CRM Sync node
   html += `
       <div class="node-connector">
-        <div class="delay-pill-badge" data-connector-idx="${pipelineSteps.length}" title="${isInteractive ? 'Click to change delay' : ''}">
-          Immediate${isInteractive ? ' ▾' : ''}
-        </div>
+        <div class="delay-pill-badge">Immediate</div>
         <div class="connector-arrow-line" style="position: relative; width: 100%; display: flex; align-items: center; justify-content: center;">
           →
           ${isInteractive ? `<button type="button" class="btn-insert-node" data-insert-idx="${pipelineSteps.length}" title="Insert Step">+</button>` : ''}
@@ -602,8 +636,9 @@ function ensureCampaignsStyles() {
     .sequence-preflight-warning .warning-text strong { display: block; font-size: 13.5px; font-weight: 700; color: #92400e; margin-bottom: 3px; }
     .sequence-preflight-warning .warning-text p { margin: 0; font-size: 12.5px; color: #b45309; line-height: 1.4; }
     .flow-canvas-card {
-      overflow: visible !important;
-      padding: 22px 26px 40px 26px !important;
+      overflow-x: auto !important;
+      overflow-y: visible !important;
+      padding: 22px 26px 30px 26px !important;
       position: relative;
     }
     .horizontal-node-canvas {
@@ -612,12 +647,86 @@ function ensureCampaignsStyles() {
       gap: 8px;
       overflow-x: auto;
       overflow-y: visible !important;
-      padding: 12px 6px 30px 6px;
+      padding: 12px 6px 20px 6px;
       position: relative;
+      min-width: max-content;
     }
     .node-connector {
       position: relative;
       z-index: 50;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 0 4px;
+    }
+    .delay-select-pill {
+      appearance: none;
+      -webkit-appearance: none;
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 18px 3px 8px;
+      border-radius: 9999px;
+      border: 1px solid #cbd5e1;
+      cursor: pointer;
+      outline: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 5px center;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .delay-select-pill:hover, .delay-select-pill:focus {
+      background-color: #ffffff;
+      border-color: #ff6b00;
+      color: #ff6b00;
+      box-shadow: 0 2px 6px rgba(255, 107, 0, 0.15);
+    }
+    .flow-condition-pill {
+      font-size: 10px;
+      font-weight: 700;
+      color: #0369a1;
+      background: #e0f2fe;
+      border: 1px solid #bae6fd;
+      border-radius: 9999px;
+      padding: 2px 8px;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-bottom: 4px;
+    }
+    .btn-quick-add {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #f8fafc;
+      color: #334155;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 6px 11px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-quick-add:hover {
+      background: #fff7ed;
+      color: #ff6b00;
+      border-color: #fdba74;
+      transform: translateY(-1px);
+    }
+    .btn-quick-add:active {
+      transform: translateY(0) scale(0.98);
+    }
+    .live-preview-box {
+      padding: 16px 18px;
+      background: #fdfefe;
+      border: 1.5px dashed #fed7aa;
+      border-radius: 14px;
+      margin-bottom: 14px;
     }
     .delay-pill-badge {
       position: relative;
@@ -905,6 +1014,8 @@ export async function renderCampaignsView(container, ctx = {}) {
   let profiles = [];
   let activeSenderEmail = '';
   let noteLimitUntil = 0;
+  let savedMessageTemplates = [];
+  let isLivePreview = false;
 
   try {
     const [cRes, lRes, pRes, cfg, sRes] = await Promise.all([
@@ -914,7 +1025,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       getConfig().catch(() => ({})),
       new Promise((r) => {
         if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-          chrome.storage.local.get(['outfox_note_limit_until'], r);
+          chrome.storage.local.get(['outfox_note_limit_until', 'messageTemplates', 'templates'], r);
         } else {
           r({});
         }
@@ -930,8 +1041,105 @@ export async function renderCampaignsView(container, ctx = {}) {
     profiles = Array.isArray(pRes) ? pRes : [];
     activeSenderEmail = cfg?.mailbox?.email || cfg?.googleWorkspace?.email || '';
     noteLimitUntil = Number(sRes?.outfox_note_limit_until) || 0;
+    savedMessageTemplates = Array.isArray(sRes?.messageTemplates)
+      ? sRes.messageTemplates
+      : Array.isArray(sRes?.templates)
+        ? sRes.templates
+        : [];
   } catch (e) {
     console.warn('[Campaigns View] Read error', e);
+  }
+
+  function getSampleLead() {
+    if (profiles.length > 0 && profiles[0]) {
+      const p = profiles[0];
+      return {
+        firstName: p.firstName || 'Alex',
+        lastName: p.lastName || 'Morgan',
+        fullName: p.fullName || `${p.firstName || 'Alex'} ${p.lastName || 'Morgan'}`.trim(),
+        company: p.company || p.companyName || 'Acme Technologies',
+        companyName: p.company || p.companyName || 'Acme Technologies',
+        jobTitle: p.jobTitle || p.title || p.headline || 'Head of Growth',
+        title: p.jobTitle || p.title || p.headline || 'Head of Growth',
+        headline: p.headline || 'Head of Growth at Acme Technologies',
+        location: p.location || 'San Francisco, CA',
+        industry: p.industry || 'Information Technology',
+        email: p.email || p.enrichmentEmail || 'alex@acme.com',
+        ai_opener: p.ai_opener || "Saw your team's expansion and wanted to connect!",
+      };
+    }
+    return {
+      firstName: 'Alex',
+      lastName: 'Morgan',
+      fullName: 'Alex Morgan',
+      company: 'Acme Technologies',
+      companyName: 'Acme Technologies',
+      jobTitle: 'Head of Growth',
+      title: 'Head of Growth',
+      headline: 'Head of Growth at Acme Technologies',
+      location: 'San Francisco, CA',
+      industry: 'Information Technology',
+      email: 'alex@acme.com',
+      ai_opener: "Saw your team's expansion and wanted to connect!",
+    };
+  }
+
+  function getStepExplanation(type) {
+    switch (type) {
+      case 'view':
+        return "Visits the prospect's LinkedIn profile to trigger a notification and warm up the lead before connecting.";
+      case 'follow':
+        return "Follows the prospect's public profile on LinkedIn to signal interest and keep up with their activity.";
+      case 'like':
+        return "Automatically finds and likes the prospect's most recent post to increase profile visibility and familiarity.";
+      case 'endorse':
+        return "Endorses the prospect's top featured skill on LinkedIn to build initial rapport.";
+      case 'wait':
+        return "Pauses sequence execution for a specified duration before continuing to subsequent touchpoints.";
+      default:
+        return "Executes this automated outreach touchpoint within safe daily human anti-detection limits.";
+    }
+  }
+
+  const OUTFOX_PRESET_TEMPLATES = {
+    invitation: [
+      { id: 'p_inv_1', name: 'Founder-to-Founder', content: 'Hi {{firstName|there}} — saw what you are building at {{company|your company}}. Would love to connect founder to founder!' },
+      { id: 'p_inv_2', name: 'Domain / Industry Peer', content: 'Hi {{firstName|there}}, love your work in {{industry|your space}}. Would be great to connect and stay in touch!' },
+      { id: 'p_inv_3', name: 'Casual & Direct', content: 'Hi {{firstName|there}} — came across your profile and thought our work might intersect. Would love to connect here.' },
+    ],
+    message: [
+      { id: 'p_msg_1', name: 'Warm Thank You & Question', content: 'Thanks for connecting, {{firstName|there}}! What is taking up most of your focus this quarter at {{company|your team}}?' },
+      { id: 'p_msg_2', name: 'Value & Insights Share', content: 'Hey {{firstName|there}}, great to connect. Recently compiled a guide on pipeline automation — happy to send it over if relevant!' },
+      { id: 'p_msg_3', name: 'Casual Coffee Chat', content: 'Hi {{firstName|there}}, thanks for accepting my connection request. Would you be open to a quick 10-minute chat sometime next week?' },
+    ],
+    email: [
+      { id: 'p_eml_1', name: 'Quick Idea for {{company}}', subject: 'Quick question for {{firstName|there}} regarding {{company|your company}}', content: 'Hi {{firstName|there}},\n\nSaw what you\'re building at {{company|your team}} and wanted to reach out.\n\nDo you have 5 minutes this week for a brief chat?\n\nBest,\nAditya' },
+      { id: 'p_eml_2', name: 'Executive Follow-up', subject: 'Re: Quick question regarding {{company|your company}}', content: 'Hi {{firstName|there}},\n\nWanted to follow up on my previous note. Would love to share how similar teams are solving this.\n\nLet me know if Tuesday or Thursday works best for you.\n\nBest,\nAditya' },
+      { id: 'p_eml_3', name: 'Candidate / Recruiter Pitch', subject: 'Exciting leadership opportunity for {{firstName|there}}', content: 'Hi {{firstName|there}},\n\nCame across your profile and was thoroughly impressed by your track record in {{headline|your field}}.\n\nWould you be open to an exploratory 10-minute call this week?\n\nBest regards,\nAditya' },
+    ],
+  };
+
+  function renderTemplateSelectOptions(category, savedList = []) {
+    const normCat = category === 'invite' ? 'invitation' : category;
+    const userList = savedList.filter((t) => (t.type || (t.category === 'invite' ? 'invitation' : t.category)) === normCat);
+    const presets = OUTFOX_PRESET_TEMPLATES[normCat] || [];
+
+    let html = '';
+    if (userList.length > 0) {
+      html += '<optgroup label="My Saved Templates">';
+      userList.forEach((t) => {
+        html += `<option value="user_${t.id}">${t.name || t.title || 'Untitled'}</option>`;
+      });
+      html += '</optgroup>';
+    }
+    if (presets.length > 0) {
+      html += '<optgroup label="OutFox Presets">';
+      presets.forEach((p) => {
+        html += `<option value="preset_${p.id}">${p.name}</option>`;
+      });
+      html += '</optgroup>';
+    }
+    return html;
   }
 
   function getSelectedListProspectCount() {
@@ -1871,10 +2079,14 @@ export async function renderCampaignsView(container, ctx = {}) {
                 <p class="step-subtitle">Select an existing lead list or target all saved prospects.</p>
               </div>
 
-              <!-- Tabs: From my lists / Auto-import -->
-              <div class="step-subtabs">
-                <button type="button" class="subtab is-active">From my lists</button>
-                <button type="button" class="subtab">From auto-import (LinkedIn Search)</button>
+              <!-- Lead Source Indicator -->
+              <div class="step-source-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; background: #ffffff; padding: 10px 16px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                <span style="font-size: 13px; font-weight: 700; color: #1e293b; display: inline-flex; align-items: center; gap: 6px;">
+                  ${ICONS.user} Prospect Source: Saved Lists
+                </span>
+                <span style="font-size: 12px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 3px 10px; border-radius: 9999px;">
+                  ${profiles.length} total saved leads
+                </span>
               </div>
 
               <div class="OutFox-card" style="margin-top: 16px;">
@@ -1966,9 +2178,35 @@ export async function renderCampaignsView(container, ctx = {}) {
                 return '';
               })()}
 
+              <!-- Quick-Add Step Bar -->
+              <div class="quick-add-steps-bar" style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; background: #ffffff; padding: 12px 18px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.85); box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);">
+                <span style="font-size: 12.5px; font-weight: 700; color: #475569; display: inline-flex; align-items: center; gap: 5px; margin-right: 4px;">
+                  ${ICONS.lightning} Quick-Add Step:
+                </span>
+                <button type="button" class="btn-quick-add" data-step-type="view" title="Append Profile Visit">${ICONS.visit} + Profile Visit</button>
+                <button type="button" class="btn-quick-add" data-step-type="follow" title="Append Follow Profile">${ICONS.user} + Follow</button>
+                <button type="button" class="btn-quick-add" data-step-type="like" title="Append Like Recent Post">${ICONS.lightning} + Like Post</button>
+                <button type="button" class="btn-quick-add" data-step-type="endorse" title="Append Endorse Skill">${ICONS.sparkles} + Endorse</button>
+                <button type="button" class="btn-quick-add" data-step-type="invite" title="Append Send Invite">${ICONS.invitation} + Send Invite</button>
+                <button type="button" class="btn-quick-add" data-step-type="message" title="Append LinkedIn DM">${ICONS.message} + LinkedIn DM</button>
+                <button type="button" class="btn-quick-add" data-step-type="email" title="Append Cold Email">${ICONS.email} + Cold Email</button>
+              </div>
+
               <!-- Horizontal Visual Node Flow Canvas -->
               <div class="OutFox-card flow-canvas-card">
-                <div class="canvas-header-label">HORIZONTAL VISUAL SEQUENCE PIPELINE (CLICK ANY STEP TO EDIT, OR [+] TO INSERT)</div>
+                <div class="canvas-header-bar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                  <span class="canvas-header-label" style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin: 0;">
+                    VISUAL SEQUENCE PIPELINE (CLICK ANY STEP TO EDIT)
+                  </span>
+                  <div class="canvas-safety-pills" style="display: flex; align-items: center; gap: 8px;">
+                    <span class="flow-condition-pill" style="font-size: 11px; background: #ecfdf5; color: #059669; border-color: #a7f3d0; padding: 3px 9px;">
+                      ${ICONS.shield} Auto-stop on Reply
+                    </span>
+                    <span class="flow-condition-pill" style="font-size: 11px; background: #fff7ed; color: #c2410c; border-color: #ffedd5; padding: 3px 9px;">
+                      ${ICONS.clock} Pacing: ~${Math.max(1, Math.ceil(prospectCount / 20))} days (${prospectCount} prospects)
+                    </span>
+                  </div>
+                </div>
                 ${renderHorizontalFlow(pipelineSteps, prospectCount, true, activeStepIdx)}
               </div>
 
@@ -1977,7 +2215,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                 if (pipelineSteps.length === 0) {
                   return `
                     <div class="OutFox-card" style="margin-top: 20px; text-align: center; padding: 30px;">
-                      <p style="color: var(--text-muted); font-size: 14px;">Your sequence has no action steps. Click <strong>[+]</strong> above to insert a step.</p>
+                      <p style="color: var(--text-muted); font-size: 14px;">Your sequence has no action steps. Click any button in the <strong>Quick-Add Step Bar</strong> above to add a step.</p>
                     </div>
                   `;
                 }
@@ -1986,7 +2224,73 @@ export async function renderCampaignsView(container, ctx = {}) {
                   activeStepIdx = Math.max(0, pipelineSteps.length - 1);
                 }
                 const curStep = pipelineSteps[activeStepIdx];
+                const sampleLead = getSampleLead();
 
+                // Non-copy warm-touch steps
+                if (['view', 'follow', 'like', 'endorse', 'wait'].includes(curStep.type)) {
+                  return `
+                    <div class="OutFox-card warm-touch-editor-card" style="margin-top: 20px;">
+                      <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 18px;">
+                        <div class="editor-title-row" style="display: flex; align-items: center; gap: 12px;">
+                          <span class="editor-icon-circle" style="width: 40px; height: 40px; border-radius: 12px; background: #fff7ed; color: #ff6b00; display: flex; align-items: center; justify-content: center; font-size: 18px;">
+                            ${curStep.icon || ICONS.lightning}
+                          </span>
+                          <div>
+                            <span class="editor-title" style="font-size: 16px; font-weight: 700; color: var(--text-primary); display: block;">
+                              ${curStep.title || curStep.type}
+                            </span>
+                            <span style="font-size: 12px; color: var(--text-muted);">
+                              Step ${activeStepIdx + 1} of ${pipelineSteps.length} · Automated Warm Touch
+                            </span>
+                          </div>
+                        </div>
+                        <div style="background: #f1f5f9; color: #475569; font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 9999px;">
+                          Zero Outreach Copy Required
+                        </div>
+                      </div>
+
+                      <div style="padding: 16px 18px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 6px 0; font-size: 13.5px; font-weight: 700; color: #1e293b;">How this touchpoint works</h4>
+                        <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.5;">
+                          ${getStepExplanation(curStep.type)}
+                        </p>
+                      </div>
+
+                      <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; margin-bottom: 24px;">
+                        <div>
+                          <strong style="font-size: 13px; color: var(--text-primary); display: block;">Step Delay</strong>
+                          <span style="font-size: 12px; color: var(--text-muted);">Wait time before executing this action after the previous step.</span>
+                        </div>
+                        <select class="form-input wizard-step-delay-select" style="width: auto; font-size: 12.5px; padding: 6px 12px; font-weight: 600;">
+                          ${DELAY_OPTIONS.map((opt) => `
+                            <option value="${opt.ms}" ${Number(curStep.delayMs || 0) === opt.ms ? 'selected' : ''}>${opt.label}</option>
+                          `).join('')}
+                        </select>
+                      </div>
+
+                      <div class="editor-foot-actions" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+                        <div style="display: flex; gap: 8px;">
+                          <button type="button" class="btn-pill btn-secondary" id="btn-step3-back" style="display:inline-flex; align-items:center; gap:6px;">
+                            ${ICONS.arrowLeft} Back
+                          </button>
+                          <button type="button" class="btn-pill btn-secondary btn-step-remove" style="display:inline-flex; align-items:center; gap:6px; color: #ef4444; border-color: #fee2e2;">
+                            ${ICONS.x} Remove Step
+                          </button>
+                          ${activeStepIdx < pipelineSteps.length - 1 ? `
+                            <button type="button" class="btn-pill btn-secondary btn-step-next" style="display:inline-flex; align-items:center; gap:6px;">
+                              Next Step ${ICONS.arrowRight}
+                            </button>
+                          ` : ''}
+                        </div>
+                        <button type="button" class="btn-pill btn-primary btn-launch-big" id="btn-launch-campaign">
+                          ${ICONS.rocket} Launch Campaign Now
+                        </button>
+                      </div>
+                    </div>
+                  `;
+                }
+
+                // Cold Email Step
                 if (curStep.type === 'email') {
                   return `
                     <div class="OutFox-card message-editor-card" style="margin-top: 20px;">
@@ -2004,59 +2308,97 @@ export async function renderCampaignsView(container, ctx = {}) {
                         </div>
                       </div>
 
-                      <div class="form-group" style="margin-bottom: 14px;">
-                        <label style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: flex; justify-content: space-between;">
-                          <span>Subject Line</span>
-                          <span style="font-size: 11.5px; color: var(--text-muted); font-weight: normal;">Supports {{variables}} & Spintax</span>
-                        </label>
-                        <input type="text" id="wizard-email-subject" class="form-input" value="${curStep.subject || ''}" placeholder="e.g. Quick question regarding {{company|your company}}" />
+                      <!-- Template Picker & Live Preview Toggle Bar -->
+                      <div class="template-picker-row" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; background: #f8fafc; padding: 10px 14px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                          <span style="font-size: 12px; font-weight: 700; color: #475569; display: inline-flex; align-items: center; gap: 4px;">
+                            ${ICONS.sheets} Template:
+                          </span>
+                          <select class="form-input select-load-saved-template" style="font-size: 12px; padding: 4px 8px; height: 30px; max-width: 280px;">
+                            <option value="">-- Load Saved Template --</option>
+                            ${renderTemplateSelectOptions('email', savedMessageTemplates)}
+                          </select>
+                        </div>
+                        <button type="button" class="btn-toggle-live-preview ${isLivePreview ? 'is-active' : ''}" style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 8px; border: 1px solid ${isLivePreview ? '#ff6b00' : '#cbd5e1'}; background: ${isLivePreview ? '#fff7ed' : '#ffffff'}; color: ${isLivePreview ? '#ff6b00' : '#475569'}; cursor: pointer;">
+                          ${isLivePreview ? ICONS.sparkles : ICONS.eye}
+                          ${isLivePreview ? 'Back to Editor' : 'Live Preview'}
+                        </button>
                       </div>
 
-                      <div class="variable-chips-row" style="flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
-                        <span style="font-size: 11.5px; font-weight: 600; color: #64748b; margin-right: 4px;">Insert Tag:</span>
-                        <button type="button" class="variable-chip" data-tag="{{firstName}}">+ {{firstName}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{lastName}}">+ {{lastName}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{fullName}}">+ {{fullName}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{company}}">+ {{company}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{jobTitle}}">+ {{jobTitle}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{headline}}">+ {{headline}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{email}}">+ {{email}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{ai_opener}}">+ {{ai_opener}} (AI)</button>
-                      </div>
-
-                      <div class="form-group" style="margin-bottom: 14px;">
-                        <label style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: block;">
-                          Email Body
-                        </label>
-                        <textarea id="wizard-email-body" class="form-input editor-textarea" rows="7" placeholder="Hi {{firstName|there}},&#10;&#10;...">${curStep.body || ''}</textarea>
-                      </div>
-
-                      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 14px; padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;">
-                        <div style="display: flex; align-items: center; justify-content: space-between;">
-                          <div>
-                            <strong style="font-size: 13px; color: var(--text-primary); display: block;">Reply in same Gmail thread</strong>
-                            <span style="font-size: 12px; color: var(--text-muted);">When enabled, this email is sent as a threaded follow-up reply in the prospect's existing Gmail conversation.</span>
+                      ${isLivePreview ? `
+                        <div class="live-preview-box">
+                          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px dashed #fdba74; padding-bottom: 8px;">
+                            <span style="font-size: 11.5px; font-weight: 700; color: #ea580c; display: inline-flex; align-items: center; gap: 5px;">
+                              ${ICONS.sparkles} Live Preview for: <strong>${sampleLead.fullName || sampleLead.firstName} (${sampleLead.company})</strong>
+                            </span>
+                            <span style="font-size: 11px; color: #9a3412;">Variables & Spintax dynamically resolved</span>
                           </div>
-                          <label class="toggle-switch">
-                            <input type="checkbox" id="wizard-email-threading" ${curStep.replyInThread !== false ? 'checked' : ''} />
-                            <span class="slider"></span>
+                          <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">
+                            <span style="color: #64748b; font-weight: 600;">Subject:</span> ${renderTemplate(curStep.subject || '', sampleLead)}
+                          </div>
+                          <div style="font-size: 13.5px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${renderTemplate(curStep.body || '', sampleLead)}</div>
+                        </div>
+                      ` : `
+                        <div class="form-group" style="margin-bottom: 14px;">
+                          <label style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: flex; justify-content: space-between;">
+                            <span>Subject Line</span>
+                            <span style="font-size: 11.5px; color: var(--text-muted); font-weight: normal;">Supports {{variables}} & Spintax</span>
                           </label>
+                          <input type="text" id="wizard-email-subject" class="form-input" value="${curStep.subject || ''}" placeholder="e.g. Quick question regarding {{company|your company}}" />
                         </div>
 
-                        <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #e2e8f0; padding-top: 10px;">
-                          <div>
-                            <strong style="font-size: 13px; color: var(--text-primary); display: block;">${ICONS.sparkles} AI Personalized Opener ({{ai_opener}})</strong>
-                            <span style="font-size: 12px; color: var(--text-muted);">Use Gemini / Groq to write a personalized opening line for each lead.</span>
-                          </div>
-                          <label class="toggle-switch">
-                            <input type="checkbox" id="wizard-ai-toggle" ${useAiHook ? 'checked' : ''} />
-                            <span class="slider"></span>
-                          </label>
+                        <div class="variable-chips-row" style="flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+                          <span style="font-size: 11.5px; font-weight: 600; color: #64748b; margin-right: 4px;">Insert Tag:</span>
+                          <button type="button" class="variable-chip" data-tag="{{firstName}}">+ {{firstName}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{lastName}}">+ {{lastName}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{fullName}}">+ {{fullName}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{company}}">+ {{company}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{jobTitle}}">+ {{jobTitle}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{headline}}">+ {{headline}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{email}}">+ {{email}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{ai_opener}}">+ {{ai_opener}} (AI)</button>
                         </div>
-                      </div>
 
-                      <div class="editor-foot-actions" style="margin-top: 20px;">
-                        <button type="button" class="btn-pill btn-secondary" id="btn-step3-back" style="display:inline-flex; align-items:center; gap:6px;">${ICONS.arrowLeft} Back</button>
+                        <div class="form-group" style="margin-bottom: 14px;">
+                          <label style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: block;">
+                            Email Body
+                          </label>
+                          <textarea id="wizard-email-body" class="form-input editor-textarea" rows="7" placeholder="Hi {{firstName|there}},&#10;&#10;...">${curStep.body || ''}</textarea>
+                        </div>
+
+                        <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 14px; padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;">
+                          <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div>
+                              <strong style="font-size: 13px; color: var(--text-primary); display: block;">Reply in same Gmail thread</strong>
+                              <span style="font-size: 12px; color: var(--text-muted);">When enabled, this email is sent as a threaded follow-up reply in the prospect's existing Gmail conversation.</span>
+                            </div>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="wizard-email-threading" ${curStep.replyInThread !== false ? 'checked' : ''} />
+                              <span class="slider"></span>
+                            </label>
+                          </div>
+
+                          <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+                            <div>
+                              <strong style="font-size: 13px; color: var(--text-primary); display: block;">${ICONS.sparkles} AI Personalized Opener ({{ai_opener}})</strong>
+                              <span style="font-size: 12px; color: var(--text-muted);">Use Gemini / Groq to write a personalized opening line for each lead.</span>
+                            </div>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="wizard-ai-toggle" ${useAiHook ? 'checked' : ''} />
+                              <span class="slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                      `}
+
+                      <div class="editor-foot-actions" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+                        <div style="display: flex; gap: 8px;">
+                          <button type="button" class="btn-pill btn-secondary" id="btn-step3-back" style="display:inline-flex; align-items:center; gap:6px;">${ICONS.arrowLeft} Back</button>
+                          <button type="button" class="btn-pill btn-secondary btn-step-remove" style="display:inline-flex; align-items:center; gap:6px; color: #ef4444; border-color: #fee2e2;">${ICONS.x} Remove Step</button>
+                          ${activeStepIdx < pipelineSteps.length - 1 ? `
+                            <button type="button" class="btn-pill btn-secondary btn-step-next" style="display:inline-flex; align-items:center; gap:6px;">Next Step ${ICONS.arrowRight}</button>
+                          ` : ''}
+                        </div>
                         <button type="button" class="btn-pill btn-primary btn-launch-big" id="btn-launch-campaign">
                           ${ICONS.rocket} Launch Campaign Now
                         </button>
@@ -2065,6 +2407,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                   `;
                 }
 
+                // LinkedIn Message Step
                 if (curStep.type === 'message') {
                   return `
                     <div class="OutFox-card message-editor-card" style="margin-top: 20px;">
@@ -2078,26 +2421,69 @@ export async function renderCampaignsView(container, ctx = {}) {
                         </div>
                       </div>
 
-                      <div class="variable-chips-row" style="flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
-                        <span style="font-size: 11.5px; font-weight: 600; color: #64748b; margin-right: 4px;">Insert Tag:</span>
-                        <button type="button" class="variable-chip" data-tag="{{firstName}}">+ {{firstName}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{lastName}}">+ {{lastName}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{fullName}}">+ {{fullName}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{company}}">+ {{company}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{jobTitle}}">+ {{jobTitle}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{headline}}">+ {{headline}}</button>
-                        <button type="button" class="variable-chip" data-tag="{{ai_opener}}">+ {{ai_opener}} (AI)</button>
+                      <!-- Auto-Parks Info Badge -->
+                      <div style="padding: 12px 16px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 12px; color: #0369a1; font-size: 12.5px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 18px; color: #0284c7;">${ICONS.clock}</span>
+                        <div>
+                          <strong>Auto-parks 12h until connection accepted:</strong> OutFox automatically monitors acceptance before sending direct messages.
+                        </div>
                       </div>
 
-                      <div class="form-group" style="margin-bottom: 14px;">
-                        <label style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: block;">
-                          Message Body
-                        </label>
-                        <textarea id="wizard-message-body" class="form-input editor-textarea" rows="5" placeholder="Hi {{firstName|there}},&#10;&#10;...">${curStep.body || ''}</textarea>
+                      <!-- Template Picker & Live Preview Toggle Bar -->
+                      <div class="template-picker-row" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; background: #f8fafc; padding: 10px 14px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                          <span style="font-size: 12px; font-weight: 700; color: #475569; display: inline-flex; align-items: center; gap: 4px;">
+                            ${ICONS.sheets} Template:
+                          </span>
+                          <select class="form-input select-load-saved-template" style="font-size: 12px; padding: 4px 8px; height: 30px; max-width: 280px;">
+                            <option value="">-- Load Saved Template --</option>
+                            ${renderTemplateSelectOptions('message', savedMessageTemplates)}
+                          </select>
+                        </div>
+                        <button type="button" class="btn-toggle-live-preview ${isLivePreview ? 'is-active' : ''}" style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 8px; border: 1px solid ${isLivePreview ? '#ff6b00' : '#cbd5e1'}; background: ${isLivePreview ? '#fff7ed' : '#ffffff'}; color: ${isLivePreview ? '#ff6b00' : '#475569'}; cursor: pointer;">
+                          ${isLivePreview ? ICONS.sparkles : ICONS.eye}
+                          ${isLivePreview ? 'Back to Editor' : 'Live Preview'}
+                        </button>
                       </div>
 
-                      <div class="editor-foot-actions" style="margin-top: 20px;">
-                        <button type="button" class="btn-pill btn-secondary" id="btn-step3-back" style="display:inline-flex; align-items:center; gap:6px;">${ICONS.arrowLeft} Back</button>
+                      ${isLivePreview ? `
+                        <div class="live-preview-box">
+                          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px dashed #fdba74; padding-bottom: 8px;">
+                            <span style="font-size: 11.5px; font-weight: 700; color: #ea580c; display: inline-flex; align-items: center; gap: 5px;">
+                              ${ICONS.sparkles} Live Preview for: <strong>${sampleLead.fullName || sampleLead.firstName} (${sampleLead.company})</strong>
+                            </span>
+                            <span style="font-size: 11px; color: #9a3412;">Variables & Spintax dynamically resolved</span>
+                          </div>
+                          <div style="font-size: 13.5px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${renderTemplate(curStep.body || '', sampleLead)}</div>
+                        </div>
+                      ` : `
+                        <div class="variable-chips-row" style="flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+                          <span style="font-size: 11.5px; font-weight: 600; color: #64748b; margin-right: 4px;">Insert Tag:</span>
+                          <button type="button" class="variable-chip" data-tag="{{firstName}}">+ {{firstName}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{lastName}}">+ {{lastName}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{fullName}}">+ {{fullName}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{company}}">+ {{company}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{jobTitle}}">+ {{jobTitle}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{headline}}">+ {{headline}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{ai_opener}}">+ {{ai_opener}} (AI)</button>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 14px;">
+                          <label style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: block;">
+                            Message Body
+                          </label>
+                          <textarea id="wizard-message-body" class="form-input editor-textarea" rows="5" placeholder="Hi {{firstName|there}},&#10;&#10;...">${curStep.body || ''}</textarea>
+                        </div>
+                      `}
+
+                      <div class="editor-foot-actions" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+                        <div style="display: flex; gap: 8px;">
+                          <button type="button" class="btn-pill btn-secondary" id="btn-step3-back" style="display:inline-flex; align-items:center; gap:6px;">${ICONS.arrowLeft} Back</button>
+                          <button type="button" class="btn-pill btn-secondary btn-step-remove" style="display:inline-flex; align-items:center; gap:6px; color: #ef4444; border-color: #fee2e2;">${ICONS.x} Remove Step</button>
+                          ${activeStepIdx < pipelineSteps.length - 1 ? `
+                            <button type="button" class="btn-pill btn-secondary btn-step-next" style="display:inline-flex; align-items:center; gap:6px;">Next Step ${ICONS.arrowRight}</button>
+                          ` : ''}
+                        </div>
                         <button type="button" class="btn-pill btn-primary btn-launch-big" id="btn-launch-campaign">
                           ${ICONS.rocket} Launch Campaign Now
                         </button>
@@ -2106,45 +2492,104 @@ export async function renderCampaignsView(container, ctx = {}) {
                   `;
                 }
 
-                // Default / Invite step
+                // Invite step
                 const noteValue = curStep.note !== undefined ? curStep.note : customNote;
                 return `
                   <div class="OutFox-card message-editor-card" style="margin-top: 20px;">
-                    <div class="editor-head">
-                      <div class="editor-title-row">
-                        <span class="editor-icon">${ICONS.invitation}</span>
-                        <span class="editor-title">Connection Request Note</span>
+                    <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
+                      <div class="editor-title-row" style="display: flex; align-items: center; gap: 10px;">
+                        <span class="editor-icon" style="color: #ff6b00;">${ICONS.invitation}</span>
+                        <div>
+                          <span class="editor-title" style="font-size: 15px; font-weight: 700; color: var(--text-primary);">Connection Request Note</span>
+                          <span style="font-size: 12px; color: var(--text-muted); display: block;">Step ${activeStepIdx + 1} of ${pipelineSteps.length} (Click any node above to edit that step)</span>
+                        </div>
                       </div>
-                      <span class="char-counter" id="note-char-counter">${noteValue.length} / 200</span>
+                      ${!curStep.sendBlank ? `<span class="char-counter" id="note-char-counter">${noteValue.length} / 200</span>` : ''}
                     </div>
 
-                    <div class="variable-chips-row" style="flex-wrap: wrap; gap: 6px;">
-                      <span style="font-size: 11.5px; font-weight: 600; color: #64748b; margin-right: 4px;">Insert Tag:</span>
-                      <button type="button" class="variable-chip" data-tag="{{firstName}}">+ {{firstName}}</button>
-                      <button type="button" class="variable-chip" data-tag="{{lastName}}">+ {{lastName}}</button>
-                      <button type="button" class="variable-chip" data-tag="{{fullName}}">+ {{fullName}}</button>
-                      <button type="button" class="variable-chip" data-tag="{{company}}">+ {{company}}</button>
-                      <button type="button" class="variable-chip" data-tag="{{jobTitle}}">+ {{jobTitle}}</button>
-                      <button type="button" class="variable-chip" data-tag="{{headline}}">+ {{headline}}</button>
-                      <button type="button" class="variable-chip" data-tag="{{email}}">+ {{email}}</button>
-                      <button type="button" class="variable-chip" data-tag="{{ai_opener}}">+ {{ai_opener}} (AI)</button>
-                    </div>
-
-                    <textarea id="wizard-note-textarea" class="form-input editor-textarea" rows="4" maxlength="200">${noteValue}</textarea>
-
-                    <div class="ai-toggle-box">
+                    <!-- Send Blank Invite Toggle -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 14px;">
+                      <div>
+                        <strong style="font-size: 13px; color: var(--text-primary); display: block;">Send blank invite (no note)</strong>
+                        <span style="font-size: 11.5px; color: var(--text-muted);">Blank connection requests often achieve 15–20% higher acceptance rates on LinkedIn.</span>
+                      </div>
                       <label class="toggle-switch">
-                        <input type="checkbox" id="wizard-ai-toggle" ${useAiHook ? 'checked' : ''} />
+                        <input type="checkbox" id="wizard-invite-blank-toggle" ${curStep.sendBlank ? 'checked' : ''} />
                         <span class="slider"></span>
                       </label>
-                      <div class="ai-toggle-text">
-                        <span class="ai-toggle-title">${ICONS.sparkles} Use Groq/Gemini AI to generate unique personalized hook for each lead</span>
-                        <span class="ai-toggle-sub">Dynamically inspects prospect headline and company to craft a contextual opening icebreaker.</span>
-                      </div>
                     </div>
 
-                    <div class="editor-foot-actions">
-                      <button type="button" class="btn-pill btn-secondary" id="btn-step3-back" style="display:inline-flex; align-items:center; gap:6px;">${ICONS.arrowLeft} Back</button>
+                    ${curStep.sendBlank ? `
+                      <div style="padding: 16px 18px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; color: #065f46; font-size: 13px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 18px; color: #059669;">${ICONS.shield}</span>
+                        <div>
+                          <strong>Blank Invitation Mode Active:</strong> OutFox will send this connection request without a custom note for maximum acceptance velocity.
+                        </div>
+                      </div>
+                    ` : `
+                      <!-- Template Picker & Live Preview Toggle Bar -->
+                      <div class="template-picker-row" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; background: #f8fafc; padding: 10px 14px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                          <span style="font-size: 12px; font-weight: 700; color: #475569; display: inline-flex; align-items: center; gap: 4px;">
+                            ${ICONS.sheets} Template:
+                          </span>
+                          <select class="form-input select-load-saved-template" style="font-size: 12px; padding: 4px 8px; height: 30px; max-width: 280px;">
+                            <option value="">-- Load Saved Template --</option>
+                            ${renderTemplateSelectOptions('invitation', savedMessageTemplates)}
+                          </select>
+                        </div>
+                        <button type="button" class="btn-toggle-live-preview ${isLivePreview ? 'is-active' : ''}" style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 8px; border: 1px solid ${isLivePreview ? '#ff6b00' : '#cbd5e1'}; background: ${isLivePreview ? '#fff7ed' : '#ffffff'}; color: ${isLivePreview ? '#ff6b00' : '#475569'}; cursor: pointer;">
+                          ${isLivePreview ? ICONS.sparkles : ICONS.eye}
+                          ${isLivePreview ? 'Back to Editor' : 'Live Preview'}
+                        </button>
+                      </div>
+
+                      ${isLivePreview ? `
+                        <div class="live-preview-box">
+                          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px dashed #fdba74; padding-bottom: 8px;">
+                            <span style="font-size: 11.5px; font-weight: 700; color: #ea580c; display: inline-flex; align-items: center; gap: 5px;">
+                              ${ICONS.sparkles} Live Preview for: <strong>${sampleLead.fullName || sampleLead.firstName} (${sampleLead.company})</strong>
+                            </span>
+                            <span style="font-size: 11px; color: #9a3412;">Variables & Spintax dynamically resolved</span>
+                          </div>
+                          <div style="font-size: 13.5px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${renderTemplate(noteValue, sampleLead)}</div>
+                        </div>
+                      ` : `
+                        <div class="variable-chips-row" style="flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+                          <span style="font-size: 11.5px; font-weight: 600; color: #64748b; margin-right: 4px;">Insert Tag:</span>
+                          <button type="button" class="variable-chip" data-tag="{{firstName}}">+ {{firstName}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{lastName}}">+ {{lastName}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{fullName}}">+ {{fullName}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{company}}">+ {{company}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{jobTitle}}">+ {{jobTitle}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{headline}}">+ {{headline}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{email}}">+ {{email}}</button>
+                          <button type="button" class="variable-chip" data-tag="{{ai_opener}}">+ {{ai_opener}} (AI)</button>
+                        </div>
+
+                        <textarea id="wizard-note-textarea" class="form-input editor-textarea" rows="4" maxlength="200" placeholder="Hi {{firstName|there}} — would love to connect!">${noteValue}</textarea>
+
+                        <div class="ai-toggle-box" style="margin-top: 12px;">
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="wizard-ai-toggle" ${useAiHook ? 'checked' : ''} />
+                            <span class="slider"></span>
+                          </label>
+                          <div class="ai-toggle-text">
+                            <span class="ai-toggle-title">${ICONS.sparkles} Use Groq/Gemini AI to generate unique personalized hook for each lead</span>
+                            <span class="ai-toggle-sub">Dynamically inspects prospect headline and company to craft a contextual opening icebreaker.</span>
+                          </div>
+                        </div>
+                      `}
+                    `}
+
+                    <div class="editor-foot-actions" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+                      <div style="display: flex; gap: 8px;">
+                        <button type="button" class="btn-pill btn-secondary" id="btn-step3-back" style="display:inline-flex; align-items:center; gap:6px;">${ICONS.arrowLeft} Back</button>
+                        <button type="button" class="btn-pill btn-secondary btn-step-remove" style="display:inline-flex; align-items:center; gap:6px; color: #ef4444; border-color: #fee2e2;">${ICONS.x} Remove Step</button>
+                        ${activeStepIdx < pipelineSteps.length - 1 ? `
+                          <button type="button" class="btn-pill btn-secondary btn-step-next" style="display:inline-flex; align-items:center; gap:6px;">Next Step ${ICONS.arrowRight}</button>
+                        ` : ''}
+                      </div>
                       <button type="button" class="btn-pill btn-primary btn-launch-big" id="btn-launch-campaign">
                         ${ICONS.rocket} Launch Campaign Now
                       </button>
@@ -2228,6 +2673,104 @@ export async function renderCampaignsView(container, ctx = {}) {
     // Step 3: Interactive Flow Canvas & Message Editor Events
     if (wizardStep === 3) {
       setupFlowCanvasEvents();
+
+      // Quick-add Step Bar buttons
+      container.querySelectorAll('.btn-quick-add').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const type = btn.dataset.stepType;
+          const opt = INSERT_STEP_OPTIONS.find((o) => o.type === type);
+          if (opt) {
+            const newStep = {
+              ...opt,
+              id: 's_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            };
+            pipelineSteps.push(newStep);
+            activeStepIdx = pipelineSteps.length - 1;
+            renderWizard();
+            ctx.showToast?.(`Added "${opt.title}" to sequence!`, 'success');
+          }
+        });
+      });
+
+      // Load Saved Template Picker
+      container.querySelector('.select-load-saved-template')?.addEventListener('change', (e) => {
+        const val = e.target.value;
+        if (!val) return;
+        const curStep = pipelineSteps[activeStepIdx];
+        if (!curStep) return;
+        const normCat = curStep.type === 'invite' ? 'invitation' : curStep.type;
+        let found = null;
+        if (val.startsWith('user_')) {
+          const id = val.replace('user_', '');
+          found = savedMessageTemplates.find((t) => String(t.id) === id);
+        } else if (val.startsWith('preset_')) {
+          const id = val.replace('preset_', '');
+          found = (OUTFOX_PRESET_TEMPLATES[normCat] || []).find((p) => String(p.id) === id);
+        }
+        if (found) {
+          if (curStep.type === 'invite') {
+            customNote = found.content || '';
+            curStep.note = customNote;
+            curStep.sendBlank = false;
+          } else if (curStep.type === 'message') {
+            curStep.body = found.content || '';
+          } else if (curStep.type === 'email') {
+            curStep.body = found.content || '';
+            if (found.subject) curStep.subject = found.subject;
+          }
+          renderWizard();
+          ctx.showToast?.(`Loaded "${found.name}" template!`, 'success');
+        }
+      });
+
+      // Live Preview Toggle
+      container.querySelector('.btn-toggle-live-preview')?.addEventListener('click', () => {
+        isLivePreview = !isLivePreview;
+        renderWizard();
+      });
+
+      // Blank Invite Toggle
+      container.querySelector('#wizard-invite-blank-toggle')?.addEventListener('change', (e) => {
+        if (pipelineSteps[activeStepIdx]) {
+          pipelineSteps[activeStepIdx].sendBlank = Boolean(e.target.checked);
+          if (pipelineSteps[activeStepIdx].sendBlank) {
+            pipelineSteps[activeStepIdx].note = '';
+          }
+          renderWizard();
+        }
+      });
+
+      // Remove Step button from editor
+      container.querySelector('.btn-step-remove')?.addEventListener('click', () => {
+        if (pipelineSteps.length > 0 && activeStepIdx < pipelineSteps.length) {
+          pipelineSteps.splice(activeStepIdx, 1);
+          if (activeStepIdx >= pipelineSteps.length) {
+            activeStepIdx = Math.max(0, pipelineSteps.length - 1);
+          }
+          renderWizard();
+        }
+      });
+
+      // Next Step button from editor
+      container.querySelector('.btn-step-next')?.addEventListener('click', () => {
+        if (activeStepIdx < pipelineSteps.length - 1) {
+          activeStepIdx++;
+          renderWizard();
+        }
+      });
+
+      // Step Delay Select in Warm-Touch Editor
+      container.querySelector('.wizard-step-delay-select')?.addEventListener('change', (e) => {
+        const ms = parseInt(e.target.value, 10);
+        if (!isNaN(ms) && pipelineSteps[activeStepIdx]) {
+          pipelineSteps[activeStepIdx].delayMs = ms;
+          const canvasInner = container.querySelector('.flow-canvas-card .horizontal-node-canvas');
+          if (canvasInner) {
+            canvasInner.outerHTML = renderHorizontalFlow(pipelineSteps, getSelectedListProspectCount(), true, activeStepIdx);
+            setupFlowCanvasEvents();
+          }
+        }
+      });
 
       // Email Step Inputs
       container.querySelector('#wizard-email-subject')?.addEventListener('input', (e) => {
@@ -2424,44 +2967,19 @@ export async function renderCampaignsView(container, ctx = {}) {
       });
     });
 
-    // Editable Delay Badges (Click opens dropdown)
-    canvasCard.querySelectorAll('.delay-pill-badge').forEach((badge) => {
-      badge.addEventListener('click', (e) => {
+    // Inline Delay Select Pills (unclipped native dropdown)
+    canvasCard.querySelectorAll('.delay-select-pill').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
         e.stopPropagation();
-        const connector = badge.closest('.node-connector');
-        const existing = badge.querySelector('.pipeline-popover-menu');
-        if (existing) {
-          existing.remove();
-          if (connector) connector.style.zIndex = '';
-          return;
+        const idx = parseInt(sel.dataset.connectorIdx, 10);
+        const ms = parseInt(sel.value, 10);
+        if (!isNaN(idx) && idx < pipelineSteps.length && !isNaN(ms)) {
+          pipelineSteps[idx].delayMs = ms;
+          const warmDelaySel = container.querySelector('.wizard-step-delay-select');
+          if (warmDelaySel && activeStepIdx === idx) {
+            warmDelaySel.value = String(ms);
+          }
         }
-        closeAnyPopover();
-        if (connector) connector.style.zIndex = '999999';
-
-        const connectorIdx = parseInt(badge.dataset.connectorIdx, 10);
-        const popover = document.createElement('div');
-        popover.className = 'pipeline-popover-menu delay-popover';
-        popover.innerHTML = DELAY_OPTIONS.map((opt) => `
-          <button type="button" class="pipeline-popover-item" data-ms="${opt.ms}">
-            ${opt.label}
-          </button>
-        `).join('');
-
-        badge.style.position = 'relative';
-        badge.appendChild(popover);
-
-        popover.querySelectorAll('.pipeline-popover-item').forEach((item) => {
-          item.addEventListener('click', (ev) => {
-            ev.stopPropagation();
-            const ms = parseInt(item.dataset.ms, 10);
-            if (!isNaN(ms)) {
-              if (connectorIdx < pipelineSteps.length) {
-                pipelineSteps[connectorIdx].delayMs = ms;
-              }
-            }
-            refreshCanvas();
-          });
-        });
       });
     });
 

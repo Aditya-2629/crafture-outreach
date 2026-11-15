@@ -442,8 +442,13 @@ export async function renderResearchView(container, ctx = {}) {
                 </div>
               </div>
 
-              <!-- Export Actions -->
-              <div style="display: flex; gap: 8px;">
+              <!-- Export Actions & Manual Run Now -->
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                ${jobStatus === 'running' || jobStatus === 'pending' ? `
+                  <button type="button" id="btn-run-research-now" class="btn-pill btn-soft btn-sm" style="padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; background: #fff7ed; color: #ea580c; border: 1px solid #ffedd5;">
+                    ${ICONS.play} Run Now
+                  </button>
+                ` : ''}
                 <button type="button" id="btn-download-csv" class="btn-pill btn-soft btn-sm" style="padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" ${packs.length === 0 ? 'disabled' : ''}>
                   ${ICONS.download} Download CSV
                 </button>
@@ -499,6 +504,15 @@ export async function renderResearchView(container, ctx = {}) {
                             View Dossier ${ICONS.chevronDown}
                           </button>
                         </div>
+
+                        <!-- Row Error Notification -->
+                        ${pack.error ? `
+                          <div style="margin-top: 8px; padding: 8px 12px; background: #fef2f2; border: 1px solid #fee2e2; border-radius: 8px; font-size: 12px; color: #b91c1c; display: flex; align-items: center; gap: 6px;">
+                            <span style="display:inline-flex; align-items:center;">${ICONS.warning}</span>
+                            <span style="font-weight: 700;">Issue:</span>
+                            <span>${escapeHtml(pack.error)}</span>
+                          </div>
+                        ` : ''}
 
                         <!-- Signals -->
                         ${signals.length > 0 ? `
@@ -764,6 +778,33 @@ export async function renderResearchView(container, ctx = {}) {
         }
       });
     });
+
+    // Run Now button (Manual trigger)
+    const btnRunNow = container.querySelector('#btn-run-research-now');
+    if (btnRunNow) {
+      btnRunNow.addEventListener('click', async () => {
+        btnRunNow.disabled = true;
+        const origHtml = btnRunNow.innerHTML;
+        btnRunNow.innerHTML = `<span style="display:inline-block; animation:spin 0.8s linear infinite;">${ICONS.refresh || '⟳'}</span> Running...`;
+        try {
+          if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+            await new Promise((resolve) => {
+              chrome.runtime.sendMessage({ type: 'RESEARCH_RUN_NOW' }, (resp) => {
+                resolve(resp);
+              });
+            }).catch(() => null);
+          }
+          await call(ACTIONS.CAMPAIGN_TICK, {}).catch(() => {});
+          ctx.showToast?.('Research processing triggered!', 'info');
+          await pollJob();
+        } catch (e) {
+          ctx.showToast?.(`Run error: ${e.message || e}`, 'error');
+        } finally {
+          btnRunNow.disabled = false;
+          btnRunNow.innerHTML = origHtml;
+        }
+      });
+    }
 
     // Download CSV
     const btnDownCsv = container.querySelector('#btn-download-csv');

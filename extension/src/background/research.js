@@ -24,6 +24,24 @@ import * as voyager from './voyager.js';
 /** Rows processed per tick; the rest wait for the next one. */
 export const ROWS_PER_TICK = 10;
 
+export const RESEARCH_TICK_ALARM = 'outfox-research-tick';
+
+export function scheduleResearchAlarm() {
+  try {
+    if (typeof chrome !== 'undefined' && chrome.alarms?.create) {
+      chrome.alarms.create(RESEARCH_TICK_ALARM, { periodInMinutes: 1 });
+    }
+  } catch {}
+}
+
+export function clearResearchAlarm() {
+  try {
+    if (typeof chrome !== 'undefined' && chrome.alarms?.clear) {
+      chrome.alarms.clear(RESEARCH_TICK_ALARM);
+    }
+  } catch {}
+}
+
 /**
  * Name similarity a search hit must reach before it may be accepted at all.
  *
@@ -476,7 +494,24 @@ export async function startPack(rows, { listName, enrich = false, full = false }
     duplicate: 0,
   }).catch(() => {});
 
-  return { jobId: job.jobId, total: job.total, etaMs: etaFor(job) };
+  const res = { jobId: job.jobId, total: job.total, etaMs: etaFor(job) };
+
+  // Immediate Execution + Independent Alarm:
+  // If rows <= 3 (Quick Prospect Lookup), run progress() immediately in background
+  // so single-prospect dossiers resolve in 2-5s without waiting for a campaign tick.
+  // For larger bulk CSV jobs (> 3), run the first batch immediately AND schedule the 1-minute alarm.
+  if (rows.length <= 3) {
+    setTimeout(() => {
+      progress().catch((err) => console.warn('[Research] Quick progress error:', err.message));
+    }, 0);
+  } else {
+    scheduleResearchAlarm();
+    setTimeout(() => {
+      progress().catch((err) => console.warn('[Research] Initial bulk progress error:', err.message));
+    }, 0);
+  }
+
+  return res;
 }
 
 /* ================================================================== */
@@ -562,7 +597,10 @@ async function gather(resolved, { full }) {
 export async function progress() {
   const jobs = await readJobs();
   const running = jobs.filter((j) => j.status === 'pending' || j.status === 'running');
-  if (!running.length) return { processed: 0, jobs: 0 };
+  if (!running.length) {
+    clearResearchAlarm();
+    return { processed: 0, jobs: 0 };
+  }
 
   let processed = 0;
 
@@ -642,6 +680,12 @@ export async function progress() {
   }
 
   await writeJobs(jobs);
+
+  const stillRunning = jobs.filter((j) => j.status === 'pending' || j.status === 'running');
+  if (!stillRunning.length) {
+    clearResearchAlarm();
+  }
+
   return { processed, jobs: running.length };
 }
 

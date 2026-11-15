@@ -28,6 +28,7 @@ import './inbox.js';
 import './campaigns.js';
 import './capture.js';
 import './research.js';
+import { RESEARCH_TICK_ALARM, progress as researchProgress, allJobs as allResearchJobs } from './research.js';
 import './status.js';
 import './sync.js';
 import './stats.js';
@@ -42,7 +43,7 @@ import './endpoints.js';
 import { initEndpoints, syncEndpointsFromVault } from './endpoints.js';
 import { WITHDRAW_CLEANUP_ALARM, runAutoWithdrawCleanupTick } from './outreach.js';
 
-export { WITHDRAW_CLEANUP_ALARM };
+export { WITHDRAW_CLEANUP_ALARM, RESEARCH_TICK_ALARM };
 
 import { ensureConnected, onAlarm, startKeepalive } from './bridge.js';
 
@@ -124,6 +125,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     logDebug(msg.entry.level, msg.entry.tag, msg.entry.message, msg.entry.data).catch(() => {});
     return false;
   }
+  if (msg?.type === 'RESEARCH_RUN_NOW') {
+    researchProgress()
+      .then((res) => sendResponse({ ok: true, data: res }))
+      .catch((e) => sendResponse({ ok: false, error: e.message }));
+    return true;
+  }
   route(msg)
     .then(sendResponse)
     .catch((e) => sendResponse(err(null, ERROR.INTERNAL, e.message)));
@@ -200,6 +207,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     return;
   }
 
+  if (alarm.name === RESEARCH_TICK_ALARM) {
+    researchProgress().catch((e) => console.warn('[Research tick]', e.message));
+    return;
+  }
+
   if (alarm.name !== CAMPAIGN_TICK_ALARM && alarm.name !== OUTFOX_CAMPAIGN_TICK_ALARM) return;
   reconnectBridge();
   syncEndpointsFromVault(false).catch(() => {});
@@ -216,6 +228,12 @@ function onStartup() {
     chrome.alarms?.clear?.('campaignTick');
   } catch {}
   initEndpoints().then(() => syncEndpointsFromVault(false)).catch(() => {});
+  allResearchJobs().then((jobs) => {
+    if (jobs?.some((j) => j.status === 'pending' || j.status === 'running')) {
+      chrome.alarms?.create(RESEARCH_TICK_ALARM, { periodInMinutes: 1 });
+      researchProgress().catch(() => {});
+    }
+  }).catch(() => {});
 }
 
 chrome.runtime.onStartup.addListener(onStartup);

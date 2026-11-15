@@ -553,6 +553,30 @@ describe('pacing', () => {
   it('does nothing when there is no job', async () => {
     expect(await research.progress()).toEqual({ processed: 0, jobs: 0 });
   });
+
+  it('schedules 1m alarm for bulk jobs (> 3 rows) and clears when finished', async () => {
+    chrome.alarms.clear(research.RESEARCH_TICK_ALARM);
+    const started = await handle(ACTIONS.RESEARCH_PACK, { rows: rows(4) });
+    expect(chrome.alarms.create).toHaveBeenCalledWith(research.RESEARCH_TICK_ALARM, {
+      periodInMinutes: 1,
+    });
+    expect(chrome.__mock.alarms.has(research.RESEARCH_TICK_ALARM)).toBe(true);
+
+    pushRows(4);
+    await research.progress();
+
+    const job = (await handle(ACTIONS.RESEARCH_GET, { jobId: started.data.jobId })).data;
+    expect(job.status).toBe('done');
+    expect(chrome.alarms.clear).toHaveBeenCalledWith(research.RESEARCH_TICK_ALARM);
+  });
+
+  it('runs immediate progress execution for small jobs (<= 3 rows)', async () => {
+    pushRows(1);
+    await handle(ACTIONS.RESEARCH_PACK, { rows: rows(1) });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const jobs = await research.allJobs();
+    expect(jobs[0].status).toBe('done');
+  });
 });
 
 describe('enrichment', () => {

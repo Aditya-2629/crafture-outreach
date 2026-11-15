@@ -183,8 +183,8 @@ async function syncUserProfile() {
         const initials = name.split(/[\s-_]+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
         const topTitle = document.getElementById('greeting-title');
         if (topTitle) topTitle.textContent = `Hello ${name.split(/[\s-_]+/)[0] || 'Member'}`;
-        const topUser = document.querySelector('.user-pill span');
-        if (topUser) topUser.innerHTML = `${name} <span style="display:inline-flex; align-items:center; margin-left:4px;">${ICONS.chevronDown}</span>`;
+        const topUser = document.getElementById('topbar-user-fullname') || document.querySelector('.user-pill span');
+        if (topUser) topUser.textContent = name;
         const miniAv = document.querySelector('.user-avatar-mini');
         if (miniAv) miniAv.textContent = initials || 'LI';
         const sideAv = document.querySelector('.profile-avatar');

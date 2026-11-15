@@ -578,6 +578,159 @@ export function renderHorizontalFlow(pipelineSteps = [], prospectCount = 12, isI
   return html;
 }
 
+export function renderMiniStepFlow(steps = []) {
+  if (!Array.isArray(steps) || steps.length === 0) {
+    return '<span class="step-flow-pill">Custom Flow</span>';
+  }
+  const STEP_NAMES = {
+    view: 'Visit',
+    follow: 'Follow',
+    like: 'Like',
+    endorse: 'Endorse',
+    invite: 'Invite',
+    message: 'Message',
+    email: 'Email',
+    crm_sync: 'CRM',
+  };
+  const activeSteps = steps
+    .filter((s) => s.type && s.type !== 'wait' && s.type !== 'branch')
+    .map((s) => STEP_NAMES[s.type] || s.type);
+
+  if (activeSteps.length === 0) {
+    return '<span class="step-flow-pill">Outreach Flow</span>';
+  }
+
+  return activeSteps
+    .map((name) => `<span class="step-flow-pill">${name}</span>`)
+    .join('<span class="step-flow-arrow">→</span>');
+}
+
+export function computeCampaignStats(camp = {}, allStorage = {}, now = Date.now()) {
+  const id = camp.campaignId || camp.id;
+  const storageEnrollments = allStorage[`enrollments:${id}`];
+  const enrollments = Array.isArray(storageEnrollments)
+    ? storageEnrollments
+    : Array.isArray(camp.contacts)
+    ? camp.contacts
+    : Array.isArray(camp.enrollments)
+    ? camp.enrollments
+    : [];
+
+  const actions = Array.isArray(allStorage.actions) ? allStorage.actions : [];
+  const events = Array.isArray(allStorage.events) ? allStorage.events : [];
+
+  const totalSteps = camp.steps?.length || 0;
+  const totalLeads = enrollments.length || (camp.stats?.enrolled ?? camp.leadsCount ?? camp.stats?.total ?? 0);
+
+  let completedOrReplied = 0;
+  let activeCount = 0;
+  let waitingCount = 0;
+  let dueCount = 0;
+  let accepted = 0;
+  let replied = 0;
+  const nextRunTimestamps = [];
+
+  enrollments.forEach((e) => {
+    const isCompleted = e.status === 'completed' || (Boolean(e.accepted) && (e.stepIndex || 0) >= totalSteps && totalSteps > 0);
+    const isReplied = e.status === 'replied' || Boolean(e.replied);
+    const isStopped = e.status === 'stopped' || e.status === 'failed' || e.status === 'blocked_not_connected';
+
+    if (e.accepted) accepted += 1;
+    if (isReplied) replied += 1;
+
+    if (isCompleted || isReplied || isStopped) {
+      completedOrReplied += 1;
+    } else if (e.status === 'active' || !e.status) {
+      activeCount += 1;
+      const nextAt = e.nextAt || 0;
+      const isWaitingForTimer = nextAt > now;
+      const isWaitingForAcceptance = !e.accepted && (e.stepIndex || 0) > 0;
+
+      if (isWaitingForTimer) {
+        waitingCount += 1;
+        nextRunTimestamps.push(nextAt);
+      } else if (isWaitingForAcceptance) {
+        waitingCount += 1;
+      } else {
+        dueCount += 1;
+      }
+    }
+  });
+
+  // Calculate invites sent from enrollments, actions, or stats
+  const actionInvites = actions.filter((a) => a.campaignId === id && a.action === 'outreach.invite' && a.result?.status === 'sent').length;
+  const enrollmentInvites = enrollments.filter((e) => e.accepted || e.invited || (e.stepIndex || 0) > 0 || (camp.steps?.[0]?.type === 'invite' && (e.lastActionAt || e.status === 'completed' || e.status === 'replied'))).length;
+  const invitesSent = Math.max(enrollmentInvites, actionInvites, camp.stats?.invitesSent ?? 0);
+
+  // Fallback stats if enrollments was empty but camp.stats has data
+  if (enrollments.length === 0 && camp.stats) {
+    if (camp.stats.accepted) accepted = camp.stats.accepted;
+    if (camp.stats.replied) replied = camp.stats.replied;
+    if (camp.stats.completed) completedOrReplied = camp.stats.completed;
+  }
+
+  const acceptancePct = invitesSent > 0 ? Math.min(100, Math.round((accepted / invitesSent) * 100)) : 0;
+  const replyPct = invitesSent > 0 ? Math.min(100, Math.round((replied / invitesSent) * 100)) : (accepted > 0 ? Math.min(100, Math.round((replied / accepted) * 100)) : 0);
+  const progressPct = totalLeads > 0 ? Math.min(100, Math.round((completedOrReplied / totalLeads) * 100)) : (camp.status === 'completed' ? 100 : 0);
+
+  // Lifecycle determination
+  const isCompleted = (totalLeads > 0 && activeCount === 0) || camp.status === 'completed';
+  const isPaused = camp.status === 'paused';
+  const isDraft = camp.status === 'draft';
+  const isArchived = camp.status === 'archived';
+
+  let lifecycleKey = 'running';
+  let badgeHtml = '';
+
+  if (isCompleted) {
+    lifecycleKey = 'completed';
+    badgeHtml = `<span class="camp-lifecycle-badge badge-completed">${ICONS.check} Completed</span>`;
+  } else if (isPaused) {
+    lifecycleKey = 'paused';
+    badgeHtml = `<span class="camp-lifecycle-badge badge-paused">${ICONS.pause} Paused</span>`;
+  } else if (isDraft) {
+    lifecycleKey = 'draft';
+    badgeHtml = `<span class="camp-lifecycle-badge badge-draft">${ICONS.edit} Draft</span>`;
+  } else if (isArchived) {
+    lifecycleKey = 'archived';
+    badgeHtml = `<span class="camp-lifecycle-badge badge-archived">${ICONS.archive} Archived</span>`;
+  } else if (dueCount === 0 && waitingCount > 0) {
+    lifecycleKey = 'waiting';
+    let waitingLabel = 'Waiting for invite acceptance';
+    if (nextRunTimestamps.length > 0) {
+      const minNextAt = Math.min(...nextRunTimestamps);
+      const diffMins = Math.max(1, Math.round((minNextAt - now) / 60000));
+      if (diffMins >= 60) {
+        const diffHours = Math.round(diffMins / 60);
+        waitingLabel = `Waiting (next in ${diffHours}h)`;
+      } else {
+        waitingLabel = `Waiting (next in ${diffMins}m)`;
+      }
+    }
+    badgeHtml = `<span class="camp-lifecycle-badge badge-waiting">${ICONS.clock} ${waitingLabel}</span>`;
+  } else {
+    lifecycleKey = 'running';
+    badgeHtml = `<span class="camp-lifecycle-badge badge-running"><span class="live-dot-circle" style="background:#10b981; width:7px; height:7px; border-radius:50%; display:inline-block;"></span> Running</span>`;
+  }
+
+  return {
+    totalLeads,
+    completedOrReplied,
+    activeCount,
+    waitingCount,
+    dueCount,
+    invitesSent,
+    accepted,
+    replied,
+    acceptancePct,
+    replyPct,
+    progressPct,
+    isCompleted,
+    lifecycleKey,
+    badgeHtml,
+  };
+}
+
 
 function ensureCampaignsStyles() {
   const STYLE_ID = 'OutFox-campaigns-view-css';
@@ -594,30 +747,252 @@ function ensureCampaignsStyles() {
     .tab-count-badge { background: #e2e8f0; color: #475569; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; }
     .camp-search-wrap { position: relative; display: flex; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0 12px; width: 220px; }
     .camp-search-wrap input { border: none; outline: none; font-size: 13px; padding: 8px 6px; width: 100%; background: transparent; }
-    .OutFox-camp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+    .OutFox-camp-grid { display: flex; flex-direction: column; gap: 16px; }
     .OutFox-camp-card {
       background: #ffffff;
-      border: 1px solid rgba(255, 255, 255, 0.75);
-      border-radius: 22px;
-      padding: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      border-radius: 20px;
+      padding: 20px 24px;
       position: relative;
-      box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.07), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(15, 23, 42, 0.04);
+      box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.05), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -2px 4px rgba(15, 23, 42, 0.02);
       transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 14px;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 20px;
     }
     .OutFox-camp-card:hover {
       border-color: rgba(255, 107, 0, 0.25);
-      box-shadow: 0 16px 32px -4px rgba(255, 107, 0, 0.12), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(15, 23, 42, 0.04);
+      box-shadow: 0 16px 32px -4px rgba(255, 107, 0, 0.1), inset 0 2px 4px rgba(255, 255, 255, 0.9);
       transform: translateY(-2px);
+    }
+    .camp-overview-pills-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .camp-stat-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      border-radius: 14px;
+      font-size: 13px;
+      color: #64748b;
+      box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.04), inset 0 2px 4px rgba(255, 255, 255, 0.9);
+    }
+    .camp-stat-pill strong {
+      color: #0f172a;
+      font-weight: 700;
+    }
+    .camp-row-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex: 1.2;
+      min-width: 270px;
+    }
+    .camp-name-badge-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    .camp-flow-summary-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .step-flow-pill {
+      font-size: 11px;
+      font-weight: 600;
+      color: #475569;
+      background: #f1f5f9;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+    .step-flow-arrow {
+      color: #cbd5e1;
+      font-size: 11px;
+    }
+    .camp-row-middle {
+      flex: 1.5;
+      min-width: 280px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .camp-progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: #64748b;
+    }
+    .camp-progress-title strong {
+      color: #0f172a;
+    }
+    .camp-progress-pct {
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .camp-progress-track {
+      width: 100%;
+      height: 7px;
+      background: #f1f5f9;
+      border-radius: 9999px;
+      overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);
+    }
+    .camp-progress-fill {
+      height: 100%;
+      border-radius: 9999px;
+      background: linear-gradient(90deg, #ff741f 0%, #ff4d00 100%);
+      transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .camp-progress-fill.is-complete {
+      background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+    }
+    .camp-mini-kpis {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .mini-kpi-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .mini-kpi-item .kpi-label {
+      font-size: 10.5px;
+      color: #94a3b8;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .mini-kpi-item .kpi-val {
+      font-size: 12.5px;
+      color: #1e293b;
+      font-weight: 700;
+    }
+    .mini-kpi-item .kpi-sub {
+      font-size: 10.5px;
+      color: #64748b;
+      font-weight: 500;
+    }
+    .camp-row-right {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-shrink: 0;
+      min-width: 250px;
+    }
+    .btn-camp-pause-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #f8fafc;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+      transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .btn-camp-pause-toggle:hover {
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+    .btn-camp-pause-toggle.is-paused {
+      background: #ecfdf5;
+      color: #059669;
+      border-color: #a7f3d0;
+    }
+    .btn-camp-pause-toggle.is-paused:hover {
+      background: #d1fae5;
+    }
+    .btn-camp-pause-toggle.is-completed {
+      background: #f8fafc;
+      color: #94a3b8;
+      border-color: #e2e8f0;
+      cursor: default;
+    }
+    .btn-camp-card-live {
+      background: #fff7ed;
+      color: #ff6b00;
+      border: 1px solid #fed7aa;
+      font-size: 12.5px;
+      font-weight: 700;
+      padding: 8px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .btn-camp-card-live:hover {
+      background: #ffedd5;
+      color: #e05a00;
+      transform: translateY(-1px);
+    }
+    .camp-lifecycle-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 9999px;
+      white-space: nowrap;
+    }
+    .camp-lifecycle-badge.badge-running {
+      background: #ecfdf5;
+      color: #059669;
+      border: 1px solid #a7f3d0;
+    }
+    .camp-lifecycle-badge.badge-waiting {
+      background: #fffbeb;
+      color: #b45309;
+      border: 1px solid #fde68a;
+    }
+    .camp-lifecycle-badge.badge-completed {
+      background: #eef2ff;
+      color: #4f46e5;
+      border: 1px solid #c7d2fe;
+    }
+    .camp-lifecycle-badge.badge-paused {
+      background: #f1f5f9;
+      color: #64748b;
+      border: 1px solid #e2e8f0;
+    }
+    .camp-lifecycle-badge.badge-draft {
+      background: #f8fafc;
+      color: #94a3b8;
+      border: 1px solid #e2e8f0;
+    }
+    .camp-lifecycle-badge.badge-archived {
+      background: #f8fafc;
+      color: #94a3b8;
+      border: 1px solid #e2e8f0;
     }
     .planet-avatar { width: 44px; height: 44px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; position: relative; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #ff6b00; }
     .planet-avatar img { width: 28px; height: 28px; border-radius: 6px; object-fit: contain; }
     .planet-ring { display: none; }
     .camp-card-meta { flex: 1; min-width: 0; }
-    .camp-card-name { font-size: 14.5px; font-weight: 700; color: #14142b; display: block; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .camp-card-name { font-size: 15px; font-weight: 700; color: #14142b; }
     .camp-card-badges-row { display: flex; align-items: center; gap: 8px; }
     .camp-leads-pill { font-size: 11px; font-weight: 700; background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 9999px; }
     .camp-status-dot { width: 8px; height: 8px; border-radius: 50%; }
@@ -1016,6 +1391,7 @@ export async function renderCampaignsView(container, ctx = {}) {
   let noteLimitUntil = 0;
   let savedMessageTemplates = [];
   let isLivePreview = false;
+  let allStorage = {};
 
   try {
     const [cRes, lRes, pRes, cfg, sRes] = await Promise.all([
@@ -1025,12 +1401,13 @@ export async function renderCampaignsView(container, ctx = {}) {
       getConfig().catch(() => ({})),
       new Promise((r) => {
         if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-          chrome.storage.local.get(['outfox_note_limit_until', 'messageTemplates', 'templates'], r);
+          chrome.storage.local.get(null, r);
         } else {
           r({});
         }
       }),
     ]);
+    allStorage = sRes || {};
     campaigns = Array.isArray(cRes) ? cRes : (cRes?.campaigns || []);
     const rawLists = Array.isArray(lRes) ? lRes : (lRes?.lists || []);
     lists = rawLists.map((l) => ({
@@ -1189,13 +1566,27 @@ export async function renderCampaignsView(container, ctx = {}) {
   // STATE A: Campaigns List & Management (Frames 14 & 15 / Screenshot 3)
   // =========================================================================
   function renderList() {
-    const running = campaigns.filter((c) => c.status === 'active' || c.status === 'running' || !c.status);
-    const paused = campaigns.filter((c) => c.status === 'paused');
-    const draft = campaigns.filter((c) => c.status === 'draft');
-    const archived = campaigns.filter((c) => c.status === 'archived');
+    const now = Date.now();
+    const enrichedCampaigns = campaigns.map((camp) => {
+      const stats = computeCampaignStats(camp, allStorage, now);
+      return { ...camp, computed: stats };
+    });
+
+    const running = enrichedCampaigns.filter((c) => c.computed.lifecycleKey === 'running' || c.computed.lifecycleKey === 'waiting');
+    const completed = enrichedCampaigns.filter((c) => c.computed.lifecycleKey === 'completed');
+    const paused = enrichedCampaigns.filter((c) => c.computed.lifecycleKey === 'paused');
+    const draft = enrichedCampaigns.filter((c) => c.computed.lifecycleKey === 'draft');
+    const archived = enrichedCampaigns.filter((c) => c.computed.lifecycleKey === 'archived');
+
+    // Summary totals across all campaigns
+    const totalActiveRunning = enrichedCampaigns.filter((c) => c.computed.lifecycleKey === 'running').length;
+    const totalWaiting = enrichedCampaigns.filter((c) => c.computed.lifecycleKey === 'waiting').length;
+    const totalCompleted = completed.length;
+    const totalAllLeads = enrichedCampaigns.reduce((sum, c) => sum + (c.computed.totalLeads || 0), 0);
 
     let currentList = running;
-    if (activeStateTab === 'paused') currentList = paused;
+    if (activeStateTab === 'completed') currentList = completed;
+    else if (activeStateTab === 'paused') currentList = paused;
     else if (activeStateTab === 'draft') currentList = draft;
     else if (activeStateTab === 'archived') currentList = archived;
 
@@ -1243,11 +1634,38 @@ export async function renderCampaignsView(container, ctx = {}) {
           </div>
         ` : ''}
 
-        <!-- Sub-Tabs & Search Bar (Screenshot 3) -->
+        <!-- Top Summary Pills (Requirement 2) -->
+        <div class="camp-overview-pills-row">
+          <div class="camp-stat-pill">
+            <span class="live-dot-circle" style="background:#10b981; width:8px; height:8px; border-radius:50%; display:inline-block;"></span>
+            <span class="stat-pill-label">Active:</span>
+            <strong class="stat-pill-val">${totalActiveRunning}</strong>
+          </div>
+          <div class="camp-stat-pill">
+            <span style="color:#f59e0b; display:inline-flex;">${ICONS.clock}</span>
+            <span class="stat-pill-label">Waiting:</span>
+            <strong class="stat-pill-val">${totalWaiting}</strong>
+          </div>
+          <div class="camp-stat-pill">
+            <span style="color:#4f46e5; display:inline-flex;">${ICONS.check}</span>
+            <span class="stat-pill-label">Completed:</span>
+            <strong class="stat-pill-val">${totalCompleted}</strong>
+          </div>
+          <div class="camp-stat-pill">
+            <span style="color:#ff6b00; display:inline-flex;">${ICONS.lightning}</span>
+            <span class="stat-pill-label">Total Leads:</span>
+            <strong class="stat-pill-val">${totalAllLeads}</strong>
+          </div>
+        </div>
+
+        <!-- Sub-Tabs & Search Bar -->
         <div class="camp-tabs-and-search-row">
           <div class="camp-state-tabs-bar">
             <button type="button" class="camp-state-tab ${activeStateTab === 'running' ? 'is-active' : ''}" data-tab="running">
               <span>${ICONS.play} Running</span> <span class="tab-count-badge">${running.length}</span>
+            </button>
+            <button type="button" class="camp-state-tab ${activeStateTab === 'completed' ? 'is-active' : ''}" data-tab="completed">
+              <span>${ICONS.check} Completed</span> <span class="tab-count-badge">${completed.length}</span>
             </button>
             <button type="button" class="camp-state-tab ${activeStateTab === 'paused' ? 'is-active' : ''}" data-tab="paused">
               <span>${ICONS.pause} Paused</span> <span class="tab-count-badge">${paused.length}</span>
@@ -1266,7 +1684,7 @@ export async function renderCampaignsView(container, ctx = {}) {
           </div>
         </div>
 
-        <!-- Cards Grid (Screenshot 3) -->
+        <!-- Cards Grid (Spacious Claymorphism SaaS Rows) -->
         <div class="OutFox-camp-grid">
           ${
             currentList.length === 0
@@ -1285,55 +1703,103 @@ export async function renderCampaignsView(container, ctx = {}) {
               : currentList
                   .map((camp) => {
                     const id = camp.campaignId || camp.id;
-                    const leads = camp.stats?.enrolled ?? camp.leadsCount ?? camp.contacts?.length ?? (camp.stats?.total) ?? 0;
-                    const isPaused = camp.status === 'paused';
-                    const isDraft = camp.status === 'draft';
-                    const statusClass = isPaused ? 'dot-paused' : isDraft ? 'dot-draft' : 'dot-running';
+                    const st = camp.computed || computeCampaignStats(camp, allStorage, now);
 
                     return `
               <div class="OutFox-camp-card clay-card" data-camp-id="${id}">
-                <div class="planet-avatar">
-                  <img src="${outfoxLogoUrl}" width="28" height="28" alt="OutFox" />
-                </div>
-
-                <div class="camp-card-meta">
-                  <span class="camp-card-name">${camp.name}</span>
-                  <div class="camp-card-badges-row">
-                    <span class="camp-leads-pill" style="display:inline-flex; align-items:center; gap:4px;">${ICONS.lightning} ${leads} leads</span>
-                    <span class="camp-status-dot ${statusClass}" title="Status: ${camp.status || 'running'}"></span>
+                <!-- LEFT COLUMN: Avatar + Name + Lifecycle Badge + Mini Step Flow -->
+                <div class="camp-row-left">
+                  <div class="planet-avatar">
+                    <img src="${outfoxLogoUrl}" width="28" height="28" alt="OutFox" />
+                  </div>
+                  <div class="camp-card-meta">
+                    <div class="camp-name-badge-row">
+                      <span class="camp-card-name" title="${camp.name}">${camp.name}</span>
+                      ${st.badgeHtml}
+                    </div>
+                    <div class="camp-flow-summary-row">
+                      ${renderMiniStepFlow(camp.steps)}
+                      <span class="camp-leads-pill">${ICONS.lightning} ${st.totalLeads} leads</span>
+                    </div>
                   </div>
                 </div>
 
-                <button type="button" class="btn-camp-card-live btn-trigger-live-drawer" data-id="${id}" title="View live lead progress" style="display:inline-flex; align-items:center; gap:5px;">
-                  ${ICONS.lightning} Live Status
-                </button>
+                <!-- MIDDLE COLUMN: Progress bar + 4 Mini KPIs -->
+                <div class="camp-row-middle">
+                  <div class="camp-progress-header">
+                    <span class="camp-progress-title">Progress: <strong>${st.completedOrReplied} / ${st.totalLeads}</strong> leads</span>
+                    <span class="camp-progress-pct font-bold">${st.progressPct}%</span>
+                  </div>
+                  <div class="camp-progress-track">
+                    <div class="camp-progress-fill ${st.isCompleted ? 'is-complete' : ''}" style="width: ${st.progressPct}%;"></div>
+                  </div>
+                  <div class="camp-mini-kpis">
+                    <div class="mini-kpi-item">
+                      <span class="kpi-label">Sent</span>
+                      <strong class="kpi-val">${st.invitesSent}</strong>
+                    </div>
+                    <div class="mini-kpi-item">
+                      <span class="kpi-label">Accepted</span>
+                      <strong class="kpi-val">${st.acceptancePct}% <span class="kpi-sub">(${st.accepted})</span></strong>
+                    </div>
+                    <div class="mini-kpi-item">
+                      <span class="kpi-label">Replied</span>
+                      <strong class="kpi-val">${st.replyPct}% <span class="kpi-sub">(${st.replied})</span></strong>
+                    </div>
+                    <div class="mini-kpi-item">
+                      <span class="kpi-label">Waiting</span>
+                      <strong class="kpi-val">${st.waitingCount}</strong>
+                    </div>
+                  </div>
+                </div>
 
-                <button type="button" class="btn-camp-3dots" data-dots-id="${id}" title="Campaign actions">
-                  ${ICONS.moreHorizontal}
-                </button>
+                <!-- RIGHT COLUMN: Live Status Button + 1-Click Pause/Resume + 3-Dots Menu -->
+                <div class="camp-row-right">
+                  <button type="button" class="btn-camp-card-live btn-trigger-live-drawer" data-id="${id}" title="View live lead progress">
+                    ${ICONS.lightning} Live Status
+                  </button>
 
-                <!-- 3-Dots Dropdown Menu (Screenshot 3) -->
-                <div class="camp-3dots-menu" id="camp-menu-${id}">
-                  <div class="camp-menu-item" data-action="live_status" data-id="${id}">
-                    <span style="color:#ff6b00; display:inline-flex; vertical-align:middle; margin-right:4px;">${ICONS.lightning}</span> View Live Leads Status
-                  </div>
-                  <div class="camp-menu-item" data-action="edit" data-id="${id}">
-                    <span>${ICONS.edit}</span> Edit my campaign
-                  </div>
-                  <div class="camp-menu-item" data-action="add_prospects" data-id="${id}">
-                    <span>${ICONS.plus}</span> Add prospects
-                  </div>
-                  <div class="camp-menu-item" data-action="duplicate" data-id="${id}">
-                    <span>${ICONS.duplicate}</span> Duplicate
-                  </div>
-                  <div class="camp-menu-item" data-action="toggle_pause" data-id="${id}" data-status="${camp.status || 'active'}">
-                    <span>${isPaused ? ICONS.play : ICONS.pause}</span> ${isPaused ? 'Resume my campaign' : 'Pause my campaign'}
-                  </div>
-                  <div class="camp-menu-item" data-action="archive" data-id="${id}">
-                    <span>${ICONS.archive}</span> Archive
-                  </div>
-                  <div class="camp-menu-item menu-item-delete" data-action="delete" data-id="${id}">
-                    <span>${ICONS.trash}</span> Delete
+                  ${st.isCompleted ? `
+                    <button type="button" class="btn-camp-pause-toggle is-completed" disabled title="Campaign completed">
+                      ${ICONS.check} Completed
+                    </button>
+                  ` : st.lifecycleKey === 'paused' ? `
+                    <button type="button" class="btn-camp-pause-toggle is-paused" data-action="toggle_pause" data-id="${id}" data-status="paused" title="Resume campaign">
+                      ${ICONS.play} Resume
+                    </button>
+                  ` : `
+                    <button type="button" class="btn-camp-pause-toggle" data-action="toggle_pause" data-id="${id}" data-status="active" title="Pause campaign">
+                      ${ICONS.pause} Pause
+                    </button>
+                  `}
+
+                  <button type="button" class="btn-camp-3dots" data-dots-id="${id}" title="Campaign actions">
+                    ${ICONS.moreHorizontal}
+                  </button>
+
+                  <!-- 3-Dots Dropdown Menu -->
+                  <div class="camp-3dots-menu" id="camp-menu-${id}">
+                    <div class="camp-menu-item" data-action="live_status" data-id="${id}">
+                      <span style="color:#ff6b00; display:inline-flex;">${ICONS.lightning}</span> View Live Leads Status
+                    </div>
+                    <div class="camp-menu-item" data-action="edit" data-id="${id}">
+                      <span>${ICONS.edit}</span> Edit my campaign
+                    </div>
+                    <div class="camp-menu-item" data-action="add_prospects" data-id="${id}">
+                      <span>${ICONS.plus}</span> Add prospects
+                    </div>
+                    <div class="camp-menu-item" data-action="duplicate" data-id="${id}">
+                      <span>${ICONS.duplicate}</span> Duplicate
+                    </div>
+                    <div class="camp-menu-item" data-action="toggle_pause" data-id="${id}" data-status="${camp.status || 'active'}">
+                      <span>${st.lifecycleKey === 'paused' ? ICONS.play : ICONS.pause}</span> ${st.lifecycleKey === 'paused' ? 'Resume my campaign' : 'Pause my campaign'}
+                    </div>
+                    <div class="camp-menu-item" data-action="archive" data-id="${id}">
+                      <span>${ICONS.archive}</span> Archive
+                    </div>
+                    <div class="camp-menu-item menu-item-delete" data-action="delete" data-id="${id}">
+                      <span>${ICONS.trash}</span> Delete
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1558,9 +2024,38 @@ export async function renderCampaignsView(container, ctx = {}) {
       });
     });
 
+    container.querySelectorAll('.btn-camp-pause-toggle').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        const currentStatus = btn.dataset.status;
+        const isPaused = currentStatus === 'paused';
+        const camp = campaigns.find((c) => (c.campaignId || c.id) === id);
+        try {
+          if (isPaused) {
+            await call(ACTIONS.CAMPAIGN_RESUME, { campaignId: id });
+            ctx.showToast?.(`Campaign "${camp?.name || ''}" resumed.`, 'success');
+          } else {
+            await call(ACTIONS.CAMPAIGN_PAUSE, { campaignId: id });
+            ctx.showToast?.(`Campaign "${camp?.name || ''}" paused.`, 'info');
+          }
+          const freshCamps = await call(ACTIONS.CAMPAIGN_GET_ALL, {}).catch(() => []);
+          campaigns = Array.isArray(freshCamps) ? freshCamps : (freshCamps?.campaigns || []);
+          renderList();
+        } catch (err) {
+          ctx.showToast?.(err.message || 'Action failed', 'error');
+        }
+      });
+    });
+
     container.querySelectorAll('.OutFox-camp-card').forEach((card) => {
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.btn-camp-3dots') || e.target.closest('.camp-3dots-menu') || e.target.closest('.btn-trigger-live-drawer')) return;
+        if (
+          e.target.closest('.btn-camp-3dots') ||
+          e.target.closest('.camp-3dots-menu') ||
+          e.target.closest('.btn-trigger-live-drawer') ||
+          e.target.closest('.btn-camp-pause-toggle')
+        ) return;
         const id = card.dataset.campId;
         const camp = campaigns.find((c) => (c.campaignId || c.id) === id);
         if (camp) {

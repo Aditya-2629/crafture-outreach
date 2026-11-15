@@ -28,7 +28,8 @@
     "https://api.anthropic.com/*",
     "https://api.hunter.io/*",
     "https://api.apollo.io/*",
-    "https://vault.api.crafture.space/*"
+    "https://vault.api.crafture.space/*",
+    "https://outfox-auth.crafture.workers.dev/*"
   ],
   "optional_host_permissions": [
     "https://www.googleapis.com/*",

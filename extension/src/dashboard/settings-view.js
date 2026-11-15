@@ -1,5 +1,5 @@
 /**
- * OutFox — Authentic Waalaxy Settings View
+ * OutFox — Authentic OutFox Settings View
  * Production Settings UI: 4 Core Tabs, Dynamic Timezone Engine & Real Integrations Hub
  * 100% Manifest V3 CSP Compliant · Zero Core Emojis · Vector SVGs · Native in-UI Modals
  */
@@ -196,7 +196,7 @@ export async function testAiConnection(provider, modelId, apiKey) {
 }
 
 function ensureSettingsStyles() {
-  const STYLE_ID = 'waalaxy-settings-injected-styles';
+  const STYLE_ID = 'OutFox-settings-injected-styles';
   let style = document.getElementById(STYLE_ID);
   if (!style) {
     style = document.createElement('style');
@@ -204,7 +204,7 @@ function ensureSettingsStyles() {
     document.head.appendChild(style);
   }
   style.textContent = `
-    .waalaxy-settings-layout { display: flex; min-height: 100%; background: #f8fafc; font-family: inherit; }
+    .OutFox-settings-layout { display: flex; min-height: 100%; background: #f8fafc; font-family: inherit; }
     .settings-subsidebar { width: 240px; min-width: 240px; background: #ffffff; border-right: 1px solid #e2e8f0; padding: 24px 16px; box-sizing: border-box; }
     .subsidebar-header { margin-bottom: 20px; padding: 0 8px; }
     .subsidebar-title { font-size: 18px; font-weight: 800; color: #14142b; margin: 0; }
@@ -233,7 +233,7 @@ function ensureSettingsStyles() {
     .settings-block-section { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
     .settings-section-heading { font-size: 14px; font-weight: 700; color: #14142b; margin: 0 0 14px 0; display: block; }
     .timezone-picker-wrap { max-width: 440px; }
-    .waalaxy-select-large { width: 100%; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; font-size: 13.5px; font-weight: 500; color: #14142b; outline: none; cursor: pointer; }
+    .OutFox-select-large { width: 100%; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; font-size: 13.5px; font-weight: 500; color: #14142b; outline: none; cursor: pointer; }
     
     .working-days-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
     .custom-mode-toggle { display: flex; align-items: center; gap: 10px; }
@@ -284,7 +284,7 @@ function ensureSettingsStyles() {
     .btn-primary-settings { background: #ff6b00; color: #ffffff; border: none; border-radius: 10px; padding: 10px 24px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25); transition: background 0.15s; }
     .btn-primary-settings:hover { background: #e05a00; }
 
-    .waalaxy-white-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
+    .OutFox-white-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
     .card-header-with-icon { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
     .card-black-icon-box { width: 40px; height: 40px; border-radius: 10px; background: #14142b; color: #ffffff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .card-title-bold { font-size: 16px; font-weight: 800; color: #14142b; margin: 0; }
@@ -305,7 +305,7 @@ function ensureSettingsStyles() {
     .signatures-split-view { display: grid; grid-template-columns: 260px 1fr; gap: 24px; margin-top: 10px; }
     .sig-left-pane { display: flex; flex-direction: column; gap: 12px; border-right: 1px solid #f1f5f9; padding-right: 20px; }
     .sig-pane-label { font-size: 12px; font-weight: 600; color: #64748b; }
-    .waalaxy-select-small { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #14142b; outline: none; cursor: pointer; }
+    .OutFox-select-small { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #14142b; outline: none; cursor: pointer; }
     .sig-list-header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: #14142b; margin-top: 8px; }
     .btn-sig-link { background: transparent; border: none; color: #ff6b00; font-size: 12px; font-weight: 700; cursor: pointer; }
     .sig-nav-list { display: flex; flex-direction: column; gap: 6px; }
@@ -378,18 +378,21 @@ export async function renderSettingsView(container, ctx = {}) {
   let storage = {};
   let storageHealth = { isIdbActive: false, profileCount: 0 };
   let statusData = {};
+  let autoCleanState = { active: false, totalWithdrawnToday: 0 };
 
   try {
-    const [cRes, sRes, sHealth, statRes] = await Promise.all([
+    const [cRes, sRes, sHealth, statRes, autoCleanRes] = await Promise.all([
       call(ACTIONS.CONFIG_GET, {}).catch(() => ({})),
       new Promise((r) => chrome.storage.local.get(null, r)),
       getStorageHealth().catch(() => ({ isIdbActive: false, profileCount: 0 })),
       call(ACTIONS.STATUS_GET, {}).catch(() => ({})),
+      call(ACTIONS.NETWORK_WITHDRAW_AUTO_STATUS, {}).catch(() => null),
     ]);
     config = cRes || {};
     storage = sRes || {};
     storageHealth = sHealth || { isIdbActive: false, profileCount: 0 };
     statusData = statRes || {};
+    autoCleanState = autoCleanRes || storage.outfox_withdraw_cleanup_state || { active: false, totalWithdrawnToday: 0 };
   } catch (e) {
     console.warn('[Settings View] Read error', e);
   }
@@ -428,6 +431,36 @@ export async function renderSettingsView(container, ctx = {}) {
     const ampm = h >= 12 ? 'PM' : 'AM';
     const displayH = h % 12 || 12;
     return `${displayH}:${String(m).padStart(2, '0')} ${ampm}`;
+  }
+
+  function renderAutoCleanProgress(st) {
+    if (!st) return '';
+    if (st.active) {
+      const mins = st.nextRunAt ? Math.max(1, Math.round((st.nextRunAt - Date.now()) / 60000)) : (st.cooldownMinutes || 15);
+      return `
+        <div id="auto-clean-progress" style="margin-top: 10px; padding: 10px 14px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; font-size: 12.5px; color: #065f46; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="live-dot-circle" style="background: #10b981; display: inline-block; width: 8px; height: 8px; border-radius: 50%;"></span>
+            <span><strong>Running:</strong> ${st.totalWithdrawnToday || 0} withdrawn today${st.dailyCap ? ` / ${st.dailyCap} cap` : ''}, next batch in ~${mins}m</span>
+          </div>
+          <span style="font-size: 11.5px; color: #047857; font-weight: 600;">Drip: ${st.batchSize || 15}/batch · ${st.cooldownMinutes || 15}m cooldown</span>
+        </div>
+      `;
+    }
+    if (st.stoppedReason) {
+      const reasonLabel = st.stoppedReason === 'completed'
+        ? 'All stale invites cleared'
+        : st.stoppedReason === 'daily_cap_reached'
+        ? 'Daily cap reached for today'
+        : `Stopped: ${st.stoppedReason}`;
+      return `
+        <div id="auto-clean-progress" style="margin-top: 10px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; color: #64748b; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+          <span><strong>Auto-clean Idle:</strong> ${reasonLabel}. (${st.totalWithdrawnToday || 0} withdrawn today)</span>
+          ${st.lastRunAt ? `<span style="font-size: 11px; color: #94a3b8;">Last run: ${new Date(st.lastRunAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>` : ''}
+        </div>
+      `;
+    }
+    return '';
   }
 
   let mailbox = config.mailbox || {};
@@ -487,7 +520,7 @@ export async function renderSettingsView(container, ctx = {}) {
     const vaultLastSyncText = formatTimeAgo(vaultLastSyncAt);
 
     container.innerHTML = `
-      <div class="waalaxy-settings-layout">
+      <div class="OutFox-settings-layout">
         <!-- SUB-SIDEBAR (4 Working Tabs Only) -->
         <aside class="settings-subsidebar">
           <div class="subsidebar-header">
@@ -541,7 +574,7 @@ export async function renderSettingsView(container, ctx = {}) {
               <div class="settings-block-section">
                 <label class="settings-section-heading">Select time zone</label>
                 <div class="timezone-picker-wrap">
-                  <select id="select-timezone" class="waalaxy-select-large">
+                  <select id="select-timezone" class="OutFox-select-large">
                     <option value="Asia/Kolkata" ${selectedTz === 'Asia/Kolkata' ? 'selected' : ''}>(GMT+05:30) Asia/Kolkata (IST)</option>
                     <option value="UTC" ${selectedTz === 'UTC' ? 'selected' : ''}>(GMT+00:00) UTC Universal Time</option>
                     <option value="America/New_York" ${selectedTz === 'America/New_York' ? 'selected' : ''}>(GMT-05:00) America/New_York (EST)</option>
@@ -781,9 +814,18 @@ export async function renderSettingsView(container, ctx = {}) {
                     </div>
                   </div>
 
-                  <button type="button" class="btn-primary-settings" id="btn-run-withdraw-now" style="padding: 7px 16px; font-size: 12.5px; background: #fff7ed; color: #ff6b00; border: 1px solid #ffedd5; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
-                    ${ICONS.trash} Withdraw Stale Now
-                  </button>
+                  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <button type="button" class="btn-primary-settings" id="btn-run-withdraw-now" style="padding: 7px 16px; font-size: 12.5px; background: #fff7ed; color: #ff6b00; border: 1px solid #ffedd5; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+                      ${ICONS.trash} Withdraw Stale Now
+                    </button>
+                    <button type="button" class="btn-primary-settings" id="btn-toggle-auto-clean" style="padding: 7px 16px; font-size: 12.5px; background: ${autoCleanState.active ? '#fef2f2' : '#f0fdf4'}; color: ${autoCleanState.active ? '#dc2626' : '#16a34a'}; border: 1px solid ${autoCleanState.active ? '#fecaca' : '#bbf7d0'}; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+                      ${autoCleanState.active ? `${ICONS.stop} Stop Auto-Clean` : `${ICONS.play} Auto-Clean All (>14d)`}
+                    </button>
+                  </div>
+                </div>
+
+                <div id="auto-clean-progress-container">
+                  ${renderAutoCleanProgress(autoCleanState)}
                 </div>
               </div>
 
@@ -805,7 +847,7 @@ export async function renderSettingsView(container, ctx = {}) {
                   </div>
                   <div id="storage-health-badge" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; background: ${storageHealth.isIdbActive ? '#ecfdf5' : '#f8fafc'}; color: ${storageHealth.isIdbActive ? '#059669' : '#64748b'}; border: 1px solid ${storageHealth.isIdbActive ? '#a7f3d0' : '#e2e8f0'};">
                     <span class="live-dot-circle" style="background: currentColor;"></span>
-                    ${storageHealth.isIdbActive ? `⚡ High-Speed IndexedDB Active · ${storageHealth.profileCount} Profiles Cached` : `💾 LocalStorage Active · ${storageHealth.profileCount} Profiles Cached`}
+                    ${storageHealth.isIdbActive ? `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.lightning} High-Speed IndexedDB Active · ${storageHealth.profileCount} Profiles Cached</span>` : `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.download} LocalStorage Active · ${storageHealth.profileCount} Profiles Cached</span>`}
                   </div>
                 </div>
               </div>
@@ -852,7 +894,7 @@ export async function renderSettingsView(container, ctx = {}) {
               </div>
 
               <!-- Active Cold Outreach Sender Card -->
-              <div class="waalaxy-white-card" style="margin-bottom: 24px; border: 1.5px solid #ffedd5; background: linear-gradient(180deg, #ffffff 0%, #fffbf7 100%);">
+              <div class="OutFox-white-card" style="margin-bottom: 24px; border: 1.5px solid #ffedd5; background: linear-gradient(180deg, #ffffff 0%, #fffbf7 100%);">
                 <div class="card-header-with-icon" style="justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
                   <div style="display: flex; align-items: flex-start; gap: 12px;">
                     <div class="card-black-icon-box" style="background: #fff7ed; color: #ff6b00; border: 1px solid #ffedd5;">${ICONS.email}</div>
@@ -878,7 +920,7 @@ export async function renderSettingsView(container, ctx = {}) {
                 <div style="margin-top: 16px; padding: 14px 18px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">
                   <div style="display: flex; align-items: center; gap: 12px;">
                     <span style="width: 36px; height: 36px; border-radius: 50%; background: #fff7ed; color: #ff6b00; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800;">
-                      ✉️
+                      ${ICONS.email}
                     </span>
                     <div>
                       <div style="font-size: 13.5px; font-weight: 700; color: #14142b;">
@@ -896,8 +938,8 @@ export async function renderSettingsView(container, ctx = {}) {
                         Use Default (${googleWorkspace.email || 'Workspace'})
                       </button>
                     ` : ''}
-                    <button type="button" class="btn-int-action" id="btn-switch-custom-gmail" style="font-size: 11.5px; padding: 6px 12px;">
-                      🔄 Use Different Gmail for Outreach
+                    <button type="button" class="btn-int-action" id="btn-switch-custom-gmail" style="font-size: 11.5px; padding: 6px 12px; display:inline-flex; align-items:center; gap:5px;">
+                      ${ICONS.refresh} Use Different Gmail for Outreach
                     </button>
                     ${mailbox.connected ? `
                       <button type="button" class="btn-card-action" id="btn-disable-outreach-mail" style="font-size: 11.5px; padding: 6px 12px; color: #ef4444; border-color: #fecaca;" title="Removes outreach sender while keeping Google Workspace Drive/Sheets connected">
@@ -909,7 +951,7 @@ export async function renderSettingsView(container, ctx = {}) {
               </div>
 
               <!-- Card 1: Accounts Table -->
-              <div class="waalaxy-white-card">
+              <div class="OutFox-white-card">
                 <div class="card-header-with-icon">
                   <div class="card-black-icon-box">${ICONS.email}</div>
                   <div>
@@ -960,7 +1002,7 @@ export async function renderSettingsView(container, ctx = {}) {
               </div>
 
               <!-- Card 2: Signatures -->
-              <div class="waalaxy-white-card">
+              <div class="OutFox-white-card">
                 <div class="card-header-with-icon">
                   <div class="card-black-icon-box">${ICONS.edit}</div>
                   <div>
@@ -972,8 +1014,8 @@ export async function renderSettingsView(container, ctx = {}) {
                 <div class="signatures-split-view">
                   <div class="sig-left-pane">
                     <label class="sig-pane-label">Default signature</label>
-                    <select id="select-default-signature" class="waalaxy-select-small">
-                      <option value="none">No signature ⌵</option>
+                    <select id="select-default-signature" class="OutFox-select-small">
+                      <option value="none">No signature</option>
                       ${signatures.map((s) => `<option value="${s.id}" ${s.id === defaultSigId ? 'selected' : ''}>${s.name}</option>`).join('')}
                     </select>
 
@@ -1044,7 +1086,7 @@ export async function renderSettingsView(container, ctx = {}) {
                   ${googleWorkspace.connected ? `
                     <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:12px; color:#475569;">
                       <div><strong>Account:</strong> ${googleWorkspace.email}</div>
-                      ${googleWorkspace.spreadsheetUrl ? `<div style="margin-top:4px;"><strong>Sheet:</strong> <a href="${googleWorkspace.spreadsheetUrl}" target="_blank" style="color:#ff6b00; text-decoration:none; font-weight:600;">OutFox Live CRM ↗</a></div>` : ''}
+                      ${googleWorkspace.spreadsheetUrl ? `<div style="margin-top:4px;"><strong>Sheet:</strong> <a href="${googleWorkspace.spreadsheetUrl}" target="_blank" style="color:#ff6b00; text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:3px;">OutFox Live CRM ${ICONS.arrowUpRight}</a></div>` : ''}
                       <div style="margin-top:4px; font-size:11px; color:#94a3b8;">Last synced: ${googleWorkspace.lastSyncAt ? new Date(googleWorkspace.lastSyncAt).toLocaleString() : 'Never'}</div>
                     </div>
                   ` : ''}
@@ -1054,16 +1096,16 @@ export async function renderSettingsView(container, ctx = {}) {
                         Disconnect
                       </button>
                       ${googleWorkspace.spreadsheetUrl ? `
-                        <a href="${googleWorkspace.spreadsheetUrl}" target="_blank" class="btn-int-action" style="font-size:11.5px; padding:6px 14px; text-decoration:none; display:inline-flex; align-items:center;">
-                          Open Live Sheet ↗
+                        <a href="${googleWorkspace.spreadsheetUrl}" target="_blank" class="btn-int-action" style="font-size:11.5px; padding:6px 14px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                          Open Live Sheet ${ICONS.arrowUpRight}
                         </a>
                       ` : ''}
                       <button type="button" class="btn-int-action btn-int-active" id="btn-sync-crm-now" style="font-size:11.5px; padding:6px 14px;">
                         ↻ Sync All Leads
                       </button>
                     ` : `
-                      <button type="button" class="btn-int-action btn-int-active" id="btn-connect-google-ws">
-                        Connect Google Account ↗
+                      <button type="button" class="btn-int-action btn-int-active" id="btn-connect-google-ws" style="display:inline-flex; align-items:center; gap:4px;">
+                        Connect Google Account ${ICONS.arrowUpRight}
                       </button>
                     `}
                   </div>
@@ -1073,7 +1115,7 @@ export async function renderSettingsView(container, ctx = {}) {
                 <div class="integration-item-card">
                   <div class="int-card-head">
                     <div class="int-card-head-left">
-                      <span class="int-logo-ico" style="background:#4285f4; color:#fff;">☁️</span>
+                      <span class="int-logo-ico" style="background:#4285f4; color:#fff;">${ICONS.cloud}</span>
                       <h3 class="int-card-title">Cloud & Local Data Backup</h3>
                     </div>
                     ${googleWorkspace.connected
@@ -1089,18 +1131,18 @@ export async function renderSettingsView(container, ctx = {}) {
                   </div>
                   <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
                     ${googleWorkspace.connected ? `
-                      <button type="button" class="btn-int-action btn-int-active" id="btn-drive-backup-now" style="font-size:11.5px; padding:6px 12px;">
-                        ☁️ Backup to Drive
+                      <button type="button" class="btn-int-action btn-int-active" id="btn-drive-backup-now" style="font-size:11.5px; padding:6px 12px; display:inline-flex; align-items:center; gap:5px;">
+                        ${ICONS.cloud} Backup to Drive
                       </button>
-                      <button type="button" class="btn-int-action" id="btn-drive-backup-restore-now" style="font-size:11.5px; padding:6px 12px;">
-                        📥 Restore Drive
+                      <button type="button" class="btn-int-action" id="btn-drive-backup-restore-now" style="font-size:11.5px; padding:6px 12px; display:inline-flex; align-items:center; gap:5px;">
+                        ${ICONS.download} Restore Drive
                       </button>
                     ` : ''}
-                    <button type="button" class="btn-int-action" id="btn-export-json-backup" style="font-size:11.5px; padding:6px 12px;">
-                      💾 Export .json
+                    <button type="button" class="btn-int-action" id="btn-export-json-backup" style="font-size:11.5px; padding:6px 12px; display:inline-flex; align-items:center; gap:5px;">
+                      ${ICONS.download} Export .json
                     </button>
-                    <button type="button" class="btn-int-action" id="btn-import-json-backup" style="font-size:11.5px; padding:6px 12px;">
-                      📂 Restore .json
+                    <button type="button" class="btn-int-action" id="btn-import-json-backup" style="font-size:11.5px; padding:6px 12px; display:inline-flex; align-items:center; gap:5px;">
+                      ${ICONS.folder} Restore .json
                     </button>
                     <input type="file" id="input-import-backup-file" accept=".json" style="display:none;" />
                   </div>
@@ -1136,14 +1178,14 @@ export async function renderSettingsView(container, ctx = {}) {
                   </div>
                   <p class="int-card-desc">Connect Cursor, Claude Desktop, or Antigravity IDE directly to OutFox to control outreach, search leads, and inspect quotas in real time.</p>
                   <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin:10px 0; font-size:11.5px; color:#64748b; line-height:1.4;">
-                    💡 <em>All OutFox features (Telegram, Campaigns, Gmail, Sheets) work automatically without MCP. Enable this only to control OutFox from Cursor or Claude Desktop.</em>
+                    <span style="display:inline-flex; vertical-align:middle; margin-right:4px; color:#ff6b00;">${ICONS.sparkles}</span> <em>All OutFox features (Telegram, Campaigns, Gmail, Sheets) work automatically without MCP. Enable this only to control OutFox from Cursor or Claude Desktop.</em>
                   </div>
                   <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:4px;">
                     <button type="button" class="btn-int-action btn-int-active" id="btn-copy-mcp-config" style="flex:1; min-width:140px; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
                       ${ICONS.duplicate || ''} Copy Universal MCP Config
                     </button>
-                    <button type="button" class="btn-int-action" id="btn-mcp-guide" style="flex:1; min-width:110px;">
-                      Setup Guide ↗
+                    <button type="button" class="btn-int-action" id="btn-mcp-guide" style="flex:1; min-width:110px; display:inline-flex; align-items:center; justify-content:center; gap:4px;">
+                      Setup Guide ${ICONS.arrowUpRight}
                     </button>
                   </div>
                 </div>
@@ -1160,8 +1202,8 @@ export async function renderSettingsView(container, ctx = {}) {
                       : `<span class="live-activity-pill is-paused" style="font-size:11px;">○ Not Configured</span>`}
                   </div>
                   <p class="int-card-desc">Connect OutFox MCP with Telegram. Control campaigns, search prospects, and trigger messages directly from your phone.</p>
-                  <button type="button" class="btn-int-action ${hasTelegram ? 'btn-int-active' : ''}" id="btn-setup-telegram">
-                    ${hasTelegram ? 'Manage Telegram Assistant ⚙' : 'Setup Telegram Assistant ↗'}
+                  <button type="button" class="btn-int-action ${hasTelegram ? 'btn-int-active' : ''}" id="btn-setup-telegram" style="display:inline-flex; align-items:center; gap:5px;">
+                    ${hasTelegram ? `Manage Telegram Assistant ${ICONS.settings}` : `Setup Telegram Assistant ${ICONS.arrowUpRight}`}
                   </button>
                 </div>
 
@@ -1318,6 +1360,22 @@ export async function renderSettingsView(container, ctx = {}) {
     // Tick live clock every 10 seconds
     liveClockInterval = setInterval(() => {
       updateLiveStatus();
+      if (autoCleanState.active) {
+        chrome.storage?.local?.get?.(['outfox_withdraw_cleanup_state'], (data) => {
+          if (data?.outfox_withdraw_cleanup_state) {
+            autoCleanState = data.outfox_withdraw_cleanup_state;
+            const prog = container.querySelector('#auto-clean-progress-container');
+            if (prog) prog.innerHTML = renderAutoCleanProgress(autoCleanState);
+            const toggleBtn = container.querySelector('#btn-toggle-auto-clean');
+            if (toggleBtn && !toggleBtn.disabled) {
+              toggleBtn.style.background = autoCleanState.active ? '#fef2f2' : '#f0fdf4';
+              toggleBtn.style.color = autoCleanState.active ? '#dc2626' : '#16a34a';
+              toggleBtn.style.borderColor = autoCleanState.active ? '#fecaca' : '#bbf7d0';
+              toggleBtn.innerHTML = autoCleanState.active ? `${ICONS.stop} Stop Auto-Clean` : `${ICONS.play} Auto-Clean All (>14d)`;
+            }
+          }
+        });
+      }
     }, 10000);
 
     // 4. Quota Presets & Controls
@@ -1437,7 +1495,7 @@ export async function renderSettingsView(container, ctx = {}) {
       const btn = e.currentTarget;
       const originalHtml = btn.innerHTML;
       btn.disabled = true;
-      btn.innerHTML = '⏳ Withdrawing...';
+      btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:5px;">${ICONS.loader} Withdrawing...</span>`;
       try {
         const days = parseInt(container.querySelector('#input-withdraw-days')?.value, 10) || autoWithdraw.olderThanDays || 14;
         const res = await call(
@@ -1455,6 +1513,43 @@ export async function renderSettingsView(container, ctx = {}) {
       } finally {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
+      }
+    });
+
+    container.querySelector('#btn-toggle-auto-clean')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        if (autoCleanState.active) {
+          btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:5px;">${ICONS.loader} Stopping...</span>`;
+          const stopped = await call(ACTIONS.NETWORK_WITHDRAW_AUTO_STOP, {});
+          autoCleanState = stopped || { active: false };
+          ctx.showToast?.('Auto-clean stopped.', 'info');
+        } else {
+          btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:5px;">${ICONS.loader} Starting...</span>`;
+          const days = parseInt(container.querySelector('#input-withdraw-days')?.value, 10) || autoWithdraw.olderThanDays || 14;
+          const started = await call(ACTIONS.NETWORK_WITHDRAW_AUTO_START, {
+            olderThanDays: days,
+            batchSize: 15,
+            cooldownMinutes: 15,
+            dailyCap: 75,
+          });
+          autoCleanState = started || { active: true };
+          const count = autoCleanState.lastBatchResult?.withdrawnCount ?? autoCleanState.lastBatchResult?.withdrawn ?? 0;
+          ctx.showToast?.(`Auto-clean started. Initial batch withdrew ${count} invite${count === 1 ? '' : 's'}.`, 'success');
+        }
+      } catch (err) {
+        ctx.showToast?.(`Auto-clean error: ${err.message || 'Operation failed'}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.style.background = autoCleanState.active ? '#fef2f2' : '#f0fdf4';
+        btn.style.color = autoCleanState.active ? '#dc2626' : '#16a34a';
+        btn.style.borderColor = autoCleanState.active ? '#fecaca' : '#bbf7d0';
+        btn.innerHTML = autoCleanState.active ? `${ICONS.stop} Stop Auto-Clean` : `${ICONS.play} Auto-Clean All (>14d)`;
+        const progContainer = container.querySelector('#auto-clean-progress-container');
+        if (progContainer) {
+          progContainer.innerHTML = renderAutoCleanProgress(autoCleanState);
+        }
       }
     });
 
@@ -1716,7 +1811,7 @@ export async function renderSettingsView(container, ctx = {}) {
       const btn = e?.currentTarget;
       const originalText = btn ? btn.innerHTML : '';
       if (btn) {
-        btn.innerHTML = '⏳ Syncing...';
+        btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:5px;">${ICONS.loader} Syncing...</span>`;
         btn.disabled = true;
       }
       try {
@@ -1742,7 +1837,7 @@ export async function renderSettingsView(container, ctx = {}) {
       const btn = e?.currentTarget;
       const originalText = btn ? btn.innerHTML : '';
       if (btn) {
-        btn.innerHTML = '⏳ Backing up...';
+        btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:5px;">${ICONS.loader} Backing up...</span>`;
         btn.disabled = true;
       }
       try {
@@ -1878,7 +1973,7 @@ export async function renderSettingsView(container, ctx = {}) {
         const btn = container.querySelector('#btn-copy-mcp-config');
         if (btn) {
           const original = btn.innerHTML;
-          btn.textContent = '✓ Copied!';
+          btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.check} Copied!</span>`;
           setTimeout(() => { if (btn) btn.innerHTML = original; }, 2000);
         }
       } catch (err) {
@@ -1929,15 +2024,15 @@ export function openAiEngineRouterModal({ aiModels = [], onSave }) {
 
   function renderModal() {
     backdrop.innerHTML = `
-      <div class="waalaxy-modal-card" style="width: 620px; max-width: 90vw; max-height: 85vh; overflow-y: auto; padding: 28px 32px; background:#fff; border-radius:16px; box-shadow: 0 10px 40px rgba(0,0,0,0.18);">
-        <div class="waalaxy-modal-head" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 20px;">
+      <div class="OutFox-modal-card" style="width: 620px; max-width: 90vw; max-height: 85vh; overflow-y: auto; padding: 28px 32px; background:#fff; border-radius:16px; box-shadow: 0 10px 40px rgba(0,0,0,0.18);">
+        <div class="OutFox-modal-head" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 20px;">
           <div>
-            <h2 class="waalaxy-modal-title" style="font-size:18px; margin:0; font-weight:800; color:#14142b;">AI Engine & Fallback Chain Router</h2>
-            <p class="waalaxy-modal-subtitle" style="margin:4px 0 0; font-size:12.5px; color:#64748b; line-height: 1.4;">
+            <h2 class="OutFox-modal-title" style="font-size:18px; margin:0; font-weight:800; color:#14142b;">AI Engine & Fallback Chain Router</h2>
+            <p class="OutFox-modal-subtitle" style="margin:4px 0 0; font-size:12.5px; color:#64748b; line-height: 1.4;">
               Configure multiple AI models ordered by priority. If your primary model hits a rate limit or runs out of credits, OutFox automatically falls back to the next model in the chain.
             </p>
           </div>
-          <button type="button" class="waalaxy-modal-close" id="btn-close-ai-modal" style="background:transparent; border:none; color:#94a3b8; cursor:pointer; font-size:16px;">${ICONS.x}</button>
+          <button type="button" class="OutFox-modal-close" id="btn-close-ai-modal" style="background:transparent; border:none; color:#94a3b8; cursor:pointer; font-size:16px;">${ICONS.x}</button>
         </div>
 
         <!-- Priority-Ordered Models Chain -->
@@ -2087,7 +2182,7 @@ export function openAiEngineRouterModal({ aiModels = [], onSave }) {
 
         const result = await testAiConnection(item.provider, item.modelId, item.apiKey);
         if (result.success) {
-          btn.textContent = `✓ OK (${result.latency}ms)`;
+          btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.check} OK (${result.latency}ms)</span>`;
           btn.style.color = '#059669';
           btn.style.borderColor = '#10b981';
           setTimeout(() => {
@@ -2128,13 +2223,13 @@ function openConnectEmailModal({ onSuccess }) {
   backdrop.className = 'edit-msg-modal-backdrop';
 
   backdrop.innerHTML = `
-    <div class="waalaxy-modal-card" style="width: 480px; padding: 28px 32px; background:#fff; border-radius:16px; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
-      <div class="waalaxy-modal-head" style="display:flex; justify-content:space-between; align-items:flex-start;">
+    <div class="OutFox-modal-card" style="width: 480px; padding: 28px 32px; background:#fff; border-radius:16px; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
+      <div class="OutFox-modal-head" style="display:flex; justify-content:space-between; align-items:flex-start;">
         <div>
-          <h2 class="waalaxy-modal-title" style="font-size:18px; margin:0; font-weight:800; color:#14142b;">Connect a new email address</h2>
-          <p class="waalaxy-modal-subtitle" style="margin:4px 0 0; font-size:12px; color:#64748b;">Connect an email account to send personalized cold email campaigns.</p>
+          <h2 class="OutFox-modal-title" style="font-size:18px; margin:0; font-weight:800; color:#14142b;">Connect a new email address</h2>
+          <p class="OutFox-modal-subtitle" style="margin:4px 0 0; font-size:12px; color:#64748b;">Connect an email account to send personalized cold email campaigns.</p>
         </div>
-        <button type="button" class="waalaxy-modal-close" id="btn-close-connect-modal" style="background:transparent; border:none; color:#94a3b8; cursor:pointer;">${ICONS.x}</button>
+        <button type="button" class="OutFox-modal-close" id="btn-close-connect-modal" style="background:transparent; border:none; color:#94a3b8; cursor:pointer;">${ICONS.x}</button>
       </div>
 
       <div class="connect-options-list" style="margin-top:20px; display:flex; flex-direction:column; gap:12px;">

@@ -1,6 +1,6 @@
 /**
  * OutFox — Overview Data Visualizations Engine
- * ApexCharts-powered Neon Radial Bar, Waalaxy Conversion Funnel, and Weekly Area Chart.
+ * ApexCharts-powered Neon Radial Bar, OutFox Conversion Funnel, and Weekly Area Chart.
  */
 
 /**
@@ -66,7 +66,7 @@ export function renderDashboardCharts(container, stats = {}) {
     <div class="chart-card glass-card chart-card-full">
       <div class="chart-card-head">
         <div>
-          <div class="chart-title">Waalaxy Conversion Funnel</div>
+          <div class="chart-title">OutFox Conversion Funnel</div>
           <div class="chart-sub">End-to-end drop-off & response conversion analysis</div>
         </div>
         <span class="chart-badge chart-badge-mint">45.6% Acceptance</span>
@@ -115,6 +115,12 @@ export function renderDashboardCharts(container, stats = {}) {
       chart: {
         type: 'area',
         height: 220,
+        toolbar: { show: false },
+        animations: {
+          enabled: true,
+          easing: 'easeinout',
+          speed: 400,
+        },
       },
       series: [
         {
@@ -124,14 +130,40 @@ export function renderDashboardCharts(container, stats = {}) {
       ],
       xaxis: {
         categories: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        labels: {
+          hideOverlappingLabels: true,
+          rotate: 0,
+          style: {
+            colors: '#64748b',
+            fontSize: '11px',
+            fontFamily: 'inherit',
+          },
+        },
+        tickAmount: 7,
       },
-      colors: ['#5A45FF'],
+      tooltip: {
+        theme: 'light',
+        x: { show: true },
+        transition: {
+          duration: 180,
+        },
+      },
+      colors: ['#ff6b00'],
+      fill: {
+        type: 'gradient',
+        gradient: {
+          shadeIntensity: 1,
+          opacityFrom: 0.45,
+          opacityTo: 0.05,
+          stops: [0, 95, 100],
+        },
+      },
     });
     weeklyChart.render();
     container._activeCharts.push(weeklyChart);
   }
 
-  // 3. Waalaxy Conversion Funnel Bar
+  // 3. OutFox Conversion Funnel Bar
   const funnelEl = container.querySelector('#chart-funnel-bar');
   let funnelChart = null;
   if (funnelEl) {
@@ -139,10 +171,12 @@ export function renderDashboardCharts(container, stats = {}) {
       chart: {
         type: 'bar',
         height: 260,
+        toolbar: { show: false },
       },
       plotOptions: {
         bar: {
           horizontal: true,
+          borderRadius: 6,
         },
       },
       series: [
@@ -159,8 +193,22 @@ export function renderDashboardCharts(container, stats = {}) {
           'Connections Accepted',
           'Replies Received',
         ],
+        labels: {
+          hideOverlappingLabels: true,
+          style: {
+            colors: '#64748b',
+            fontSize: '11px',
+            fontFamily: 'inherit',
+          },
+        },
       },
-      colors: ['#5A45FF', '#00C2FF', '#00F298'],
+      tooltip: {
+        theme: 'light',
+        transition: {
+          duration: 180,
+        },
+      },
+      colors: ['#ff6b00', '#00C2FF', '#10b981'],
     });
     funnelChart.render();
     container._activeCharts.push(funnelChart);

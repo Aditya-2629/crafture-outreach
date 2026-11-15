@@ -1,12 +1,15 @@
 /**
  * OutFox — Official Google Workspace & Decoupled Gmail Integration.
- * Uses chrome.identity.launchWebAuthFlow with standard OAuth 2.0 Web Client.
+ * Uses chrome.identity.launchWebAuthFlow with standard OAuth 2.0 Web Client
+ * and permanent refresh_token via https://outfox-auth.crafture.workers.dev
  *
  * Supports single Google sign-in for Workspace (Sheets CRM, Drive Backups, Default Mailbox)
  * while allowing a decoupled outreach Gmail sender.
  */
 
 import { getConfig, setConfig } from '../lib/config.js';
+
+export const AUTH_WORKER_URL = 'https://outfox-auth.crafture.workers.dev';
 
 export const WORKSPACE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
@@ -25,44 +28,119 @@ export const STORAGE_KEYS = {
   OUTREACH_TOKEN: 'outfox_outreach_gmail_token',
 };
 
-async function getStoredToken(key) {
+export const DEFAULT_CLIENT_ID = '567155036878-t4bm7btrqe9joju5uqdmq9ml2funkdap.apps.googleusercontent.com';
+
+export async function getStoredToken(key) {
   return new Promise((resolve) => {
     chrome.storage.local.get([key], (res) => {
-      const item = res?.[key];
-      if (item && item.token && typeof item.expiresAt === 'number' && item.expiresAt > Date.now()) {
-        return resolve(item);
-      }
-      resolve(null);
+      resolve(res?.[key] || null);
     });
   });
 }
 
-async function setStoredToken(key, data) {
+export async function setStoredToken(key, data) {
   return new Promise((resolve) => {
     chrome.storage.local.set({ [key]: data }, resolve);
   });
 }
 
-export const DEFAULT_CLIENT_ID = '567155036878-t4bm7btrqe9joju5uqdmq9ml2funkdap.apps.googleusercontent.com';
-
-async function clearStoredToken(key) {
+export async function clearStoredToken(key) {
   return new Promise((resolve) => {
     chrome.storage.local.remove([key], resolve);
   });
 }
 
-async function launchGoogleOAuth({ scopes, interactive = false, prompt = 'select_account' }) {
+/**
+ * Exchanges Google OAuth 2.0 authorization code for access & refresh tokens
+ * via the public Cloudflare worker.
+ */
+export async function exchangeGoogleCode({ code, redirectUri }) {
+  const res = await fetch(`${AUTH_WORKER_URL}/google/exchange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, redirectUri }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(`Google code exchange failed (${res.status}): ${errBody.error || errBody.message || res.statusText}`);
+  }
+
+  const data = await res.json();
+  const accessToken = data.access_token || data.accessToken || data.token;
+  if (!accessToken) {
+    throw new Error('No access token returned from Google code exchange');
+  }
+
+  const refreshToken = data.refresh_token || data.refreshToken || null;
+  const expiresIn = parseInt(data.expires_in || data.expiresIn || '3600', 10);
+  const expiresAt = Date.now() + (expiresIn * 1000);
+
+  return {
+    accessToken,
+    token: accessToken,
+    refreshToken,
+    expiresAt,
+  };
+}
+
+/**
+ * Silently refreshes an expired Google access token using the stored refresh_token.
+ */
+export async function refreshGoogleToken(refreshToken) {
+  if (!refreshToken) throw new Error('No refresh token provided');
+
+  const res = await fetch(`${AUTH_WORKER_URL}/google/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken, refresh_token: refreshToken }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    const errorStr = `${errBody.error || ''} ${errBody.message || ''} ${res.statusText || ''}`.toLowerCase();
+    const err = new Error(`Google token refresh failed (${res.status}): ${errBody.error || errBody.message || res.statusText}`);
+    if (res.status === 400 && (errorStr.includes('invalid_grant') || errBody.error === 'invalid_grant')) {
+      err.isInvalidGrant = true;
+    }
+    throw err;
+  }
+
+  const data = await res.json();
+  const accessToken = data.access_token || data.accessToken || data.token;
+  if (!accessToken) {
+    throw new Error('No access token returned from Google token refresh');
+  }
+
+  const expiresIn = parseInt(data.expires_in || data.expiresIn || '3600', 10);
+  const expiresAt = Date.now() + (expiresIn * 1000);
+
+  return {
+    accessToken,
+    token: accessToken,
+    refreshToken: data.refresh_token || data.refreshToken || refreshToken,
+    expiresAt,
+  };
+}
+
+/**
+ * Launches Chrome Web Auth Flow with response_type=code and access_type=offline.
+ * Supports direct token callback fallback for backwards compatibility/testing.
+ */
+export async function launchGoogleOAuth({ scopes, interactive = false, prompt = 'consent' }) {
   const manifest = chrome.runtime.getManifest();
   const clientId = (manifest.oauth2 && manifest.oauth2.client_id) || DEFAULT_CLIENT_ID;
   const scopeStr = (scopes || []).join(' ');
 
   const redirectUri = typeof chrome.identity?.getRedirectURL === 'function'
     ? chrome.identity.getRedirectURL()
-    : `https://${chrome.runtime.id}.chromiumapp.org/`;
+    : `https://${chrome.runtime?.id || 'extension'}.chromiumapp.org/`;
 
   const params = new URLSearchParams({
     client_id: clientId,
-    response_type: 'token',
+    response_type: 'code',
+    access_type: 'offline',
+    include_granted_scopes: 'true',
     redirect_uri: redirectUri,
     scope: scopeStr,
   });
@@ -75,24 +153,37 @@ async function launchGoogleOAuth({ scopes, interactive = false, prompt = 'select
       return reject(new Error('chrome.identity API is not available.'));
     }
 
-    chrome.identity.launchWebAuthFlow({ url: authUrl, interactive }, (responseUrl) => {
+    chrome.identity.launchWebAuthFlow({ url: authUrl, interactive }, async (responseUrl) => {
       if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
       if (!responseUrl) return reject(new Error('Google sign-in was closed before completion.'));
 
       try {
         const urlObj = new URL(responseUrl);
         const hashParams = new URLSearchParams(urlObj.hash.replace(/^#/, ''));
-        const token = hashParams.get('access_token');
-        if (!token) {
-          const errorMsg = hashParams.get('error') || urlObj.searchParams.get('error') || 'No access token returned';
-          return reject(new Error(`Google OAuth notice: ${errorMsg}`));
+        const code = urlObj.searchParams.get('code') || hashParams.get('code');
+
+        if (code) {
+          const exchanged = await exchangeGoogleCode({ code, redirectUri });
+          return resolve(exchanged);
         }
-        const expiresIn = parseInt(hashParams.get('expires_in') || '3600', 10);
-        // Refresh token 60s before actual expiry
-        const expiresAt = Date.now() + Math.max(300, expiresIn - 60) * 1000;
-        resolve({ token, expiresAt });
+
+        // Direct token fallback (e.g. mock test URLs with #access_token=...)
+        const directToken = hashParams.get('access_token') || urlObj.searchParams.get('access_token');
+        if (directToken) {
+          const expiresIn = parseInt(hashParams.get('expires_in') || urlObj.searchParams.get('expires_in') || '3600', 10);
+          const expiresAt = Date.now() + (expiresIn * 1000);
+          return resolve({
+            accessToken: directToken,
+            token: directToken,
+            refreshToken: hashParams.get('refresh_token') || null,
+            expiresAt,
+          });
+        }
+
+        const errorMsg = hashParams.get('error') || urlObj.searchParams.get('error') || 'No authorization code returned';
+        return reject(new Error(`Google OAuth notice: ${errorMsg}`));
       } catch (err) {
-        reject(new Error(`Failed to parse OAuth redirect: ${err.message}`));
+        reject(new Error(err.message || 'Failed to handle OAuth redirect'));
       }
     });
   });
@@ -116,34 +207,89 @@ export async function removeCachedToken(token) {
 }
 
 /**
- * Retrieves valid Google Workspace token, executing silent or interactive OAuth flow if needed.
+ * Core token acquisition logic:
+ * 1. Checks valid cache (>60s before expiresAt).
+ * 2. If expired and refreshToken exists, silently refreshes via Cloudflare worker.
+ * 3. On invalid_grant, clears storage.
+ * 4. Interactive or fallback launches OAuth flow.
  */
-export async function getGoogleWorkspaceToken(interactive = false) {
-  const existing = await getStoredToken(STORAGE_KEYS.WORKSPACE_TOKEN);
-  if (existing?.token) return existing.token;
+async function acquireToken(key, scopes, interactive = false) {
+  const existing = await getStoredToken(key);
 
+  // 1. Valid cached token
+  if (existing && (existing.accessToken || existing.token)) {
+    const token = existing.accessToken || existing.token;
+    if (typeof existing.expiresAt === 'number' && Date.now() < existing.expiresAt - 60000) {
+      return token;
+    }
+
+    // 2. Silent refresh with refreshToken
+    if (existing.refreshToken) {
+      try {
+        const refreshed = await refreshGoogleToken(existing.refreshToken);
+        const updated = {
+          ...existing,
+          accessToken: refreshed.accessToken,
+          token: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken || existing.refreshToken,
+          expiresAt: refreshed.expiresAt,
+        };
+        await setStoredToken(key, updated);
+        return refreshed.accessToken;
+      } catch (refreshErr) {
+        if (refreshErr.isInvalidGrant) {
+          await clearStoredToken(key);
+          if (!interactive) {
+            throw new Error('User interaction required');
+          }
+        } else if (!interactive) {
+          throw refreshErr;
+        }
+      }
+    }
+  }
+
+  // 3. Needs OAuth authorization
   let authResult;
   try {
     authResult = await launchGoogleOAuth({
-      scopes: WORKSPACE_SCOPES,
+      scopes,
       interactive: Boolean(interactive),
-      prompt: interactive ? 'select_account' : '',
+      prompt: interactive ? 'consent' : '',
     });
   } catch (err) {
     const isInteractionRequired = /interaction required|user interaction/i.test(err?.message || '');
     if (!interactive && isInteractionRequired) {
       throw new Error('User interaction required');
     }
-    throw new Error('Google Workspace sign-in required: ' + (err.message || err));
+    const label = key === STORAGE_KEYS.WORKSPACE_TOKEN ? 'Google Workspace' : 'Outreach Gmail';
+    throw new Error(`${label} sign-in required: ${err.message || err}`);
   }
 
-  const email = await fetchUserEmail(authResult.token);
-  await setStoredToken(STORAGE_KEYS.WORKSPACE_TOKEN, {
-    token: authResult.token,
+  const token = authResult.accessToken || authResult.token;
+  let email = existing?.email;
+  try {
+    email = await fetchUserEmail(token);
+  } catch {
+    /* Keep existing email if userinfo lookup fails */
+  }
+
+  const tokenRecord = {
+    accessToken: token,
+    token,
+    refreshToken: authResult.refreshToken || existing?.refreshToken || null,
     expiresAt: authResult.expiresAt,
-    email,
-  });
-  return authResult.token;
+    email: email || '',
+  };
+  await setStoredToken(key, tokenRecord);
+  return token;
+}
+
+/**
+ * Retrieves valid Google Workspace token, executing silent or interactive OAuth flow if needed.
+ */
+export async function getGoogleWorkspaceToken(interactive = false) {
+  return acquireToken(STORAGE_KEYS.WORKSPACE_TOKEN, WORKSPACE_SCOPES, interactive);
 }
 
 /**
@@ -221,12 +367,16 @@ export async function connectGmail(interactive = true) {
   const authResult = await launchGoogleOAuth({
     scopes: OUTREACH_GMAIL_SCOPES,
     interactive,
-    prompt: 'select_account',
+    prompt: 'consent',
   });
-  const email = await fetchUserEmail(authResult.token);
+  const token = authResult.accessToken || authResult.token;
+  const email = await fetchUserEmail(token);
+  const existing = await getStoredToken(STORAGE_KEYS.OUTREACH_TOKEN);
 
   await setStoredToken(STORAGE_KEYS.OUTREACH_TOKEN, {
-    token: authResult.token,
+    accessToken: token,
+    token,
+    refreshToken: authResult.refreshToken || existing?.refreshToken || null,
     expiresAt: authResult.expiresAt,
     email,
   });
@@ -284,7 +434,7 @@ export async function switchOutreachMailbox({ mode, email } = {}) {
     });
   } else if (mode === 'custom_gmail') {
     const customRecord = await getStoredToken(STORAGE_KEYS.OUTREACH_TOKEN);
-    if (!customRecord?.token) {
+    if (!customRecord?.token && !customRecord?.accessToken) {
       // Prompt user to connect custom Gmail
       return connectGmail(true);
     }
@@ -321,23 +471,7 @@ export async function getGmailToken(interactive = false) {
   }
 
   if (mode === 'custom_gmail') {
-    const existing = await getStoredToken(STORAGE_KEYS.OUTREACH_TOKEN);
-    if (existing?.token) return existing.token;
-
-    let authResult;
-    try {
-      authResult = await launchGoogleOAuth({ scopes: OUTREACH_GMAIL_SCOPES, interactive: false, prompt: '' });
-    } catch (err) {
-      if (!interactive) throw new Error('Outreach Gmail sign-in required: ' + err.message);
-      authResult = await launchGoogleOAuth({ scopes: OUTREACH_GMAIL_SCOPES, interactive: true, prompt: 'select_account' });
-    }
-    const email = await fetchUserEmail(authResult.token);
-    await setStoredToken(STORAGE_KEYS.OUTREACH_TOKEN, {
-      token: authResult.token,
-      expiresAt: authResult.expiresAt,
-      email,
-    });
-    return authResult.token;
+    return acquireToken(STORAGE_KEYS.OUTREACH_TOKEN, OUTREACH_GMAIL_SCOPES, interactive);
   }
 
   // Default: workspace

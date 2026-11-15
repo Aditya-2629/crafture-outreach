@@ -284,9 +284,31 @@ export async function voyagerFetch(path, options = {}) {
 
   if (resp.status === 204) return { ok: true };
   if (!text) return { ok: true };
+
+  if (options.rawText || options.expectJson === false) {
+    let parsedBody = null;
+    try {
+      parsedBody = JSON.parse(text);
+    } catch {
+      /* not JSON */
+    }
+    return {
+      ok: true,
+      status: resp.status,
+      text,
+      ...(parsedBody && typeof parsedBody === 'object' ? { data: parsedBody } : {}),
+    };
+  }
+
   try {
     return JSON.parse(text);
-  } catch {
+  } catch (parseErr) {
+    // If the endpoint is an RSC action endpoint (e.g. /flagship-web/rsc-action/),
+    // LinkedIn returns a React Server Components flight stream instead of JSON.
+    // If resp.ok (200-299), treat it as a successful raw response.
+    if (path.includes('/rsc-action/') || (url && url.includes('/rsc-action/'))) {
+      return { ok: true, status: resp.status, text };
+    }
     throw new EngineError(ERROR.LINKEDIN_ERROR, 'LinkedIn returned a non-JSON response.');
   }
 }

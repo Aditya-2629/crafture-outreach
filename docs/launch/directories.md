@@ -69,9 +69,9 @@ Check that repo's legend for the correct emoji — 🏠 usually means "local ser
 ## Open-source and alternative directories — Phase 4
 
 - [ ] **AlternativeTo** — https://alternativeto.net/manage-app/ · list as an alternative to
-      Waalaxy, PhantomBuster, Dux-Soup, Expandi, Sales-Mind. Tags: open-source, self-hosted, free.
+      OutFox, PhantomBuster, Dux-Soup, Expandi, Sales-Mind. Tags: open-source, self-hosted, free.
 - [ ] **OpenSourceAlternative.to** — https://www.opensourcealternative.to/submit · proprietary
-      alternative: Waalaxy
+      alternative: OutFox
 - [ ] **Awesome Selfhosted** — https://github.com/awesome-selfhosted/awesome-selfhosted (PR, text
       below)
 - [ ] **Awesome Chrome Extensions** — a few competing lists; pick the maintained one
@@ -82,7 +82,7 @@ Check that repo's legend for the correct emoji — 🏠 usually means "local ser
 ### awesome-selfhosted PR
 
 Read `CONTRIBUTING.md` there first — the format is strict and PRs are rejected for whitespace.
-Under *Automation* or *Communication - Social Networks*, alphabetical:
+Under _Automation_ or _Communication - Social Networks_, alphabetical:
 
 ```markdown
 - [LinkedIn Toolkit](https://github.com/OpenRecruiterTools/linkedin-toolkit) - LinkedIn automation and data extraction that runs entirely in your own browser session, with hard rate caps and a human approval queue. Includes an MCP server for AI agents. `MIT` `Nodejs/Javascript`

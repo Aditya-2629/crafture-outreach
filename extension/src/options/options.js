@@ -93,7 +93,7 @@ export async function paintHeader(host) {
   }
   const status = envelope.data || {};
   render(host, [
-    status.loggedIn ? pill('LinkedIn ✓', 'good') : pill('signed out', 'bad'),
+    status.loggedIn ? pill('LinkedIn active', 'good') : pill('signed out', 'bad'),
     status.autopilot ? pill('Autopilot', 'warn') : pill('Copilot', 'info'),
   ]);
 }

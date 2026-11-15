@@ -22,7 +22,11 @@ two hours. Never argue with the ToS comment — agree with it, because it is cor
 > process bridges to it and exposes 39 MCP tools over stdio.
 >
 > ```json
-> { "mcpServers": { "linkedin-toolkit": { "command": "npx", "args": ["-y", "linkedin-toolkit-mcp"] } } }
+> {
+>   "mcpServers": {
+>     "linkedin-toolkit": { "command": "npx", "args": ["-y", "linkedin-toolkit-mcp"] }
+>   }
+> }
 > ```
 >
 > Then you can just ask:
@@ -40,7 +44,7 @@ two hours. Never argue with the ToS comment — agree with it, because it is cor
 > - **Resources and prompts, not just tools.** `linkedin://status`, `linkedin://queue`, plus
 >   `/source-candidates`, `/write-opener`, `/triage-inbox` as server-provided slash commands.
 > - **Six skills in the Agent Skills format** — sourcing, outreach writing, campaign running,
->   dossiers, reply triage, and a Research Pack skill that has Claude use its *own* web search for
+>   dossiers, reply triage, and a Research Pack skill that has Claude use its _own_ web search for
 >   news and talks and write them into the dossier with sources.
 > - **Structured errors.** `RATE_LIMITED` with `retryAfter`, `CHALLENGE_DETECTED` with
 >   instructions, `QUOTA_EXCEEDED` with the actual cap. The model explains what happened instead of
@@ -100,9 +104,9 @@ two hours. Never argue with the ToS comment — agree with it, because it is cor
 
 ## r/selfhosted
 
-**Title:** Self-hosted LinkedIn automation — replaces Waalaxy/PhantomBuster, no cloud, no subscription
+**Title:** Self-hosted LinkedIn automation — replaces OutFox/PhantomBuster, no cloud, no subscription
 
-> **What it replaces:** Waalaxy (~€70/mo), PhantomBuster (~$69/mo), Sales-Mind (~$99/mo). All three
+> **What it replaces:** OutFox (~€70/mo), PhantomBuster (~$69/mo), Sales-Mind (~$99/mo). All three
 > run your LinkedIn session on their infrastructure. This runs on yours.
 >
 > **What it is:** a Chrome MV3 extension plus a local Node process. `npx linkedin-toolkit-mcp`,
@@ -140,7 +144,7 @@ two hours. Never argue with the ToS comment — agree with it, because it is cor
 
 ## r/sales
 
-**Title:** Free open-source alternative to Waalaxy — runs on your own machine, no subscription
+**Title:** Free open-source alternative to OutFox — runs on your own machine, no subscription
 
 > I got tired of paying a monthly subscription for connection requests on a timer, so I built the
 > thing and gave it away.

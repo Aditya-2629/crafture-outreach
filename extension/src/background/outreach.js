@@ -54,11 +54,14 @@ const SENDERS = {
   },
   [ACTIONS.OUTREACH_FOLLOW]: async ({ publicId, profileUrn }) =>
     voyager.follow({ publicId, profileUrn: profileUrn || (await meteredProfileUrn(publicId)) }),
-  [ACTIONS.OUTREACH_INVITE]: async ({ publicId, note, profileUrn }) =>
+  [ACTIONS.OUTREACH_INVITE]: async ({ publicId, note, profileUrn, memberId, firstName, lastName }) =>
     voyager.sendInvite({
       publicId,
       note,
       profileUrn: profileUrn || (await meteredProfileUrn(publicId)),
+      memberId,
+      firstName,
+      lastName,
     }),
   // Resolving a urn from a public id is a profileView, so it is metered as a
   // visit on top of the message's own bucket.
@@ -98,10 +101,18 @@ const SENDERS = {
  */
 export async function send(action, params, origin = 'approved', context = {}) {
   const kind = QUOTA_KIND[action];
-  // Reserve, do not check-then-record: two concurrent sends that both read
-  // `daily = cap - 1` would otherwise both pass.
-  await quota.reserve(kind);
-  await quota.humanDelay();
+
+  if (kind === 'invite') {
+    // Only check quota upfront without bumping; record quota ONLY AFTER sendInvite succeeds,
+    // so failed 400 attempts and retries never burn quota!
+    await quota.check(kind);
+    await quota.humanDelay();
+  } else {
+    // Reserve, do not check-then-record: two concurrent sends that both read
+    // `daily = cap - 1` would otherwise both pass.
+    await quota.reserve(kind);
+    await quota.humanDelay();
+  }
 
   let sendResult;
   try {
@@ -122,11 +133,16 @@ export async function send(action, params, origin = 'approved', context = {}) {
         await quota.noteBucketBackoff('invite', 24 * 60 * 60 * 1000);
       } catch (_) {}
     }
-    // Release reserved quota on any client error (400) or invalid params
-    if (e && (e.code === ERROR.INVALID_PARAMS || e.status === 400 || (e.response && e.response.status === 400))) {
+    // Release reserved quota on any client error (400) or invalid params for reserved kinds
+    if (kind !== 'invite' && e && (e.code === ERROR.INVALID_PARAMS || e.status === 400 || (e.response && e.response.status === 400))) {
       await quota.release(kind);
     }
     throw e;
+  }
+
+  // Record quota for invite only AFTER successful send
+  if (kind === 'invite') {
+    await quota.record(kind);
   }
 
   const result = {
@@ -284,8 +300,14 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
     await new Promise((resolve) => setTimeout(resolve, delayMs));
 
     try {
-      // Pass allowDomFallback: false to individual calls so batch does not open multiple background tabs
-      const res = await voyager.withdrawInvitation(inv, { allowDomFallback: false });
+      // Pass invitation metadata into voyager.withdrawInvitation(invitationId, meta)
+      const res = await voyager.withdrawInvitation(inv.invitationId, {
+        profileUrn: inv.toMemberUrn || inv.profileUrn || '',
+        publicId: inv.toPublicId || inv.publicId || inv.vanityName || '',
+        firstName: inv.firstName || '',
+        lastName: inv.lastName || '',
+        allowDomFallback: false,
+      });
       withdrawnCount++;
       consecutiveFailures = 0;
       await logAction({
@@ -336,7 +358,10 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
         if (remainingBatch.length > 0) {
           try {
             usedMethod = withdrawnCount > 0 ? 'hybrid' : 'dom_fallback';
-            const domRes = await voyager.withdrawViaDomFallback(remainingBatch);
+            const domRes = await voyager.withdrawViaDomFallback(remainingBatch, {
+              olderThanDays,
+              maxCount: Math.max(1, maxCount - withdrawnCount),
+            });
 
             if (domRes && Array.isArray(domRes.results)) {
               for (const r of domRes.results) {
@@ -417,6 +442,298 @@ export const withdrawOldInvites = withdrawStaleInvites;
 
 register(ACTIONS.NETWORK_WITHDRAW_STALE_INVITES, (params, ctx) =>
   withdrawStaleInvites(params, ctx.origin),
+);
+
+export const WITHDRAW_CLEANUP_ALARM = 'outfox-withdraw-cleanup';
+export const WITHDRAW_CLEANUP_STORAGE_KEY = 'outfox_withdraw_cleanup_state';
+
+/**
+ * Retrieve current status of the auto-withdraw cleanup background scheduler.
+ */
+export async function getAutoWithdrawCleanupStatus() {
+  try {
+    const data = await chrome.storage.local.get([WITHDRAW_CLEANUP_STORAGE_KEY]);
+    return data?.[WITHDRAW_CLEANUP_STORAGE_KEY] || {
+      active: false,
+      olderThanDays: 14,
+      batchSize: 15,
+      cooldownMinutes: 15,
+      dailyCap: 75,
+      totalWithdrawnToday: 0,
+      today: new Date().toDateString(),
+      lastRunAt: null,
+      nextRunAt: null,
+      stoppedReason: null,
+    };
+  } catch {
+    return {
+      active: false,
+      olderThanDays: 14,
+      batchSize: 15,
+      cooldownMinutes: 15,
+      dailyCap: 75,
+      totalWithdrawnToday: 0,
+      today: new Date().toDateString(),
+      lastRunAt: null,
+      nextRunAt: null,
+      stoppedReason: null,
+    };
+  }
+}
+
+/**
+ * Stop and clear the auto-withdraw cleanup background alarm.
+ */
+export async function stopAutoWithdrawCleanup(reason = 'stopped_by_user') {
+  try {
+    chrome.alarms?.clear?.(WITHDRAW_CLEANUP_ALARM);
+  } catch {}
+  const state = await getAutoWithdrawCleanupStatus();
+  state.active = false;
+  state.stoppedReason = reason;
+  state.nextRunAt = null;
+  try {
+    await chrome.storage.local.set({ [WITHDRAW_CLEANUP_STORAGE_KEY]: state });
+  } catch {}
+  logDebug('info', 'AutoWithdrawCleanup', `[AutoWithdrawCleanup] Scheduler stopped: ${reason}`);
+  return state;
+}
+
+/**
+ * Start or resume the safe, alarm-based Auto-Clean All Stale Invites background scheduler.
+ * Runs an immediate first batch, then schedules alarms with cooldownMinutes interval.
+ */
+export async function startAutoWithdrawCleanup(params = {}, origin = 'popup') {
+  const olderThanDays = typeof params.olderThanDays === 'number' ? params.olderThanDays : 14;
+  const batchSize = typeof params.batchSize === 'number' ? Math.max(1, Math.min(50, params.batchSize)) : 15;
+  const cooldownMinutes = typeof params.cooldownMinutes === 'number' ? Math.max(1, params.cooldownMinutes) : 15;
+  const dailyCap = typeof params.dailyCap === 'number' ? Math.max(1, params.dailyCap) : 75;
+
+  const todayStr = new Date().toDateString();
+  const prevState = await getAutoWithdrawCleanupStatus();
+  const totalWithdrawnToday = prevState.today === todayStr ? (prevState.totalWithdrawnToday || 0) : 0;
+
+  if (totalWithdrawnToday >= dailyCap) {
+    const state = {
+      ...prevState,
+      active: false,
+      olderThanDays,
+      batchSize,
+      cooldownMinutes,
+      dailyCap,
+      totalWithdrawnToday,
+      today: todayStr,
+      stoppedReason: 'daily_cap_reached',
+      nextRunAt: null,
+    };
+    try {
+      chrome.alarms?.clear?.(WITHDRAW_CLEANUP_ALARM);
+      await chrome.storage.local.set({ [WITHDRAW_CLEANUP_STORAGE_KEY]: state });
+    } catch {}
+    logDebug('warn', 'AutoWithdrawCleanup', `[AutoWithdrawCleanup] Daily cap reached (${totalWithdrawnToday}/${dailyCap}). Cannot start.`);
+    return state;
+  }
+
+  // Run immediate first batch
+  const remainingForToday = Math.max(1, dailyCap - totalWithdrawnToday);
+  const currentBatchSize = Math.min(batchSize, remainingForToday);
+
+  let batchRes;
+  try {
+    batchRes = await withdrawStaleInvites({
+      olderThanDays,
+      maxCount: currentBatchSize,
+    }, origin);
+  } catch (err) {
+    const isFatal =
+      err?.code === ERROR.RATE_LIMITED ||
+      err?.code === ERROR.CHALLENGE_DETECTED ||
+      err?.code === ERROR.NOT_LOGGED_IN ||
+      /fail-fast|challenge|rate.limit|too.many.requests|unauthorized/i.test(err?.message || '');
+    if (isFatal) {
+      await stopAutoWithdrawCleanup(err?.message || 'error');
+    }
+    throw err;
+  }
+
+  const withdrawnNow = batchRes?.withdrawnCount ?? batchRes?.withdrawn ?? 0;
+  const newTotalWithdrawn = totalWithdrawnToday + withdrawnNow;
+  const now = Date.now();
+
+  const allCleared =
+    (batchRes?.staleCount === 0) ||
+    ((batchRes?.staleCount || 0) <= withdrawnNow) ||
+    (batchRes?.attempted === 0);
+
+  const capReached = newTotalWithdrawn >= dailyCap;
+
+  if (allCleared) {
+    const state = {
+      active: false,
+      olderThanDays,
+      batchSize,
+      cooldownMinutes,
+      dailyCap,
+      totalWithdrawnToday: newTotalWithdrawn,
+      today: todayStr,
+      lastRunAt: now,
+      nextRunAt: null,
+      stoppedReason: 'completed',
+      lastBatchResult: batchRes,
+    };
+    try {
+      chrome.alarms?.clear?.(WITHDRAW_CLEANUP_ALARM);
+      await chrome.storage.local.set({ [WITHDRAW_CLEANUP_STORAGE_KEY]: state });
+    } catch {}
+    logDebug('info', 'AutoWithdrawCleanup', `[AutoWithdrawCleanup] First batch completed. All stale invites cleared (${newTotalWithdrawn} total withdrawn today).`);
+    return state;
+  }
+
+  if (capReached) {
+    const state = {
+      active: false,
+      olderThanDays,
+      batchSize,
+      cooldownMinutes,
+      dailyCap,
+      totalWithdrawnToday: newTotalWithdrawn,
+      today: todayStr,
+      lastRunAt: now,
+      nextRunAt: null,
+      stoppedReason: 'daily_cap_reached',
+      lastBatchResult: batchRes,
+    };
+    try {
+      chrome.alarms?.clear?.(WITHDRAW_CLEANUP_ALARM);
+      await chrome.storage.local.set({ [WITHDRAW_CLEANUP_STORAGE_KEY]: state });
+    } catch {}
+    logDebug('info', 'AutoWithdrawCleanup', `[AutoWithdrawCleanup] Daily cap reached (${newTotalWithdrawn}/${dailyCap}). Stopping.`);
+    return state;
+  }
+
+  // Schedule drip alarm
+  try {
+    chrome.alarms?.create?.(WITHDRAW_CLEANUP_ALARM, { delayInMinutes: cooldownMinutes });
+  } catch {}
+
+  const state = {
+    active: true,
+    olderThanDays,
+    batchSize,
+    cooldownMinutes,
+    dailyCap,
+    totalWithdrawnToday: newTotalWithdrawn,
+    today: todayStr,
+    lastRunAt: now,
+    nextRunAt: now + cooldownMinutes * 60 * 1000,
+    stoppedReason: null,
+    lastBatchResult: batchRes,
+  };
+  try {
+    await chrome.storage.local.set({ [WITHDRAW_CLEANUP_STORAGE_KEY]: state });
+  } catch {}
+  logDebug('info', 'AutoWithdrawCleanup', `[AutoWithdrawCleanup] First batch done (${withdrawnNow} withdrawn). Scheduled next batch in ${cooldownMinutes}m.`);
+  return state;
+}
+
+/**
+ * Handle alarm fire for WITHDRAW_CLEANUP_ALARM.
+ */
+export async function runAutoWithdrawCleanupTick() {
+  const state = await getAutoWithdrawCleanupStatus();
+  if (!state.active) {
+    try {
+      chrome.alarms?.clear?.(WITHDRAW_CLEANUP_ALARM);
+    } catch {}
+    return;
+  }
+
+  const todayStr = new Date().toDateString();
+  if (state.today !== todayStr) {
+    state.today = todayStr;
+    state.totalWithdrawnToday = 0;
+  }
+
+  if (state.totalWithdrawnToday >= state.dailyCap) {
+    logDebug('info', 'AutoWithdrawCleanup', `[AutoWithdrawCleanup] Daily cap reached (${state.totalWithdrawnToday}/${state.dailyCap}). Stopping for today.`);
+    await stopAutoWithdrawCleanup('daily_cap_reached');
+    return;
+  }
+
+  const remainingForToday = Math.max(1, state.dailyCap - state.totalWithdrawnToday);
+  const currentBatchSize = Math.min(state.batchSize || 15, remainingForToday);
+
+  let batchRes;
+  try {
+    batchRes = await withdrawStaleInvites({
+      olderThanDays: state.olderThanDays || 14,
+      maxCount: currentBatchSize,
+    }, 'system');
+  } catch (err) {
+    logDebug('warn', 'AutoWithdrawCleanup', `[AutoWithdrawCleanup] Tick error: ${err.message}`);
+    const isFatal =
+      err?.code === ERROR.RATE_LIMITED ||
+      err?.code === ERROR.CHALLENGE_DETECTED ||
+      err?.code === ERROR.NOT_LOGGED_IN ||
+      /fail-fast|challenge|rate.limit|too.many.requests|unauthorized/i.test(err?.message || '');
+    if (isFatal) {
+      await stopAutoWithdrawCleanup(err?.message || 'error');
+    } else {
+      state.consecutiveFailures = (state.consecutiveFailures || 0) + 1;
+      if (state.consecutiveFailures >= 3) {
+        await stopAutoWithdrawCleanup(`aborted_after_3_failures: ${err.message}`);
+      } else {
+        try {
+          chrome.alarms?.create?.(WITHDRAW_CLEANUP_ALARM, { delayInMinutes: state.cooldownMinutes || 15 });
+        } catch {}
+        state.nextRunAt = Date.now() + (state.cooldownMinutes || 15) * 60 * 1000;
+        await chrome.storage.local.set({ [WITHDRAW_CLEANUP_STORAGE_KEY]: state });
+      }
+    }
+    return;
+  }
+
+  const withdrawnNow = batchRes?.withdrawnCount ?? batchRes?.withdrawn ?? 0;
+  state.totalWithdrawnToday = (state.totalWithdrawnToday || 0) + withdrawnNow;
+  state.lastRunAt = Date.now();
+  state.lastBatchResult = batchRes;
+  state.consecutiveFailures = 0;
+
+  const allCleared =
+    (batchRes?.staleCount === 0) ||
+    ((batchRes?.staleCount || 0) <= withdrawnNow) ||
+    (batchRes?.attempted === 0);
+
+  if (allCleared) {
+    logDebug('info', 'AutoWithdrawCleanup', `[AutoWithdrawCleanup] All stale invites cleared (${state.totalWithdrawnToday} total withdrawn). Finished.`);
+    await stopAutoWithdrawCleanup('completed');
+    return;
+  }
+
+  if (state.totalWithdrawnToday >= state.dailyCap) {
+    logDebug('info', 'AutoWithdrawCleanup', `[AutoWithdrawCleanup] Daily cap reached (${state.totalWithdrawnToday}/${state.dailyCap}). Stopping.`);
+    await stopAutoWithdrawCleanup('daily_cap_reached');
+    return;
+  }
+
+  try {
+    chrome.alarms?.create?.(WITHDRAW_CLEANUP_ALARM, { delayInMinutes: state.cooldownMinutes || 15 });
+  } catch {}
+  state.nextRunAt = Date.now() + (state.cooldownMinutes || 15) * 60 * 1000;
+  try {
+    await chrome.storage.local.set({ [WITHDRAW_CLEANUP_STORAGE_KEY]: state });
+  } catch {}
+  logDebug('info', 'AutoWithdrawCleanup', `[AutoWithdrawCleanup] Drip batch finished (${withdrawnNow} withdrawn). Next batch in ${state.cooldownMinutes}m.`);
+}
+
+register(ACTIONS.NETWORK_WITHDRAW_AUTO_START, (params, ctx) =>
+  startAutoWithdrawCleanup(params, ctx.origin),
+);
+register(ACTIONS.NETWORK_WITHDRAW_AUTO_STOP, () =>
+  stopAutoWithdrawCleanup('stopped_by_user'),
+);
+register(ACTIONS.NETWORK_WITHDRAW_AUTO_STATUS, () =>
+  getAutoWithdrawCleanupStatus(),
 );
 
 /* ================================================================== */

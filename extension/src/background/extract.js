@@ -361,7 +361,7 @@ register(ACTIONS.NETWORK_STATUS, async ({ publicIds }) => {
 });
 
 /* ================================================================== */
-/*  Auto-Import Triggers (Waalaxy Video Frames 18 & 26)                */
+/*  Auto-Import Triggers (OutFox Video Frames 18 & 26)                */
 /* ================================================================== */
 
 register(ACTIONS.IMPORT_PROFILE_VIEWERS, async () => {

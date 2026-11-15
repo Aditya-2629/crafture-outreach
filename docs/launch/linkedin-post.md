@@ -51,7 +51,7 @@ comments; do not make it the post.
 
 ## Variant B — the practical one
 
-> I built a free, open-source replacement for Waalaxy and PhantomBuster. It runs on your own
+> I built a free, open-source replacement for OutFox and PhantomBuster. It runs on your own
 > machine and it costs nothing.
 >
 > What it does:
@@ -78,7 +78,7 @@ comments; do not make it the post.
 > Human-paced delays. Business hours. A 14-day warm-up for new accounts. It stops dead on a
 > security challenge instead of retrying into a ban.
 >
-> Waalaxy Pro is about €70 a month. PhantomBuster starts around $69. This is £0 and MIT licensed.
+> OutFox Pro is about €70 a month. PhantomBuster starts around $69. This is £0 and MIT licensed.
 >
 > Link in the comments.
 >
@@ -98,7 +98,7 @@ comments; do not make it the post.
 > in a queue until you approve it. On a security challenge it stops, and there is no retry loop
 > anywhere in the codebase.
 >
-> Also a complete free replacement for Waalaxy and PhantomBuster if you never touch an agent.
+> Also a complete free replacement for OutFox and PhantomBuster if you never touch an agent.
 >
 > Open source, MIT, runs entirely on your machine. Link in the comments.
 
@@ -119,21 +119,25 @@ comments; do not make it the post.
 ## Replies to have ready
 
 **"Isn't this against LinkedIn's terms?"**
+
 > Yes, and the README says so in bold. Their User Agreement prohibits automated access. I would
 > rather say that clearly than bury it. The tool never bypasses a security measure — when LinkedIn
 > challenges, it stops and hands the problem to you.
 
 **"Will this get my account banned?"**
+
 > It can. Anything that automates LinkedIn can. What I have done is put hard caps in that nothing
 > can raise, pace everything like a human, ramp new accounts over two weeks, and stop dead on a
 > challenge. Start conservative — 10 to 15 invites a day — and never run two automation tools on
 > one account.
 
 **"I'm not technical, can I use it?"**
+
 > Right now: if you can unzip a file and paste a token, yes. If you cannot use a terminal at all,
 > not yet. A desktop app that removes that step is on the roadmap.
 
 **"Can it write the messages for me?"**
+
 > Your agent can, or a model key you paste into the extension — including a local one via Ollama,
 > in which case nothing leaves your machine at all. Either way the drafts queue for your approval,
 > and the skills forbid inventing anything that is not in the person's profile.

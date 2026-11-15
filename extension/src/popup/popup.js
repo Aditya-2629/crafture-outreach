@@ -1,5 +1,5 @@
 /**
- * OutFox — Authentic Waalaxy Quick Controller Popup Shell
+ * OutFox — Authentic OutFox Quick Controller Popup Shell
  * 340px controller showing daily progress ring and 1-click dashboard launcher.
  */
 

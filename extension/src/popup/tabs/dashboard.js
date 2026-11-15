@@ -32,7 +32,7 @@ function bridgePill(status, config) {
   const bridge = status.bridge || {};
   const enabled = bridge.enabled !== undefined ? bridge.enabled : Boolean(config.bridge?.enabled);
   if (!enabled) return pill('bridge off', 'neutral');
-  if (bridge.connected) return pill(`bridge ✓ :${bridge.port || config.bridge?.port}`, 'good');
+  if (bridge.connected) return pill(`bridge active :${bridge.port || config.bridge?.port}`, 'good');
   return pill('bridge not connected', 'warn');
 }
 

@@ -1,34 +1,36 @@
 /**
- * OutFox — Waalaxy In-UI Native Modal & Dialog System
+ * OutFox — OutFox In-UI Native Modal & Dialog System
  * Zero browser prompts/confirms/alerts — 100% native in-UI modals.
  */
+
+import { ICONS } from '../ui/icons.js';
 
 /**
  * Native Text Input Modal (Replaces window.prompt)
  */
 export function openUiPrompt({ title, subtitle = '', label = '', placeholder = '', defaultValue = '', confirmText = 'Confirm', confirmDanger = false }) {
   return new Promise((resolve) => {
-    const existing = document.getElementById('waalaxy-modal-backdrop');
+    const existing = document.getElementById('OutFox-modal-backdrop');
     if (existing) existing.remove();
 
     const backdrop = document.createElement('div');
-    backdrop.id = 'waalaxy-modal-backdrop';
-    backdrop.className = 'waalaxy-modal-backdrop';
+    backdrop.id = 'OutFox-modal-backdrop';
+    backdrop.className = 'OutFox-modal-backdrop';
 
     backdrop.innerHTML = `
-      <div class="waalaxy-modal-card">
-        <div class="waalaxy-modal-head">
-          <h3 class="waalaxy-modal-title">${title}</h3>
-          <button type="button" class="waalaxy-modal-close" id="modal-btn-close">✕</button>
+      <div class="OutFox-modal-card">
+        <div class="OutFox-modal-head">
+          <h3 class="OutFox-modal-title">${title}</h3>
+          <button type="button" class="OutFox-modal-close" id="modal-btn-close">${ICONS.x}</button>
         </div>
-        ${subtitle ? `<p class="waalaxy-modal-subtitle">${subtitle}</p>` : ''}
+        ${subtitle ? `<p class="OutFox-modal-subtitle">${subtitle}</p>` : ''}
         
-        <div class="waalaxy-modal-body">
-          ${label ? `<label class="waalaxy-input-label">${label}</label>` : ''}
-          <input type="text" id="waalaxy-modal-input" class="waalaxy-modal-input" placeholder="${placeholder}" value="${defaultValue}" />
+        <div class="OutFox-modal-body">
+          ${label ? `<label class="OutFox-input-label">${label}</label>` : ''}
+          <input type="text" id="OutFox-modal-input" class="OutFox-modal-input" placeholder="${placeholder}" value="${defaultValue}" />
         </div>
 
-        <div class="waalaxy-modal-footer">
+        <div class="OutFox-modal-footer">
           <button type="button" class="btn-modal-ghost" id="modal-btn-cancel">Cancel</button>
           <button type="button" class="btn-modal-primary ${confirmDanger ? 'btn-modal-danger' : ''}" id="modal-btn-confirm">
             ${confirmText}
@@ -39,7 +41,7 @@ export function openUiPrompt({ title, subtitle = '', label = '', placeholder = '
 
     document.body.appendChild(backdrop);
 
-    const input = backdrop.querySelector('#waalaxy-modal-input');
+    const input = backdrop.querySelector('#OutFox-modal-input');
     const closeBtn = backdrop.querySelector('#modal-btn-close');
     const cancelBtn = backdrop.querySelector('#modal-btn-cancel');
     const confirmBtn = backdrop.querySelector('#modal-btn-confirm');
@@ -90,25 +92,25 @@ export function openUiPrompt({ title, subtitle = '', label = '', placeholder = '
  */
 export function openUiConfirm({ title, message, confirmText = 'Confirm', confirmDanger = false }) {
   return new Promise((resolve) => {
-    const existing = document.getElementById('waalaxy-modal-backdrop');
+    const existing = document.getElementById('OutFox-modal-backdrop');
     if (existing) existing.remove();
 
     const backdrop = document.createElement('div');
-    backdrop.id = 'waalaxy-modal-backdrop';
-    backdrop.className = 'waalaxy-modal-backdrop';
+    backdrop.id = 'OutFox-modal-backdrop';
+    backdrop.className = 'OutFox-modal-backdrop';
 
     backdrop.innerHTML = `
-      <div class="waalaxy-modal-card">
-        <div class="waalaxy-modal-head">
-          <h3 class="waalaxy-modal-title">${title}</h3>
-          <button type="button" class="waalaxy-modal-close" id="modal-btn-close">✕</button>
+      <div class="OutFox-modal-card">
+        <div class="OutFox-modal-head">
+          <h3 class="OutFox-modal-title">${title}</h3>
+          <button type="button" class="OutFox-modal-close" id="modal-btn-close">${ICONS.x}</button>
         </div>
         
-        <div class="waalaxy-modal-body">
-          <div class="waalaxy-confirm-message">${message}</div>
+        <div class="OutFox-modal-body">
+          <div class="OutFox-confirm-message">${message}</div>
         </div>
 
-        <div class="waalaxy-modal-footer">
+        <div class="OutFox-modal-footer">
           <button type="button" class="btn-modal-ghost" id="modal-btn-cancel">Cancel</button>
           <button type="button" class="btn-modal-primary ${confirmDanger ? 'btn-modal-danger' : ''}" id="modal-btn-confirm">
             ${confirmText}
@@ -159,25 +161,25 @@ export function openUiConfirm({ title, message, confirmText = 'Confirm', confirm
  */
 export function openUiSelectModal({ title, label, options = [], confirmText = 'Move' }) {
   return new Promise((resolve) => {
-    const existing = document.getElementById('waalaxy-modal-backdrop');
+    const existing = document.getElementById('OutFox-modal-backdrop');
     if (existing) existing.remove();
 
     const backdrop = document.createElement('div');
-    backdrop.id = 'waalaxy-modal-backdrop';
-    backdrop.className = 'waalaxy-modal-backdrop';
+    backdrop.id = 'OutFox-modal-backdrop';
+    backdrop.className = 'OutFox-modal-backdrop';
 
     backdrop.innerHTML = `
-      <div class="waalaxy-modal-card">
-        <div class="waalaxy-modal-head">
-          <h3 class="waalaxy-modal-title">${title}</h3>
-          <button type="button" class="waalaxy-modal-close" id="modal-btn-close">✕</button>
+      <div class="OutFox-modal-card">
+        <div class="OutFox-modal-head">
+          <h3 class="OutFox-modal-title">${title}</h3>
+          <button type="button" class="OutFox-modal-close" id="modal-btn-close">${ICONS.x}</button>
         </div>
         
-        <div class="waalaxy-modal-body">
-          <label class="waalaxy-input-label">${label}</label>
-          <div class="waalaxy-select-list">
+        <div class="OutFox-modal-body">
+          <label class="OutFox-input-label">${label}</label>
+          <div class="OutFox-select-list">
             ${options.map((opt, i) => `
-              <label class="waalaxy-select-item">
+              <label class="OutFox-select-item">
                 <input type="radio" name="ui_select_opt" value="${opt.id}" ${i === 0 ? 'checked' : ''} />
                 <span class="select-item-name">${opt.name}</span>
                 <span class="select-item-count">${opt.count !== undefined ? `${opt.count} leads` : ''}</span>
@@ -186,7 +188,7 @@ export function openUiSelectModal({ title, label, options = [], confirmText = 'M
           </div>
         </div>
 
-        <div class="waalaxy-modal-footer">
+        <div class="OutFox-modal-footer">
           <button type="button" class="btn-modal-ghost" id="modal-btn-cancel">Cancel</button>
           <button type="button" class="btn-modal-primary" id="modal-btn-confirm">${confirmText}</button>
         </div>
@@ -294,12 +296,12 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
   }
 
   return new Promise((resolve) => {
-    const existing = document.getElementById('waalaxy-timeline-modal-backdrop');
+    const existing = document.getElementById('OutFox-timeline-modal-backdrop');
     if (existing) existing.remove();
 
     const backdrop = document.createElement('div');
-    backdrop.id = 'waalaxy-timeline-modal-backdrop';
-    backdrop.className = 'waalaxy-modal-backdrop';
+    backdrop.id = 'OutFox-timeline-modal-backdrop';
+    backdrop.className = 'OutFox-modal-backdrop';
 
     const now = Date.now();
     const status = String(targetLead.status || 'active').toLowerCase();
@@ -322,11 +324,11 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
     }
 
     const nextRun = targetLead.nextRunAt || targetLead.nextAt || 0;
-    let countdownText = '⚡ Due now (ready for next tick)';
+    let countdownText = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.lightning} Due now (ready for next tick)</span>`;
     if (status === 'completed' || status === 'done' || status === 'accepted') {
-      countdownText = '✓ Sequence finished';
+      countdownText = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.check} Sequence finished</span>`;
     } else if (status === 'replied') {
-      countdownText = '💬 Replied — Stopped on reply';
+      countdownText = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.message} Replied — Stopped on reply</span>`;
     } else if (nextRun > now) {
       const diffMs = nextRun - now;
       const totalSec = Math.floor(diffMs / 1000);
@@ -335,7 +337,7 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
       const secs = totalSec % 60;
       const timeStr = hrs > 0 ? `${hrs}h ${mins}m` : mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
       const resumesAt = new Date(nextRun).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      countdownText = `⏳ In ${timeStr} (at ${resumesAt})`;
+      countdownText = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.clock} In ${timeStr} (at ${resumesAt})</span>`;
     }
 
     let historyItems = Array.isArray(targetLead.history) && targetLead.history.length > 0
@@ -367,25 +369,25 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
 
     const getStepIcon = (h) => {
       const s = String(h.step || '').toLowerCase();
-      if (s === 'enrolled') return '📥';
-      if (s === 'view' || s === 'visit') return '👁️';
-      if (s === 'invite') return '🤝';
-      if (s === 'accepted') return '🎉';
-      if (s === 'message') return '💬';
-      if (s === 'email') return '✉️';
-      if (s === 'replied' || s === 'reply') return '🗣️';
-      if (s === 'retrying') return '🔁';
-      if (s === 'completed' || s === 'finish') return '🏁';
-      if (h.status === 'failed') return '⚠️';
-      if (h.status === 'quota_postponed') return '📅';
-      if (h.status === 'cooldown_postponed') return '🛡️';
-      return '⚡';
+      if (s === 'enrolled') return ICONS.download;
+      if (s === 'view' || s === 'visit') return ICONS.visit;
+      if (s === 'invite') return ICONS.invitation;
+      if (s === 'accepted') return ICONS.check;
+      if (s === 'message') return ICONS.message;
+      if (s === 'email') return ICONS.email;
+      if (s === 'replied' || s === 'reply') return ICONS.reply;
+      if (s === 'retrying') return ICONS.refresh;
+      if (s === 'completed' || s === 'finish') return ICONS.check;
+      if (h.status === 'failed') return ICONS.warning;
+      if (h.status === 'quota_postponed') return ICONS.calendar;
+      if (h.status === 'cooldown_postponed') return ICONS.shield;
+      return ICONS.lightning;
     };
 
     const initial = (targetLead.fullName?.[0] || targetLead.publicId?.[0] || 'L').toUpperCase();
 
     backdrop.innerHTML = `
-      <div class="waalaxy-modal-card" style="max-width: 580px; width: 92%; max-height: 88vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 16px; border: 1px solid #fed7aa; box-shadow: 0 20px 40px rgba(255, 107, 0, 0.12), 0 1px 3px rgba(0,0,0,0.1);">
+      <div class="OutFox-modal-card" style="max-width: 580px; width: 92%; max-height: 88vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 16px; border: 1px solid #fed7aa; box-shadow: 0 20px 40px rgba(255, 107, 0, 0.12), 0 1px 3px rgba(0,0,0,0.1);">
         
         <!-- Header -->
         <div style="background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); padding: 20px 24px; border-bottom: 1px solid #fed7aa; display: flex; justify-content: space-between; align-items: flex-start;">
@@ -405,7 +407,7 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
               </div>
             </div>
           </div>
-          <button type="button" class="waalaxy-modal-close" id="modal-btn-close" style="font-size: 18px; color: #64748b; background: transparent; border: none; cursor: pointer; padding: 4px;">✕</button>
+          <button type="button" class="OutFox-modal-close" id="modal-btn-close" style="color: #64748b; background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;">${ICONS.x}</button>
         </div>
 
         <!-- Body Scrollable -->
@@ -423,7 +425,7 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
             </div>
             ${targetLead.lastError ? `
               <div style="margin-top: 12px; padding: 10px 12px; background: #fff1f2; border: 1px solid #fecdd3; border-radius: 8px; font-size: 12px; color: #be123c; display: flex; gap: 8px; align-items: flex-start;">
-                <span>⚠️</span>
+                <span style="display:inline-flex; color:#be123c;">${ICONS.warning}</span>
                 <div>
                   <div style="font-weight: 700; margin-bottom: 2px;">Notice / Last Reason:</div>
                   <div>${targetLead.lastError}</div>

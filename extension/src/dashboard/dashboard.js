@@ -1,10 +1,11 @@
 /**
- * OutFox — Authentic Waalaxy Dashboard Controller
+ * OutFox — Authentic OutFox Dashboard Controller
  * Wires sidebar navigation, view mounting, live account status, and toasts.
  */
 
 import { call } from '../ui/api.js';
 import { ACTIONS } from '../lib/actions.js';
+import { ICONS } from '../ui/icons.js';
 import { renderHomeView } from './home-view.js';
 import { renderProspectsView } from './prospects-view.js';
 import { renderCampaignsView } from './campaigns-view.js';
@@ -20,7 +21,7 @@ let currentRenderToken = 0;
 let currentViewContext = null;
 
 /**
- * Display a floating modern Waalaxy toast notification
+ * Display a floating modern OutFox toast notification
  * @param {string} message
  * @param {'success'|'error'|'warn'|'info'} type
  */
@@ -37,8 +38,8 @@ export function showToast(message, type = 'info') {
     toast.style.borderColor = 'transparent';
   }
 
-  const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : type === 'warn' ? '⚠' : 'ℹ';
-  toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+  const icon = type === 'success' ? ICONS.check : type === 'error' ? ICONS.x : type === 'warn' ? ICONS.warning : ICONS.info;
+  toast.innerHTML = `<span style="display:inline-flex; align-items:center;">${icon}</span> <span>${message}</span>`;
   container.appendChild(toast);
 
   setTimeout(() => {
@@ -60,6 +61,11 @@ export async function switchView(viewId, options = {}) {
 
   // 0. Increment render token to immediately invalidate any in-flight rendering from prior views
   const token = ++currentRenderToken;
+
+  // View transition trigger
+  appRoot.classList.remove('view-enter-active');
+  void appRoot.offsetWidth;
+  appRoot.classList.add('view-enter-active');
 
   // 1. Always invoke activeViewCleanup from previous view to destroy intervals and listeners
   if (typeof activeViewCleanup === 'function') {
@@ -172,7 +178,7 @@ async function syncUserProfile() {
       const topTitle = document.getElementById('greeting-title');
       if (topTitle) topTitle.textContent = `Hello ${name.split(/[\s-_]+/)[0] || 'Member'}`;
       const topUser = document.querySelector('.user-pill span');
-      if (topUser) topUser.textContent = `${name} ⌵`;
+      if (topUser) topUser.innerHTML = `${name} <span style="display:inline-flex; align-items:center; margin-left:4px;">${ICONS.chevronDown}</span>`;
       const miniAv = document.querySelector('.user-avatar-mini');
       if (miniAv) miniAv.textContent = initials || 'LI';
       const sideAv = document.querySelector('.profile-avatar');
@@ -394,10 +400,10 @@ function initTerminalDrawer() {
     const text = inMemoryLogs.map(formatLogText).join('\n');
     try {
       await navigator.clipboard.writeText(text || 'No logs available.');
-      const orig = copyBtn.textContent;
-      copyBtn.textContent = '✓ Copied!';
+      const orig = copyBtn.innerHTML;
+      copyBtn.innerHTML = `${ICONS.check} Copied!`;
       setTimeout(() => {
-        copyBtn.textContent = orig;
+        copyBtn.innerHTML = orig;
       }, 1800);
       showToast('Engine logs copied to clipboard!', 'success');
     } catch {

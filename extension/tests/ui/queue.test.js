@@ -200,7 +200,7 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
     trigger.click();
     await flush();
 
-    const modal = document.querySelector('#waalaxy-timeline-modal-backdrop');
+    const modal = document.querySelector('#OutFox-timeline-modal-backdrop');
     expect(modal).not.toBeNull();
     expect(modal.textContent).toContain('Ada Lovelace');
     expect(modal.textContent).toContain('Timeline Test Campaign');
@@ -211,7 +211,7 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
     // Close modal
     const closeBtn = modal.querySelector('#modal-btn-close');
     closeBtn.click();
-    expect(document.querySelector('#waalaxy-timeline-modal-backdrop')).toBeNull();
+    expect(document.querySelector('#OutFox-timeline-modal-backdrop')).toBeNull();
   });
 
   it('handles Reset Quotas and Update activity buttons with toasts and button disabling', async () => {
@@ -295,7 +295,7 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
     await renderQueueView(container, testCtx);
     await flush();
 
-    expect(container.querySelector('.waalaxy-queue-layout')).not.toBeNull();
+    expect(container.querySelector('.OutFox-queue-layout')).not.toBeNull();
 
     // Now simulate user navigated away: mark stale and set container content to Home
     isStaleState = true;
@@ -310,6 +310,6 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
 
     // Verify container was NOT overwritten by Queue!
     expect(container.querySelector('#home-view-marker')).not.toBeNull();
-    expect(container.querySelector('.waalaxy-queue-layout')).toBeNull();
+    expect(container.querySelector('.OutFox-queue-layout')).toBeNull();
   });
 });

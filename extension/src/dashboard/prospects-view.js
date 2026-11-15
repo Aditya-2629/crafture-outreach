@@ -1,5 +1,5 @@
 /**
- * OutFox — Waalaxy Dynamic Prospects CRM (Phase A, B & C)
+ * OutFox — OutFox Dynamic Prospects CRM (Phase A, B & C)
  * 100% Real Storage Data · Zero Mock Data · 5 Real Filters · Column Toggle
  * Floating Bulk Actions Bar · Right Slide-in "Import Prospects" Drawer
  */
@@ -203,7 +203,7 @@ export async function renderProspectsView(container, ctx = {}) {
   let selectedIds = new Set();
 
   // Initialize Slide-in Import Drawer
-  const importDrawer = mountWaalaxyImportDrawer(container, () => {
+  const importDrawer = mountOutFoxImportDrawer(container, () => {
     renderProspectsView(container, ctx);
   }, ctx);
 
@@ -352,7 +352,7 @@ export async function renderProspectsView(container, ctx = {}) {
 
         <!-- Right Main CRM Area -->
         <main class="crm-main-area" style="flex:1; display:flex; flex-direction:column; gap:16px;">
-          <!-- Floating Bulk Action Bar (Waalaxy Screenshot 1) -->
+          <!-- Floating Bulk Action Bar (OutFox Screenshot 1) -->
           <div id="floating-bulk-bar" class="floating-bulk-bar" style="display:${selectedIds.size > 0 ? 'flex' : 'none'}; transform:${selectedIds.size > 0 ? 'translateY(0)' : 'translateY(-20px)'}; opacity:${selectedIds.size > 0 ? '1' : '0'}; transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1); position:sticky; top:12px; z-index:900; background:#FFFFFF; border:1px solid rgba(20,20,43,0.12); border-radius:14px; padding:10px 18px; box-shadow:0 12px 35px rgba(37,79,229,0.12); align-items:center; justify-content:space-between; margin-bottom:8px;">
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
               <button type="button" id="btn-deselect-all" class="bulk-deselect-btn" title="Deselect all">
@@ -419,7 +419,7 @@ export async function renderProspectsView(container, ctx = {}) {
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
                 <div>
                   <h3 style="margin:0; font-size:14px; font-weight:700; color:#14142b; display:flex; align-items:center; gap:8px;">
-                    🏢 Blocked Companies & Domains
+                    <span style="display:inline-flex; align-items:center; gap:6px;">${ICONS.building} Blocked Companies & Domains</span>
                     <span style="font-size:11px; background:#fff7ed; color:#ff6b00; padding:2px 8px; border-radius:12px; font-weight:700;" id="badge-company-count">${companyBlacklist.length} blocked</span>
                   </h3>
                   <p style="margin:4px 0 0 0; font-size:12px; color:#64748b;">Prospects matching these company names or domains will be automatically skipped across all campaigns.</p>
@@ -428,8 +428,8 @@ export async function renderProspectsView(container, ctx = {}) {
 
               <div style="display:flex; gap:10px; margin-bottom:12px; align-items:center;">
                 <input type="text" id="input-block-company" placeholder="e.g. tcs, infosys.com, accenture" style="flex:1; max-width:360px; padding:8px 14px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; outline:none;" />
-                <button type="button" id="btn-add-block-company" class="btn btn-sm" style="padding:8px 16px; font-size:12.5px; background:#ff6b00; color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer;">
-                  🏢 Block Company
+                <button type="button" id="btn-add-block-company" class="btn btn-sm" style="padding:8px 16px; font-size:12.5px; background:#ff6b00; color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                  ${ICONS.building} Block Company
                 </button>
               </div>
 
@@ -439,7 +439,7 @@ export async function renderProspectsView(container, ctx = {}) {
                 ` : companyBlacklist.map((c) => `
                   <span class="company-chip" style="display:inline-flex; align-items:center; gap:6px; background:#fff7ed; border:1px solid #ffedd5; color:#c2410c; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:600;">
                     <span>${c}</span>
-                    <button type="button" class="btn-remove-company-chip" data-company="${encodeURIComponent(c)}" style="border:none; background:transparent; color:#ea580c; cursor:pointer; font-size:12px; font-weight:700; padding:0 2px; line-height:1;" title="Unblock ${c}">✕</button>
+                    <button type="button" class="btn-remove-company-chip" data-company="${encodeURIComponent(c)}" style="border:none; background:transparent; color:#ea580c; cursor:pointer; font-size:12px; font-weight:700; padding:0 2px; line-height:1; display:inline-flex; align-items:center;" title="Unblock ${c}">${ICONS.x}</button>
                   </span>
                 `).join('')}
               </div>
@@ -548,12 +548,12 @@ export async function renderProspectsView(container, ctx = {}) {
                       ${storedColumns.email ? `<td style="padding:12px 16px; color:#6e7191; vertical-align:middle;">${p.email || '<span style="color:#a0a3bd;">-</span>'}</td>` : ''}
                       ${storedColumns.status ? `<td style="padding:12px 16px; vertical-align:middle;">${getStatusBadge(p.status)}</td>` : ''}
                       <td style="padding:12px 20px; text-align:right; vertical-align:middle; white-space:nowrap;">
-                        <button class="btn-quick-blacklist" data-id="${p.publicId}" style="border:none; background:transparent; color:#a0a3bd; cursor:pointer; font-size:12px; margin-right:8px;" title="Toggle Blacklist">
-                          ${blacklist.has(p.publicId) ? 'Unblock ↺' : `${ICONS.ban} Blacklist`}
+                        <button class="btn-quick-blacklist" data-id="${p.publicId}" style="border:none; background:transparent; color:#a0a3bd; cursor:pointer; font-size:12px; margin-right:8px; display:inline-flex; align-items:center; gap:4px;" title="Toggle Blacklist">
+                          ${blacklist.has(p.publicId) ? `<span style="display:inline-flex; align-items:center; gap:4px;">Unblock ${ICONS.refresh}</span>` : `${ICONS.ban} Blacklist`}
                         </button>
                         ${p.company ? `
-                          <button class="btn-quick-block-co" data-company="${encodeURIComponent(p.company)}" style="border:none; background:transparent; color:#ea580c; cursor:pointer; font-size:12px; font-weight:600;" title="Block Entire Company (${p.company})">
-                            🏢 Block Co.
+                          <button class="btn-quick-block-co" data-company="${encodeURIComponent(p.company)}" style="border:none; background:transparent; color:#ea580c; cursor:pointer; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" title="Block Entire Company (${p.company})">
+                            ${ICONS.building} Block Co.
                           </button>
                         ` : ''}
                       </td>
@@ -1158,7 +1158,7 @@ export async function renderProspectsView(container, ctx = {}) {
       try {
         const res = await call(ACTIONS.COMPANY_BLACKLIST_ADD, { company: val });
         companyBlacklist = res?.companies || [...companyBlacklist, val];
-        ctx.showToast?.(`🏢 Company "${val}" added to exclusion list!`, 'success');
+        ctx.showToast?.(`Company "${val}" added to exclusion list!`, 'success');
         paint();
       } catch (e) {
         ctx.showToast?.(`Error blocking company: ${e.message}`, 'error');
@@ -1194,7 +1194,7 @@ export async function renderProspectsView(container, ctx = {}) {
         try {
           const res = await call(ACTIONS.COMPANY_BLACKLIST_ADD, { company: comp });
           companyBlacklist = res?.companies || [...companyBlacklist, comp];
-          ctx.showToast?.(`🏢 Blocked "${comp}" across all campaigns!`, 'success');
+          ctx.showToast?.(`Blocked "${comp}" across all campaigns!`, 'success');
           paint();
         } catch (e) {
           ctx.showToast?.(`Error blocking company: ${e.message}`, 'error');
@@ -1221,13 +1221,13 @@ export async function renderProspectsView(container, ctx = {}) {
 }
 
 /**
- * Waalaxy 3-Screen Dynamic Import Drawer with  Settings Toggle
+ * OutFox 3-Screen Dynamic Import Drawer with  Settings Toggle
  * Views:
  *   - 'menu'    : Classic & Interest signal cards + Destination list selector
  *   - 'form'    : Dynamic URL/Dropdown input + Limit count +  Gear options trigger
  *   - 'options' : Move duplicates & Clean import toggles
  */
-function mountWaalaxyImportDrawer(container, onImportSuccess, ctx = {}) {
+function mountOutFoxImportDrawer(container, onImportSuccess, ctx = {}) {
   let drawerState = 'menu'; // 'menu' | 'form' | 'options'
   let currentMethod = null; // 'search' | 'commenters' | 'reactors' | 'groups' | 'events' | 'csv'
 
@@ -1273,11 +1273,11 @@ function mountWaalaxyImportDrawer(container, onImportSuccess, ctx = {}) {
   };
 
   // Clean up any previously attached drawer
-  const oldHost = document.getElementById('waalaxy-import-drawer-root') || document.getElementById('import-drawer-wrapper');
+  const oldHost = document.getElementById('OutFox-import-drawer-root') || document.getElementById('import-drawer-wrapper');
   if (oldHost) oldHost.remove();
 
   const host = document.createElement('div');
-  host.id = 'waalaxy-import-drawer-root';
+  host.id = 'OutFox-import-drawer-root';
   document.body.appendChild(host);
 
   function renderDrawer() {
@@ -1288,7 +1288,7 @@ function mountWaalaxyImportDrawer(container, onImportSuccess, ctx = {}) {
       <!-- Backdrop Overlay -->
       <div id="drawer-backdrop" class="drawer-backdrop" style="position:fixed; inset:0; background:rgba(20,20,43,0.35); backdrop-filter:blur(4px); z-index:9998; opacity:1; transition:opacity 0.25s ease;"></div>
 
-      <!-- Right Slide-in Drawer (Waalaxy Screenshots) -->
+      <!-- Right Slide-in Drawer (OutFox Screenshots) -->
       <aside class="import-drawer" style="position:fixed; top:0; right:0; width:480px; height:100vh; background:#FFFFFF; box-shadow:-10px 0 35px rgba(0,0,0,0.15); z-index:9999; display:flex; flex-direction:column; box-sizing:border-box; animation:drawerSlideIn 0.25s cubic-bezier(0.16,1,0.3,1);">
         
         ${
@@ -1656,4 +1656,4 @@ function mountWaalaxyImportDrawer(container, onImportSuccess, ctx = {}) {
   return { openDrawer, closeDrawer };
 }
 
-const mountImportDrawer = mountWaalaxyImportDrawer;
+const mountImportDrawer = mountOutFoxImportDrawer;

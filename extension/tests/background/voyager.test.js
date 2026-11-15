@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as v from '../../src/background/voyager.js';
 import { ERROR } from '../../src/lib/actions.js';
-import { routeBackground, seedSession, status, stubFetch } from '../helpers/net.js';
+import { landed, routeBackground, seedSession, status, stubFetch } from '../helpers/net.js';
 
 import profileView from '../fixtures/voyager/profileView.json';
 import profileFull from '../fixtures/voyager/profileFull.json';
@@ -855,6 +855,7 @@ describe('sent invitations', () => {
     expect(item.profileUrn).toBeTruthy();
     expect(item.firstName).toBeTruthy();
     expect(item.lastName).toBeTruthy();
+    expect(item.fullName).toBe(`${item.firstName} ${item.lastName}`.trim());
     expect(item.vanityName).toBe(item.publicId);
   });
 
@@ -884,28 +885,29 @@ describe('sent invitations', () => {
 /* ================================================================== */
 
 describe('withdraw invitation', () => {
-  it('calls SDUI addaWithdrawInvitation endpoint with full payload when withdrawing via invite object', async () => {
+  it('calls SDUI addaWithdrawInvitation endpoint with exact requestedArguments when withdrawing via invitationId and meta', async () => {
     net.push({ ok: true });
-    await v.withdrawInvitation({
-      invitationId: '7504239478362759168',
-      profileUrn: 'ACoAA0106FIXTURE',
+    await v.withdrawInvitation('7504239478362759168', {
+      profileUrn: 'urn:li:fsd_profile:ACoAA0106FIXTURE',
       firstName: 'Ada',
       lastName: 'Lovelace',
-      vanityName: 'adalovelace',
+      publicId: 'adalovelace',
     });
 
     expect(net.calls).toHaveLength(1);
     const call = net.calls[0];
     expect(call.method).toBe('POST');
     expect(call.url).toContain('/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation');
-    expect(call.json.clientArguments.screenId).toBe('com.linkedin.sdui.flagshipnav.mynetwork.invitations.WithdrawConfirmationDialog');
-    expect(call.json.clientArguments.payload.invitationUrn).toEqual({ invitationId: '7504239478362759168' });
-    expect(call.json.clientArguments.payload.profileUrn).toBe('ACoAA0106FIXTURE');
-    expect(call.json.clientArguments.payload.firstName).toBe('Ada');
-    expect(call.json.clientArguments.payload.lastName).toBe('Lovelace');
-    expect(call.json.clientArguments.payload.inviteeVanityName).toBe('adalovelace');
-    expect(call.json.clientArguments.payload.trackingActionType).toBe('INVITATION_MANAGER_WITHDRAW');
-    expect(call.json.isModal).toBe(true);
+    expect(call.json.requestId).toBe('com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation');
+    expect(call.json.requestedArguments.screenId).toBe('com.linkedin.sdui.flagshipnav.mynetwork.invitations.WithdrawConfirmationDialog');
+    expect(call.json.requestedArguments.payload.invitationUrn).toEqual({ invitationId: '7504239478362759168' });
+    expect(call.json.requestedArguments.payload.profileUrn).toBe('ACoAA0106FIXTURE');
+    expect(call.json.requestedArguments.payload.firstName).toBe('Ada');
+    expect(call.json.requestedArguments.payload.lastName).toBe('Lovelace');
+    expect(call.json.requestedArguments.payload.inviteeVanityName).toBe('adalovelace');
+    expect(call.json.requestedArguments.payload.inviterActionType).toBe('InviterActionType_WITHDRAW');
+    expect(call.json.requestedArguments.payload.invitationType).toBe('GenericInvitationType_CONNECTION');
+    expect(call.json.serverRequest.requestId).toBe('com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation');
   });
 
   it('accepts a raw string or urn as invitationId', async () => {
@@ -914,7 +916,58 @@ describe('withdraw invitation', () => {
 
     expect(net.calls).toHaveLength(1);
     const call = net.calls[0];
-    expect(call.json.clientArguments.payload.invitationUrn).toEqual({ invitationId: '7504239478362759168' });
+    expect(call.json.requestedArguments.payload.invitationUrn).toEqual({ invitationId: '7504239478362759168' });
+  });
+
+  it('treats 200 OK with non-JSON RSC stream response as successful sdui_api', async () => {
+    net.push(
+      landed({
+        status: 200,
+        contentType: 'text/x-component',
+        text: '1:I["$@1",["foo"]]\n2:{"data":{"result":"ok"}}\n',
+      }),
+    );
+    const res = await v.withdrawInvitation('7504239478362759168');
+    expect(res.ok).toBe(true);
+    expect(res.status).toBe(200);
+    expect(res.method).toBe('sdui_api');
+  });
+
+  it('triggers DOM fallback when SDUI returns 200 OK but body explicitly indicates an error', async () => {
+    net.push(
+      landed({
+        status: 200,
+        contentType: 'text/x-component',
+        text: '0:{"actionStatus":"FAILED","errorMessage":"Invitation expired"}\n',
+      }),
+    );
+    const origTabs = chrome.tabs;
+    const origScripting = chrome.scripting;
+
+    chrome.tabs = {
+      create: vi.fn().mockResolvedValue({ id: 99 }),
+      remove: vi.fn().mockResolvedValue(true),
+      get: vi.fn().mockResolvedValue({ id: 99, status: 'complete' }),
+      onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+    };
+    chrome.scripting = {
+      executeScript: vi.fn().mockResolvedValue([
+        { result: [{ invitationId: '7504239478362759168', success: true }] },
+      ]),
+    };
+
+    try {
+      const res = await v.withdrawInvitation({
+        invitationId: '7504239478362759168',
+        vanityName: 'adalovelace',
+      });
+      expect(res.ok).toBe(true);
+      expect(res.method).toBe('dom_fallback');
+      expect(chrome.tabs.create).toHaveBeenCalled();
+    } finally {
+      chrome.tabs = origTabs;
+      chrome.scripting = origScripting;
+    }
   });
 
   it('calls withdrawViaDomFallback when SDUI returns 400 and returns method dom_fallback', async () => {
@@ -995,8 +1048,10 @@ describe('withdraw invitation', () => {
     const origScripting = chrome.scripting;
 
     chrome.tabs = {
+      query: vi.fn().mockResolvedValue([{ id: 42 }]),
       create: vi.fn().mockResolvedValue({ id: 88 }),
       remove: vi.fn().mockResolvedValue(true),
+      update: vi.fn().mockResolvedValue(true),
       get: vi.fn().mockResolvedValue({ id: 88, status: 'complete' }),
       onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
     };
@@ -1006,6 +1061,8 @@ describe('withdraw invitation', () => {
           result: {
             matchedInDom: 2,
             loadMoreClicks: 3,
+            initialWithdrawButtons: 12,
+            pageTitle: 'Sent Invitations | LinkedIn',
             results: [
               { invitationId: 'inv_1', publicId: 'ada', success: true, method: 'dom_fallback' },
               { invitationId: 'inv_2', publicId: 'bob', success: true, method: 'dom_fallback' },
@@ -1017,22 +1074,29 @@ describe('withdraw invitation', () => {
 
     try {
       const targets = [
-        { invitationId: 'inv_1', vanityName: 'ada', firstName: 'Ada', lastName: 'Lovelace' },
-        { invitationId: 'inv_2', vanityName: 'bob', firstName: 'Bob', lastName: 'Bright' },
+        { invitationId: 'inv_1', vanityName: 'ada', firstName: 'Ada', lastName: 'Lovelace', fullName: 'Ada Lovelace' },
+        { invitationId: 'inv_2', vanityName: 'bob', firstName: 'Bob', lastName: 'Bright', fullName: 'Bob Bright' },
       ];
       const res = await v.withdrawViaDomFallback(targets);
 
       expect(res.withdrawn).toBe(2);
       expect(res.failed).toBe(0);
       expect(res.matchedInDom).toBe(2);
+      expect(res.loadMoreClicks).toBe(3);
+      expect(res.initialWithdrawButtons).toBe(12);
+      expect(res.pageTitle).toBe('Sent Invitations | LinkedIn');
       expect(res.results).toHaveLength(2);
+      expect(chrome.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true });
       expect(chrome.tabs.create).toHaveBeenCalledWith(
-        expect.objectContaining({ url: 'https://www.linkedin.com/mynetwork/invitation-manager/sent/' }),
+        expect.objectContaining({ url: 'https://www.linkedin.com/mynetwork/invitation-manager/sent/', active: true }),
       );
       expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
-        expect.objectContaining({ args: [targets] }),
+        expect.objectContaining({
+          args: [targets, expect.objectContaining({ olderThanDays: 14, maxCount: 2 })],
+        }),
       );
       expect(chrome.tabs.remove).toHaveBeenCalledWith(88);
+      expect(chrome.tabs.update).toHaveBeenCalledWith(42, { active: true });
     } finally {
       chrome.tabs = origTabs;
       chrome.scripting = origScripting;

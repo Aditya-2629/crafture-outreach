@@ -44,7 +44,7 @@ const STOP_THE_TICK = new Set([
   ERROR.NOT_LOGGED_IN,
 ]);
 
-/** Max actions executed per tick to prevent burst firing (Waalaxy-style distributed drip) */
+/** Max actions executed per tick to prevent burst firing (OutFox-style distributed drip) */
 export const DEFAULT_MAX_ACTIONS_PER_TICK = 1;
 let maxActionsPerTick = DEFAULT_MAX_ACTIONS_PER_TICK;
 
@@ -54,6 +54,15 @@ export function setMaxActionsPerTick(n) {
 
 export function getMaxActionsPerTick() {
   return maxActionsPerTick;
+}
+
+export const PROSPECT_COOLDOWN_MS = 60 * 1000;
+export const activeProspectLocks = new Set();
+export const lastProspectActionAt = new Map();
+
+export function clearProspectLocks() {
+  activeProspectLocks.clear();
+  lastProspectActionAt.clear();
 }
 
 export const CAMPAIGN_TICK_ALARM_NAME = 'outfox-campaign-tick';
@@ -285,6 +294,8 @@ function advance(campaign, enrollment, completedStep = null) {
         : Math.floor(Math.random() * (60 - 30 + 1) + 30) * 60 * 1000; // 30–60m
       enrollment.nextAt = Date.now() + delayMs;
       logDebug('info', 'Pacing', `[Step Stagger] ${completedStep.type} completed for ${enrollment.publicId}. Next step scheduled in ${(delayMs / 60000).toFixed(0)}m.`);
+    } else {
+      enrollment.nextAt = 0;
     }
   }
 }
@@ -760,6 +771,10 @@ async function stepParams(campaign, step, enrollment, routed = null) {
     publicId: enrollment.publicId,
     campaignId: campaign.campaignId,
     stepIndex: enrollment.stepIndex,
+    ...(profile?.urn ? { profileUrn: profile.urn } : {}),
+    ...(profile?.memberId ? { memberId: profile.memberId } : {}),
+    ...(profile?.firstName ? { firstName: profile.firstName } : {}),
+    ...(profile?.lastName ? { lastName: profile.lastName } : {}),
   };
 
   if (routed === 'routed_free_inmail') {
@@ -889,6 +904,7 @@ export async function tick() {
   const config = await getConfig();
   const now = Date.now();
   let executed = 0;
+  let attemptedWrites = 0;
   let queued = 0;
 
   // Outside the working window nothing may be written, so do not walk the
@@ -911,7 +927,7 @@ export async function tick() {
   let restingBucketSkippedCount = 0;
 
   for (const campaign of campaigns) {
-    if (halted || executed >= maxActionsPerTick) break;
+    if (halted || executed >= maxActionsPerTick || attemptedWrites >= maxActionsPerTick) break;
     if (campaign.status !== 'active') continue;
 
     const enrollments = await readEnrollments(campaign.campaignId);
@@ -919,7 +935,7 @@ export async function tick() {
     let dirty = false;
 
     for (const enrollment of enrollments) {
-      if (halted || executed >= maxActionsPerTick) break;
+      if (halted || executed >= maxActionsPerTick || attemptedWrites >= maxActionsPerTick) break;
 
       // Check live storage status before processing prospect
       const liveCampaigns = await readCampaigns();
@@ -931,6 +947,9 @@ export async function tick() {
 
       if (enrollment.status !== 'active') continue;
       if ((enrollment.nextAt || 0) > now) continue;
+
+      // Prevent concurrent execution of the same prospect
+      if (activeProspectLocks.has(enrollment.publicId)) continue;
 
       totalDueEnrollments += 1;
 
@@ -1255,8 +1274,23 @@ export async function tick() {
         }
 
         const { params, variantUsed } = await stepParams(campaign, step, enrollment, routed);
-        const res = await handle(action, params, 'campaign');
+
+        activeProspectLocks.add(enrollment.publicId);
+        lastProspectActionAt.set(enrollment.publicId, Date.now());
+        enrollment.updatedAt = Date.now();
+        await writeEnrollments(campaign.campaignId, enrollments);
+
+        let res;
+        try {
+          res = await handle(action, params, 'campaign');
+        } finally {
+          activeProspectLocks.delete(enrollment.publicId);
+          lastProspectActionAt.set(enrollment.publicId, Date.now());
+        }
         wrote = true;
+        if (!res.ok || res.data?.status !== 'queued') {
+          attemptedWrites += 1;
+        }
 
         if (!res.ok) {
           const errorCode = res.error?.code;
@@ -1406,6 +1440,7 @@ export async function tick() {
           queued += 1;
           // Stay on this step; the next tick picks it up once a human has approved or rejected it.
           enrollment.pendingQueueId = res.data.queueId;
+          enrollment.nextAt = 0;
           recordHistory(enrollment, {
             step: step.type,
             label: `Sent to approval queue`,

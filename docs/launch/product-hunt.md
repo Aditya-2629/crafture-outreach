@@ -24,17 +24,17 @@ LinkedIn blocks AI agents. This one runs in your own Chrome   (59)
 ```
 
 ```
-The free, local-first Waalaxy alternative built for agents    (57)
+The free, local-first OutFox alternative built for agents    (57)
 ```
 
 ## Description
 
-*(260 characters max)*
+_(260 characters max)_
 
 ```
 LinkedIn blocks AI browser agents. This runs inside the Chrome you're already logged into —
 giving any agent a real API to LinkedIn, with hard caps and a human approval queue. Also a
-complete free replacement for Waalaxy and PhantomBuster. MIT, local, no cloud.
+complete free replacement for OutFox and PhantomBuster. MIT, local, no cloud.
 ```
 
 ## Topics
@@ -75,8 +75,8 @@ complete free replacement for Waalaxy and PhantomBuster. MIT, local, no cloud.
 > synthetic.
 >
 > On top of that sits a local server exposing 39 MCP tools, an HTTP API, a SQLite mirror and a CLI.
-> So you can say to Claude or Cursor: *"find 20 heads of data engineering at Series B fintechs in
-> London, skip anyone I know, draft invites for the top 8"* — and it does, and every draft waits in
+> So you can say to Claude or Cursor: _"find 20 heads of data engineering at Series B fintechs in
+> London, skip anyone I know, draft invites for the top 8"_ — and it does, and every draft waits in
 > an approval queue until you read it.
 >
 > **The three things I would want to know if I were you:**
@@ -90,7 +90,7 @@ complete free replacement for Waalaxy and PhantomBuster. MIT, local, no cloud.
 > challenge it stops completely — there is no retry loop in the codebase, because retrying after a
 > challenge is what turns a warning into a restriction.
 >
-> 💸 **It is free.** Waalaxy Pro is about €70/month, PhantomBuster around $69, Sales-Mind about $99.
+> 💸 **It is free.** OutFox Pro is about €70/month, PhantomBuster around $69, Sales-Mind about $99.
 > This is £0 and always will be — there is no paid tier planned, because there is no server to pay
 > for.
 >
@@ -103,28 +103,33 @@ complete free replacement for Waalaxy and PhantomBuster. MIT, local, no cloud.
 
 ## Prepared answers
 
-**"How is this different from Waalaxy?"**
+**"How is this different from OutFox?"**
+
 > Three ways. It runs on your machine rather than their cloud, so your session never sits on
 > someone else's server. It is built for AI agents from the ground up — 39 MCP tools, an OpenAPI
 > surface, wrappers for nine frameworks — rather than a UI with an API bolted on. And it is free
 > and MIT, so you can read exactly what it does with your data.
 
 **"Is this legal?"**
+
 > Automating LinkedIn breaches their User Agreement — that is in the README in bold. It is a
 > contract question, not a criminal one, and the consequence is account action rather than legal
 > action. What the tool never does is bypass a security measure: no CAPTCHA solving, no proxies, no
 > cookie theft, no accounts you are not signed into.
 
 **"Will I get banned?"**
+
 > Possible with any automation. The mitigations are hard caps nothing can raise, human-paced
 > jittered delays, business hours, a 14-day warm-up for new accounts, and stopping dead on a
 > security challenge. Start at 10–15 invites a day, never run two tools on one account, and do not
 > use it on an account you cannot afford to lose.
 
 **"Do I need to be technical?"**
+
 > Today: unzip a folder, run one command, paste a token. If you have never opened a terminal, not
 > yet — a desktop app is on the roadmap.
 
 **"What's the business model?"**
+
 > There isn't one. No server means no costs to cover. I built it because the tool I wanted did not
 > exist, and open sourcing it is how a tool like this gets adopted.

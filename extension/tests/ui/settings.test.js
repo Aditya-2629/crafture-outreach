@@ -146,7 +146,7 @@ describe('settings form', () => {
       input: { text: 'Testing AI connection. Reply with "OK".' },
     });
     expect(engine.paramsFor(ACTIONS.CONFIG_SET).ai.provider).toBe('ollama');
-    expect(host.textContent).toContain('✅ Connected! [ollama · llama3]');
+    expect(host.textContent).toContain('Connected! [ollama · llama3]');
     expect(host.textContent).toContain('"A greeting."');
   });
 

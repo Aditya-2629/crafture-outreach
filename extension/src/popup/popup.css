@@ -1,5 +1,5 @@
 /**
- * OutFox — Authentic Waalaxy Quick Controller Popup Stylesheet
+ * OutFox — Authentic OutFox Quick Controller Popup Stylesheet
  * 340px Light Theme (#f8fafc / #FFFFFF / #ff6b00)
  */
 
@@ -69,7 +69,7 @@ body.popup-controller-body {
   padding: 3px 10px;
   border-radius: var(--radius-pill, 9999px);
   background: var(--success-soft, rgba(0, 186, 136, 0.12));
-  color: var(--success, #00BA88);
+  color: var(--success, #00ba88);
   border: 1px solid rgba(0, 186, 136, 0.2);
 }
 
@@ -88,7 +88,7 @@ body.popup-controller-body {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: var(--surface, #FFFFFF);
+  background: var(--surface, #ffffff);
   border: 1px solid rgba(20, 20, 43, 0.06);
   border-radius: var(--radius-card, 14px);
   box-shadow: 0px 8px 20px rgba(255, 107, 0, 0.06);
@@ -160,7 +160,7 @@ body.popup-controller-body {
   align-items: center;
   justify-content: space-around;
   padding: 11px 14px;
-  background: var(--surface, #FFFFFF);
+  background: var(--surface, #ffffff);
   border: 1px solid rgba(20, 20, 43, 0.06);
   border-radius: var(--radius-card, 14px);
   box-shadow: 0px 4px 12px rgba(255, 107, 0, 0.04);
@@ -197,7 +197,7 @@ body.popup-controller-body {
   padding: 12px 18px;
   border-radius: var(--radius-pill, 9999px);
   background: var(--primary, #ff6b00);
-  color: #FFFFFF;
+  color: #ffffff;
   font-size: 13px;
   font-weight: 600;
   border: none;
@@ -223,4 +223,31 @@ body.popup-controller-body {
   font-size: 10.5px;
   color: var(--text-muted, #a0a3bd);
   font-weight: 500;
+}
+
+/* Claymorphism Popup Refinements */
+body.popup-controller-body {
+  background: #F3F6FC !important;
+}
+
+.controller-meter-card,
+.controller-stats-row {
+  border-radius: 18px !important;
+  box-shadow: 0 10px 24px -4px rgba(15, 23, 42, 0.07), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -2px 4px rgba(15, 23, 42, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.75) !important;
+}
+
+.btn-launch-full {
+  border-radius: 9999px !important;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease !important;
+  box-shadow: 0 8px 20px rgba(255, 107, 0, 0.28), inset 0 2px 3px rgba(255, 255, 255, 0.35) !important;
+}
+
+.btn-launch-full:hover {
+  transform: translateY(-1.5px) !important;
+  box-shadow: 0 12px 24px rgba(255, 107, 0, 0.36), inset 0 2px 3px rgba(255, 255, 255, 0.45) !important;
+}
+
+.btn-launch-full:active {
+  transform: translateY(1px) scale(0.985) !important;
 }

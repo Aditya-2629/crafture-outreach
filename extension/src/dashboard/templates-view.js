@@ -1,5 +1,5 @@
 /**
- * OutFox — Waalaxy Messages Management & Template Editor
+ * OutFox — OutFox Messages Management & Template Editor
  * Fully working Emoji Picker, Image Uploader, File Attachment, and GIF Selector.
  */
 
@@ -77,7 +77,7 @@ export function openEditMessageModal({ template = null, category = 'message', on
             <div class="edit-msg-inputs-row">
               <div class="input-group-half">
                 <label class="edit-msg-label">Message model</label>
-                <div class="select-model-pill">Custom Template ⌵</div>
+                <div class="select-model-pill" style="display:inline-flex; align-items:center; gap:4px;">Custom Template ${ICONS.chevronDown}</div>
               </div>
               <div class="input-group-half">
                 <div class="label-with-counter">
@@ -111,8 +111,8 @@ export function openEditMessageModal({ template = null, category = 'message', on
 
             <div class="edit-msg-toolbar" style="display: flex; align-items: center; gap: 8px;">
               <div class="variable-dropdown-wrap" style="position:relative;">
-                <button type="button" class="btn-pill-variable" id="btn-var-dropdown">
-                  Insert a variable ⌵
+                <button type="button" class="btn-pill-variable" id="btn-var-dropdown" style="display:inline-flex; align-items:center; gap:4px;">
+                  Insert a variable ${ICONS.chevronDown}
                 </button>
                 <div class="var-menu-dropdown hidden" id="var-menu-dropdown">
                   <div class="var-menu-item" data-var="{{firstName}}">
@@ -162,8 +162,8 @@ export function openEditMessageModal({ template = null, category = 'message', on
                 </div>
               </div>
 
-              <button type="button" class="btn-pill-variable" id="btn-insert-spintax" title="Insert randomized greeting or phrasing">
-                🎲 Insert Spintax
+              <button type="button" class="btn-pill-variable" id="btn-insert-spintax" title="Insert randomized greeting or phrasing" style="display:inline-flex; align-items:center; gap:5px;">
+                ${ICONS.dice} Insert Spintax
               </button>
 
               <div class="toolbar-media-icons">
@@ -242,10 +242,10 @@ export function openEditMessageModal({ template = null, category = 'message', on
               <div class="preview-card-head" style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
                   <span class="preview-title">Preview</span>
-                  <span class="preview-sub">How your prospect will see your message ⌵</span>
+                  <span class="preview-sub">How your prospect will see your message</span>
                 </div>
                 <button type="button" id="btn-shuffle-preview" title="Shuffle Spintax Preview" style="background: #fff7ed; border: 1px solid #ffedd5; color: #ff6b00; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                  🔄 Shuffle Preview
+                  ${ICONS.refresh} Shuffle Preview
                 </button>
               </div>
               <div class="preview-bubble-body">
@@ -521,7 +521,7 @@ function escapeHtml(str = '') {
 }
 
 function ensureTemplatesStyles() {
-  const STYLE_ID = 'waalaxy-templates-view-css';
+  const STYLE_ID = 'OutFox-templates-view-css';
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
@@ -675,7 +675,7 @@ export async function renderTemplatesView(container, ctx = {}) {
           <div class="templates-sidebar-group">
             <div class="group-label">AI CLOSER</div>
             <button type="button" class="template-nav-btn ${activeCategory === 'objections' ? 'is-active' : ''}" data-cat="objections">
-              <span class="cat-icon">🛡️</span>
+              <span class="cat-icon">${ICONS.shield}</span>
               <span class="cat-label">Objections Playbook</span>
             </button>
           </div>
@@ -700,8 +700,8 @@ export async function renderTemplatesView(container, ctx = {}) {
             <!-- Active Candidate Resume Asset Bar -->
             <div style="background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:18px 22px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.02); display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px;">
               <div style="display:flex; align-items:center; gap:12px;">
-                <span style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:10px; background:#fff7ed; color:#ff6b00; font-size:18px;">
-                  📄
+                <span style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:10px; background:#fff7ed; color:#ff6b00;">
+                  ${ICONS.fileText}
                 </span>
                 <div>
                   <h3 style="margin:0; font-size:14px; font-weight:700; color:#14142b;">
@@ -722,14 +722,14 @@ export async function renderTemplatesView(container, ctx = {}) {
             <!-- Live Interactive AI Tester -->
             <div style="background:#ffffff; border:1px solid #fed7aa; border-radius:14px; padding:18px 22px; margin-bottom:24px; box-shadow:0 4px 14px rgba(255,107,0,0.05);">
               <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-                <span style="font-size:16px;">⚡</span>
+                <span style="display:inline-flex; color:#ff6b00;">${ICONS.lightning}</span>
                 <h3 style="margin:0; font-size:13.5px; font-weight:700; color:#14142b;">Live AI Objection Matcher & Intent Tester</h3>
               </div>
               <p style="margin:0 0 12px 0; font-size:12px; color:#64748b;">Type any simulated inbound message to test how OutFox matches the intent against your playbook rules and adapts the response.</p>
               <div style="display:flex; gap:10px; align-items:center;">
                 <input type="text" id="input-test-objection-msg" placeholder="e.g. Could you shoot over your resume or CV?" style="flex:1; padding:9px 14px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; outline:none;" />
                 <button type="button" id="btn-run-objection-test" class="btn-primary-create" style="padding:9px 18px; font-size:12.5px; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
-                  ✨ Test Match
+                  ${ICONS.sparkles} Test Match
                 </button>
               </div>
               <div id="objection-test-result" style="display:none; margin-top:14px; padding:14px; background:#fff7ed; border:1px solid #ffedd5; border-radius:10px;">
@@ -1017,7 +1017,7 @@ export async function renderTemplatesView(container, ctx = {}) {
         resultEl.style.display = 'block';
         resultEl.innerHTML = `
           <div style="display:flex; align-items:center; gap:8px; color:#64748b; font-size:12.5px;">
-            <span style="display:inline-block; animation:spin 1s linear infinite;">⏳</span> Matching intent and adapting reply...
+            <span style="display:inline-flex; align-items:center;">${ICONS.loader}</span> Matching intent and adapting reply...
           </div>
         `;
       }

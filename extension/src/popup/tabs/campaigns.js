@@ -32,7 +32,7 @@ export const label = 'Campaigns';
 /** Contract Step types, in the order the builder offers them. */
 export const STEP_TYPES = [
   { value: 'view', label: 'View profile' },
-  { value: 'endorse', label: '⭐ Endorse a skill' },
+  { value: 'endorse', label: 'Endorse a skill' },
   { value: 'follow', label: 'Follow' },
   { value: 'invite', label: 'Invite' },
   { value: 'message', label: 'Message' },

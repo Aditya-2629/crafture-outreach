@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   getWorkspaceToken,
   getGoogleWorkspaceToken,
+  getGmailToken,
+  connectGmail,
+  exchangeGoogleCode,
+  refreshGoogleToken,
+  AUTH_WORKER_URL,
   STORAGE_KEYS,
 } from '../../src/background/gmail.js';
 import {
@@ -122,5 +127,183 @@ describe('Google Workspace Auth & User Actions', () => {
     expect(launchCalls).toHaveLength(2);
     expect(launchCalls[0].interactive).toBe(false);
     expect(launchCalls[1].interactive).toBe(true);
+  });
+
+  it('exchanges authorization code via the standalone Cloudflare auth worker', async () => {
+    let capturedBody = null;
+    let capturedUrl = null;
+
+    globalThis.fetch = vi.fn(async (url, opts) => {
+      capturedUrl = String(url);
+      capturedBody = JSON.parse(opts.body);
+      return {
+        ok: true,
+        json: async () => ({
+          access_token: 'worker-exchanged-access-token',
+          refresh_token: 'worker-refresh-token-xyz',
+          expires_in: 3600,
+        }),
+      };
+    });
+
+    const result = await exchangeGoogleCode({
+      code: 'auth-code-12345',
+      redirectUri: 'https://extension-id.chromiumapp.org/',
+    });
+
+    expect(capturedUrl).toBe(`${AUTH_WORKER_URL}/google/exchange`);
+    expect(capturedBody).toEqual({
+      code: 'auth-code-12345',
+      redirectUri: 'https://extension-id.chromiumapp.org/',
+    });
+    expect(result.accessToken).toBe('worker-exchanged-access-token');
+    expect(result.token).toBe('worker-exchanged-access-token');
+    expect(result.refreshToken).toBe('worker-refresh-token-xyz');
+    expect(result.expiresAt).toBeGreaterThan(Date.now() + 3000000);
+  });
+
+  it('silently auto-refreshes expired token using stored refresh_token without user interaction', async () => {
+    // Store expired token with valid refresh_token
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.WORKSPACE_TOKEN]: {
+        accessToken: 'old-expired-token',
+        token: 'old-expired-token',
+        refreshToken: 'saved-refresh-token-456',
+        expiresAt: Date.now() - 5000, // already expired
+        email: 'test@example.com',
+      },
+    });
+
+    const launchSpy = vi.spyOn(chrome.identity, 'launchWebAuthFlow');
+    let refreshCalled = false;
+
+    globalThis.fetch = vi.fn(async (url, opts) => {
+      if (String(url).includes('/google/refresh')) {
+        refreshCalled = true;
+        const body = JSON.parse(opts.body);
+        expect(body.refreshToken).toBe('saved-refresh-token-456');
+        return {
+          ok: true,
+          json: async () => ({
+            access_token: 'new-refreshed-token-789',
+            expires_in: 3600,
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    // Request token non-interactively
+    const token = await getGoogleWorkspaceToken(false);
+    expect(token).toBe('new-refreshed-token-789');
+    expect(refreshCalled).toBe(true);
+    expect(launchSpy).not.toHaveBeenCalled();
+
+    // Verify storage updated
+    const stored = await new Promise((r) => chrome.storage.local.get([STORAGE_KEYS.WORKSPACE_TOKEN], r));
+    const item = stored[STORAGE_KEYS.WORKSPACE_TOKEN];
+    expect(item.accessToken).toBe('new-refreshed-token-789');
+    expect(item.token).toBe('new-refreshed-token-789');
+    expect(item.refreshToken).toBe('saved-refresh-token-456');
+    expect(item.expiresAt).toBeGreaterThan(Date.now() + 3000000);
+  });
+
+  it('clears stored token and prompts interactive re-connect on invalid_grant', async () => {
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.WORKSPACE_TOKEN]: {
+        accessToken: 'revoked-token',
+        token: 'revoked-token',
+        refreshToken: 'revoked-refresh-token',
+        expiresAt: Date.now() - 10000,
+        email: 'test@example.com',
+      },
+    });
+
+    // Mock refresh returning invalid_grant
+    globalThis.fetch = vi.fn(async (url) => {
+      if (String(url).includes('/google/refresh')) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({
+            error: 'invalid_grant',
+            error_description: 'Token has been expired or revoked.',
+          }),
+        };
+      }
+      if (String(url).includes('/google/exchange')) {
+        return {
+          ok: true,
+          json: async () => ({
+            access_token: 'brand-new-token-after-reauth',
+            refresh_token: 'new-refresh-token-after-reauth',
+            expires_in: 3600,
+          }),
+        };
+      }
+      if (String(url).includes('userinfo')) {
+        return { ok: true, json: async () => ({ email: 'test@example.com' }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    // Mock interactive web auth flow returning authorization code
+    vi.spyOn(chrome.identity, 'launchWebAuthFlow').mockImplementation(({ url, interactive }, callback) => {
+      expect(url).toContain('response_type=code');
+      expect(url).toContain('access_type=offline');
+      expect(url).toContain('prompt=consent');
+      expect(interactive).toBe(true);
+      callback('https://test.chromiumapp.org/?code=brand-new-auth-code');
+    });
+
+    const token = await getWorkspaceToken();
+    expect(token).toBe('brand-new-token-after-reauth');
+
+    const stored = await new Promise((r) => chrome.storage.local.get([STORAGE_KEYS.WORKSPACE_TOKEN], r));
+    const item = stored[STORAGE_KEYS.WORKSPACE_TOKEN];
+    expect(item.accessToken).toBe('brand-new-token-after-reauth');
+    expect(item.refreshToken).toBe('new-refresh-token-after-reauth');
+  });
+
+  it('preserves existing refreshToken when Google omits it on re-consent', async () => {
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.WORKSPACE_TOKEN]: {
+        accessToken: 'old-access-token',
+        token: 'old-access-token',
+        refreshToken: 'retained-refresh-token',
+        expiresAt: Date.now() - 1000,
+        email: 'test@example.com',
+      },
+    });
+
+    globalThis.fetch = vi.fn(async (url) => {
+      if (String(url).includes('/google/exchange')) {
+        return {
+          ok: true,
+          json: async () => ({
+            access_token: 'reauth-access-token-without-rt',
+            // Google omits refresh_token on repeated consents without prompt=consent
+            expires_in: 3600,
+          }),
+        };
+      }
+      if (String(url).includes('userinfo')) {
+        return { ok: true, json: async () => ({ email: 'test@example.com' }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    vi.spyOn(chrome.identity, 'launchWebAuthFlow').mockImplementation(({ interactive }, callback) => {
+      callback('https://test.chromiumapp.org/?code=code-reauth');
+    });
+
+    const token = await getWorkspaceToken(true);
+    expect(token).toBe('reauth-access-token-without-rt');
+
+    const stored = await new Promise((r) => chrome.storage.local.get([STORAGE_KEYS.WORKSPACE_TOKEN], r));
+    const item = stored[STORAGE_KEYS.WORKSPACE_TOKEN];
+    expect(item.accessToken).toBe('reauth-access-token-without-rt');
+    // Kept existing refreshToken!
+    expect(item.refreshToken).toBe('retained-refresh-token');
   });
 });

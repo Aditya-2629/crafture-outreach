@@ -1,5 +1,5 @@
 /**
- * OutFox — Waalaxy 3-Step CSV Import Wizard Modal
+ * OutFox — OutFox 3-Step CSV Import Wizard Modal
  * Step 1: Upload (Drag & Drop + Destination List)
  * Step 2: Match Data (Dynamic mapping table + Auto-detect + Live previews)
  * Step 3: Finalize Import (Duplicate handling toggles + Save to storage)
@@ -102,12 +102,12 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
         
         <!-- Top Breadcrumbs Bar (Screenshots 2, 3, 4) -->
         <div style="padding: 24px 32px 16px; border-bottom: 1px solid rgba(20,20,43,0.06); position: relative;">
-          <button type="button" id="btn-close-wizard" style="position: absolute; right: 24px; top: 24px; border: none; background: transparent; font-size: 20px; color: #a0a3bd; cursor: pointer;" title="Close wizard">✕</button>
+          <button type="button" id="btn-close-wizard" style="position: absolute; right: 24px; top: 24px; border: none; background: transparent; color: #a0a3bd; cursor: pointer; display: flex; align-items: center; justify-content: center;" title="Close wizard">${ICONS.x}</button>
 
           <div style="display: flex; justify-content: center; align-items: center; gap: 32px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; ${currentStep >= 1 ? 'background:#ff6b00; color:#FFF;' : 'background:#fff7ed; color:#ff6b00;'}">
-                ${currentStep > 1 ? '✓' : '1'}
+                ${currentStep > 1 ? `<span style="display:inline-flex; align-items:center;">${ICONS.check}</span>` : '1'}
               </span>
               <span style="font-size: 13px; font-weight: 600; color: ${currentStep === 1 ? '#ff6b00' : '#14142b'};">Upload</span>
             </div>
@@ -116,7 +116,7 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
 
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; ${currentStep >= 2 ? 'background:#ff6b00; color:#FFF;' : 'background:#fff7ed; color:#6e7191;'}">
-                ${currentStep > 2 ? '✓' : '2'}
+                ${currentStep > 2 ? `<span style="display:inline-flex; align-items:center;">${ICONS.check}</span>` : '2'}
               </span>
               <span style="font-size: 13px; font-weight: 600; color: ${currentStep === 2 ? '#ff6b00' : '#6e7191'};">Match data</span>
             </div>
@@ -178,7 +178,7 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
                   <thead>
                     <tr style="background: #f8fafc; border-bottom: 1px solid rgba(20,20,43,0.08); color: #6e7191; font-size: 11px; text-transform: uppercase;">
                       <th style="padding: 12px 20px;">Properties from CSV</th>
-                      <th style="padding: 12px 20px;">Waalaxy Property</th>
+                      <th style="padding: 12px 20px;">OutFox Property</th>
                       <th style="padding: 12px 20px;">Preview Information</th>
                     </tr>
                   </thead>
@@ -198,7 +198,7 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
                         <tr style="border-bottom: 1px solid rgba(20,20,43,0.05);">
                           <td style="padding: 12px 20px;">
                             <select class="map-dropdown" data-key="${row.key}" style="padding: 8px 12px; border: 1px solid rgba(20,20,43,0.12); border-radius: 8px; font-size: 13px; color: #14142b; width: 220px; background: #FFFFFF; outline: none; cursor: pointer;">
-                              <option value="-1">Choose a property ⌵</option>
+                              <option value="-1">Choose a property</option>
                               ${parsedCsvHeaders.map((h, i) => `<option value="${i}" ${i === selectedIdx ? 'selected' : ''}>${h}</option>`).join('')}
                             </select>
                           </td>
@@ -250,7 +250,7 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
         <div style="padding: 20px 32px; border-top: 1px solid rgba(20,20,43,0.06); background: #FAFBFD; display: flex; justify-content: space-between; align-items: center;">
           ${
             currentStep > 1
-              ? `<button type="button" id="btn-wizard-back" style="padding: 10px 20px; background: transparent; border: none; font-size: 13px; font-weight: 600; color: #6e7191; cursor: pointer;">&lt; Back</button>`
+              ? `<button type="button" id="btn-wizard-back" style="padding: 10px 20px; background: transparent; border: none; font-size: 13px; font-weight: 600; color: #6e7191; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">${ICONS.arrowLeft} Back</button>`
               : `<div></div>`
           }
 
@@ -258,7 +258,7 @@ export function openCsvImportWizard(userLists = [], onImportSuccess) {
             currentStep === 1
               ? `<div></div>`
               : currentStep === 2
-              ? `<button type="button" id="btn-wizard-next" style="padding: 10px 28px; background: #ff6b00; color: #FFF; border: none; border-radius: 9999px; font-weight: 700; font-size: 13px; cursor: pointer;">Next →</button>`
+              ? `<button type="button" id="btn-wizard-next" style="padding: 10px 28px; background: #ff6b00; color: #FFF; border: none; border-radius: 9999px; font-weight: 700; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">Next ${ICONS.arrowRight}</button>`
               : `<button type="button" id="btn-wizard-import" style="padding: 10px 32px; background: #ff6b00; color: #FFF; border: none; border-radius: 9999px; font-weight: 700; font-size: 14px; cursor: pointer;">Import</button>`
           }
         </div>

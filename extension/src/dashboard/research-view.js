@@ -53,34 +53,34 @@ function escapeHtml(str) {
 function formatSignalPill(signal) {
   const sig = String(signal || '');
   if (sig === 'changedJobRecently') {
-    return `<span class="research-pill pill-orange">💼 Changed Job Recently</span>`;
+    return `<span class="research-pill pill-orange" style="display:inline-flex; align-items:center; gap:5px;">${ICONS.building} Changed Job Recently</span>`;
   }
   if (sig === 'postedRecently') {
-    return `<span class="research-pill pill-blue">✍️ Posted Recently</span>`;
+    return `<span class="research-pill pill-blue" style="display:inline-flex; align-items:center; gap:5px;">${ICONS.edit} Posted Recently</span>`;
   }
   if (sig === 'high-activity') {
-    return `<span class="research-pill pill-green">🔥 High Activity</span>`;
+    return `<span class="research-pill pill-green" style="display:inline-flex; align-items:center; gap:5px;">${ICONS.flame} High Activity</span>`;
   }
   if (sig === 'companyHiring') {
-    return `<span class="research-pill pill-purple">🚀 Company Hiring</span>`;
+    return `<span class="research-pill pill-purple" style="display:inline-flex; align-items:center; gap:5px;">${ICONS.rocket} Company Hiring</span>`;
   }
   if (sig === 'alreadyConnected') {
-    return `<span class="research-pill pill-teal">🤝 1st Degree Connection</span>`;
+    return `<span class="research-pill pill-teal" style="display:inline-flex; align-items:center; gap:5px;">${ICONS.users} 1st Degree Connection</span>`;
   }
   if (sig === 'engagedWithMe') {
-    return `<span class="research-pill pill-orange">⭐ Engaged With You</span>`;
+    return `<span class="research-pill pill-orange" style="display:inline-flex; align-items:center; gap:5px;">${ICONS.star} Engaged With You</span>`;
   }
   if (sig.startsWith('mutuals:')) {
     const count = sig.split(':')[1] || '';
-    return `<span class="research-pill pill-slate">👥 ${count} Mutuals</span>`;
+    return `<span class="research-pill pill-slate" style="display:inline-flex; align-items:center; gap:5px;">${ICONS.users} ${count} Mutuals</span>`;
   }
   if (sig.startsWith('followers:')) {
     const count = sig.split(':')[1] || '';
-    return `<span class="research-pill pill-slate">📢 ${count} Followers</span>`;
+    return `<span class="research-pill pill-slate" style="display:inline-flex; align-items:center; gap:5px;">${ICONS.megaphone} ${count} Followers</span>`;
   }
   if (sig.startsWith('headcount:')) {
     const size = sig.split(':')[1] || '';
-    return `<span class="research-pill pill-slate">🏢 ${size} Size</span>`;
+    return `<span class="research-pill pill-slate" style="display:inline-flex; align-items:center; gap:5px;">${ICONS.building} ${size} Size</span>`;
   }
   return `<span class="research-pill pill-slate">${escapeHtml(sig)}</span>`;
 }
@@ -326,8 +326,8 @@ export async function renderResearchView(container, ctx = {}) {
 
         ${lastError ? `
           <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 12px 18px; color: #dc2626; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: space-between;">
-            <span>⚠ ${escapeHtml(lastError)}</span>
-            <button type="button" id="btn-dismiss-error" style="background:none; border:none; color:#dc2626; cursor:pointer; font-weight:700;">✕</button>
+            <span style="display:inline-flex; align-items:center; gap:6px;">${ICONS.warning} ${escapeHtml(lastError)}</span>
+            <button type="button" id="btn-dismiss-error" style="background:none; border:none; color:#dc2626; cursor:pointer; display:inline-flex; align-items:center;">${ICONS.x}</button>
           </div>
         ` : ''}
 
@@ -495,8 +495,8 @@ export async function renderResearchView(container, ctx = {}) {
                             ` : ''}
                           </div>
 
-                          <button type="button" class="btn-toggle-dossier" data-idx="${index}" style="background: none; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 10px; font-size: 11.5px; font-weight: 700; color: #475569; cursor: pointer;">
-                            View Dossier ⌵
+                          <button type="button" class="btn-toggle-dossier" data-idx="${index}" style="background: none; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 10px; font-size: 11.5px; font-weight: 700; color: #475569; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                            View Dossier ${ICONS.chevronDown}
                           </button>
                         </div>
 
@@ -718,7 +718,9 @@ export async function renderResearchView(container, ctx = {}) {
         if (target) {
           const isHidden = target.style.display === 'none';
           target.style.display = isHidden ? 'block' : 'none';
-          btn.textContent = isHidden ? 'Hide Dossier ∧' : 'View Dossier ⌵';
+          btn.innerHTML = isHidden
+            ? `Hide Dossier <span style="display:inline-flex; transform:rotate(180deg); transition:transform 0.2s;">${ICONS.chevronDown}</span>`
+            : `View Dossier ${ICONS.chevronDown}`;
         }
       });
     });

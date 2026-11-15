@@ -1,5 +1,5 @@
 /**
- * OutFox — Authentic Waalaxy Inbox View
+ * OutFox — Authentic OutFox Inbox View
  * Production Real-Time Conversation Triage, Live LinkedIn Chat Mirror & Composer.
  * 100% Manifest V3 CSP Compliant · Vector Icons · Instant Synchronous Triage
  */
@@ -120,7 +120,7 @@ export async function renderInboxView(container, ctx = {}) {
     const unreadCount = normalizedThreads.filter((t) => t.unread).length;
 
     container.innerHTML = `
-      <div class="waalaxy-inbox-layout" style="display:flex; height:calc(100vh - 120px); gap:18px; padding:0 24px 24px; box-sizing:border-box;">
+      <div class="OutFox-inbox-layout" style="display:flex; height:calc(100vh - 120px); gap:18px; padding:0 24px 24px; box-sizing:border-box;">
         
         <!-- LEFT: DISCUSSIONS SIDEBAR (380px) -->
         <aside class="inbox-discussions-sidebar" style="width:380px; min-width:340px; background:#fff; border:1px solid #e2e8f0; border-radius:14px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.03);">
@@ -136,7 +136,7 @@ export async function renderInboxView(container, ctx = {}) {
             </button>
           </div>
 
-          <!-- Blue Sync Alert Banner (matches Waalaxy) -->
+          <!-- Blue Sync Alert Banner (matches OutFox) -->
           <div style="background:#fff7ed; border-left:4px solid #ff741f; padding:10px 14px; margin:12px 16px 6px; border-radius:6px; display:flex; align-items:flex-start; gap:8px;">
             <span style="color:#ff6b00; font-size:14px;">ℹ</span>
             <p style="margin:0; font-size:11.5px; color:#c2410c; line-height:1.4;">
@@ -157,7 +157,7 @@ export async function renderInboxView(container, ctx = {}) {
           <!-- Search Input -->
           <div style="padding:8px 16px 12px;">
             <div style="position:relative; display:flex; align-items:center;">
-              <span style="position:absolute; left:12px; color:#94a3b8; font-size:14px;">🔍</span>
+              <span style="position:absolute; left:12px; color:#94a3b8; display:flex;">${ICONS.search}</span>
               <input type="text" id="inbox-search-input" value="${searchQuery}" placeholder="Search for a contact..." style="width:100%; padding:9px 12px 9px 34px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; outline:none; background:#f8fafc; transition:all 0.2s;" />
             </div>
           </div>
@@ -168,7 +168,7 @@ export async function renderInboxView(container, ctx = {}) {
               filtered.length === 0
                 ? `
                 <div style="text-align:center; padding:48px 16px; color:#94a3b8;">
-                  <span style="font-size:32px; display:block; margin-bottom:8px;">💬</span>
+                  <span style="display:flex; justify-content:center; margin-bottom:8px; color:#94a3b8;">${ICONS.message}</span>
                   <strong style="font-size:13.5px; color:#475569; display:block;">No conversations found</strong>
                   <p style="font-size:12px; margin:4px 0 0; color:#64748b;">Incoming messages from LinkedIn connections will appear here automatically.</p>
                 </div>
@@ -205,10 +205,10 @@ export async function renderInboxView(container, ctx = {}) {
             !selectedThread
               ? `
               <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px; text-align:center;">
-                <div style="width:72px; height:72px; border-radius:50%; background:#fff7ed; display:flex; align-items:center; justify-content:center; font-size:32px; margin-bottom:16px;">
-                  💬
+                <div style="width:72px; height:72px; border-radius:50%; background:#fff7ed; display:flex; align-items:center; justify-content:center; color:#ff6b00; margin-bottom:16px;">
+                  ${ICONS.message}
                 </div>
-                <h3 style="font-size:20px; font-weight:800; color:#0f172a; margin:0 0 8px;">Create a conversation to start 💬</h3>
+                <h3 style="font-size:20px; font-weight:800; color:#0f172a; margin:0 0 8px;">Create a conversation to start</h3>
                 <p style="font-size:13px; color:#64748b; max-width:360px; margin:0 0 20px; line-height:1.5;">
                   Select a discussion from the left to read conversation history, view profiles, and send replies.
                 </p>
@@ -231,7 +231,7 @@ export async function renderInboxView(container, ctx = {}) {
                       </span>
                       ${
                         selectedThread.recipientPublicId
-                          ? `<a href="https://linkedin.com/in/${selectedThread.recipientPublicId}" target="_blank" rel="noopener noreferrer" style="font-size:11.5px; font-weight:600; color:#ff6b00; text-decoration:none;">View LinkedIn Profile ↗</a>`
+                          ? `<a href="https://linkedin.com/in/${selectedThread.recipientPublicId}" target="_blank" rel="noopener noreferrer" style="font-size:11.5px; font-weight:600; color:#ff6b00; text-decoration:none; display:inline-flex; align-items:center; gap:3px;">View LinkedIn Profile ${ICONS.arrowUpRight}</a>`
                           : ''
                       }
                     </div>
@@ -252,7 +252,7 @@ export async function renderInboxView(container, ctx = {}) {
                     : activeMessages.length === 0
                       ? `
                     <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:#94a3b8; text-align:center;">
-                      <span style="font-size:28px; margin-bottom:8px;">✉️</span>
+                      <span style="display:flex; justify-content:center; margin-bottom:8px; color:#94a3b8;">${ICONS.email}</span>
                       <strong style="color:#475569; font-size:13px;">No message history loaded yet</strong>
                       <p style="font-size:12px; margin:4px 0 0; color:#64748b;">${selectedThread.snippet || 'Send a follow-up message below.'}</p>
                     </div>
@@ -281,13 +281,13 @@ export async function renderInboxView(container, ctx = {}) {
                 <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
                   <div style="display:flex; align-items:center; gap:8px;">
                     <button type="button" id="btn-inbox-ai-playbook" style="display:inline-flex; align-items:center; gap:5px; background:#fff7ed; border:1px solid #fed7aa; color:#ea580c; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;" title="Analyze inbound message & apply personalized Objection Playbook response">
-                      ✨ AI Playbook Reply
+                      ${ICONS.sparkles} AI Playbook Reply
                     </button>
                     <button type="button" id="btn-inbox-insert-resume" style="display:inline-flex; align-items:center; gap:5px; background:#f8fafc; border:1px solid #e2e8f0; color:#475569; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;" title="Insert active candidate resume link">
-                      📄 Insert Resume
+                      ${ICONS.fileText} Insert Resume
                     </button>
                     <button type="button" id="btn-inbox-snooze-30" style="display:inline-flex; align-items:center; gap:5px; background:#f8fafc; border:1px solid #e2e8f0; color:#475569; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;" title="Snooze lead for 30 days">
-                      ⏰ Snooze 30d
+                      ${ICONS.clock} Snooze 30d
                     </button>
                   </div>
                   <span id="inbox-intent-badge" style="display:none; font-size:11px; font-weight:700; background:#f1f5f9; color:#64748b; padding:2px 8px; border-radius:12px;"></span>
@@ -297,7 +297,7 @@ export async function renderInboxView(container, ctx = {}) {
                 <div style="display:flex; align-items:center; justify-content:space-between;">
                   <span style="font-size:11px; color:#94a3b8;">Shift + Enter for new line</span>
                   <button type="button" id="btn-send-inbox-reply" style="background:#ff6b00; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; box-shadow:0 2px 8px rgba(37,99,235,0.25);">
-                    Send Reply →
+                    Send Reply ${ICONS.arrowRight}
                   </button>
                 </div>
               </div>
@@ -381,8 +381,10 @@ export async function renderInboxView(container, ctx = {}) {
           replyTextarea.focus();
         }
         if (intentBadge && res.tag) {
-          intentBadge.style.display = 'inline-block';
-          intentBadge.textContent = `🏷️ ${res.tag}`;
+          intentBadge.style.display = 'inline-flex';
+          intentBadge.style.alignItems = 'center';
+          intentBadge.style.gap = '4px';
+          intentBadge.innerHTML = `${ICONS.tag} ${res.tag}`;
         }
         ctx.showToast?.(`AI Playbook: ${res.title}`, 'success');
       } catch (err) {
@@ -395,7 +397,7 @@ export async function renderInboxView(container, ctx = {}) {
         const res = await call(ACTIONS.CANDIDATES_GET, {});
         const resumeUrl = res?.active?.resumeUrl || res?.active?.resumeLink;
         if (!resumeUrl) {
-          ctx.showToast?.('No resume URL set on active candidate. Configure it in Templates ➔ Objections Playbook.', 'warn');
+          ctx.showToast?.('No resume URL set on active candidate. Configure it in Templates > Objections Playbook.', 'warn');
           return;
         }
         const replyTextarea = container.querySelector('#inbox-reply-text');
@@ -418,7 +420,7 @@ export async function renderInboxView(container, ctx = {}) {
           days: 30,
           note: 'Snoozed from Inbox',
         });
-        ctx.showToast?.(`⏰ Snoozed ${selectedThread.senderName} for 30 days!`, 'success');
+        ctx.showToast?.(`Snoozed ${selectedThread.senderName} for 30 days!`, 'success');
       } catch (err) {
         ctx.showToast?.(`Failed to snooze lead: ${err.message}`, 'error');
       }

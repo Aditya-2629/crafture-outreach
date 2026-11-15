@@ -1,5 +1,5 @@
 /**
- * OutFox — Waalaxy Visual Node Sequence Builder Canvas
+ * OutFox — OutFox Visual Node Sequence Builder Canvas
  * Interactive glassmorphic node cards, curved SVG connectors with flowing pulse dots,
  * and dual condition branching paths.
  */
@@ -193,7 +193,7 @@ export function renderVisualSequence(container, sequenceSteps = [], onStepUpdate
     <div class="sequence-canvas-header">
       <div class="canvas-title-group">
         <h3 class="canvas-title">Visual Sequence Workflow</h3>
-        <p class="canvas-sub">Interactive Waalaxy-style visual pipeline with dynamic Bezier connectors & branching</p>
+        <p class="canvas-sub">Interactive OutFox-style visual pipeline with dynamic Bezier connectors & branching</p>
       </div>
       <button type="button" class="btn btn-primary btn-sm" id="btn-add-initial-step">+ Append Step</button>
     </div>

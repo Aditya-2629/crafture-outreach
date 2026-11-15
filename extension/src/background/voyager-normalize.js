@@ -171,6 +171,8 @@ export function toProfile(fields = {}, source = 'profile') {
     source,
   };
   if (fields.companyUrn) profile.companyUrn = fields.companyUrn;
+  if (fields.objectUrn) profile.objectUrn = fields.objectUrn;
+  if (fields.memberId) profile.memberId = fields.memberId;
 
   // `undefined` means this shape does not carry a distance at all — a
   // follower, a group member, a reaction — and must leave whatever we already
@@ -256,9 +258,14 @@ function dashProfileFields(profile, idx, raw = null) {
   const geo = profile.geoLocation ? field(profile.geoLocation, 'geo', idx) : null;
   const industry = field(profile, 'industry', idx);
   const isOpen = extractOpenProfile(profile, idx, raw);
+  const memberId = profile.objectUrn
+    ? String(profile.objectUrn).replace(/^urn:li:member:/, '')
+    : (profile.entityUrn && profile.entityUrn.includes('member:') ? String(profile.entityUrn).replace(/^urn:li:member:/, '') : undefined);
   return {
     publicId: profile.publicIdentifier,
     urn: profile.entityUrn,
+    objectUrn: profile.objectUrn,
+    memberId,
     firstName: profile.firstName,
     lastName: profile.lastName,
     headline: profile.headline,
@@ -943,7 +950,7 @@ export function normalizeConversations(raw, selfUrn = '') {
     return {
       threadId: threadIdFromUrn(c.entityUrn || c.conversationUrn),
       conversationUrn: c.entityUrn || c.conversationUrn,
-      participants: people.map((p) => ({ publicId: p.publicId, fullName: p.fullName, urn: p.urn })),
+      participants: people.map((p) => ({ publicId: p.publicId, fullName: p.fullName })),
       lastMessageAt: c.lastActivityAt || messageTime(last),
       unread: c.read === false || (c.unreadCount || 0) > 0,
       snippet: messageBody(last),
@@ -1137,7 +1144,7 @@ export function normalizeSentInvitations(raw) {
 
   for (const element of elements(raw, idx)) {
     const invitation = field(element, 'invitation', idx) || element.invitation || element;
-    const invitee =
+    const rawMini =
       field(invitation.invitee || {}, 'miniProfile', idx) ||
       field(invitation, 'inviteeMemberResolutionResult', idx) ||
       field(invitation, 'toMember', idx) ||
@@ -1147,7 +1154,7 @@ export function normalizeSentInvitations(raw) {
       invitation.inviteeProfile ||
       invitation.toMember ||
       {};
-    const mini = invitee.miniProfile || invitee;
+    const mini = field(rawMini, 'miniProfile', idx) || rawMini.miniProfile || rawMini;
     // The GraphQL view carries no vanity name on the profile it includes; the
     // card's own link is where it is written.
     const publicId =
@@ -1195,8 +1202,14 @@ export function normalizeSentInvitations(raw) {
     const profileUrn = (mini.dashEntityUrn || mini.entityUrn || toMemberUrn || invitation.toMemberId || '')
       .replace(/^urn:li:(?:fsd?_profile|member):/, '');
     const titleParts = (element.title?.text || '').trim().split(/\s+/);
-    const firstName = mini.firstName || (titleParts.length > 0 ? titleParts[0] : '');
-    const lastName = mini.lastName || (titleParts.length > 1 ? titleParts.slice(1).join(' ') : '');
+    const miniFirst = textOf(mini.firstName) || (typeof mini.firstName === 'string' ? mini.firstName : '');
+    const miniLast = textOf(mini.lastName) || (typeof mini.lastName === 'string' ? mini.lastName : '');
+    const firstName = miniFirst || (titleParts.length > 0 ? titleParts[0] : '');
+    const lastName = miniLast || (titleParts.length > 1 ? titleParts.slice(1).join(' ') : '');
+    const fullName =
+      [miniFirst, miniLast].filter(Boolean).join(' ').trim() ||
+      (element.title?.text || '').trim() ||
+      [firstName, lastName].filter(Boolean).join(' ').trim();
     const vanityName = mini.publicIdentifier || publicId || '';
 
     out.push({
@@ -1210,6 +1223,7 @@ export function normalizeSentInvitations(raw) {
       profileUrn,
       firstName,
       lastName,
+      fullName,
       vanityName,
     });
   }

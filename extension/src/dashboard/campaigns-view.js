@@ -1,5 +1,5 @@
 /**
- * OutFox — Authentic Waalaxy Campaigns View & 3-Step Wizard
+ * OutFox — Authentic OutFox Campaigns View & 3-Step Wizard
  * Video Frames 11–17: Template Gallery, 3-Step Creator Wizard, Horizontal Flow Canvas, and Message Editor.
  */
 
@@ -10,7 +10,7 @@ import { openUiConfirm, openUiAlert, openUiSelectModal, openLeadTimelineModal } 
 import { ICONS } from '../ui/icons.js';
 import { getConfig } from '../lib/config.js';
 
-// Pre-built Waalaxy Campaign Templates (From Video Frame 11)
+// Pre-built OutFox Campaign Templates (From Video Frame 11)
 export const CAMPAIGN_TEMPLATES = [
   {
     id: 'custom',
@@ -101,13 +101,13 @@ export const CAMPAIGN_TEMPLATES = [
   },
   {
     id: 'social_warmup',
-    title: '🔥 Social Warmup + Connect',
+    title: 'Social Warmup + Connect',
     badge: 'High Acceptance (45%+)',
     category: 'Invitation',
     tags: ['Invitation', 'Visit', 'Social Warmup'],
     flowText: '[Profile Visit] → [Like Post] → [Follow] → [Wait 1 Day] → [Invite + Spintax] → [Follow-up Message]',
     bestFor: 'Pre-warms leads with subtle profile visits, post likes, and follows before inviting to achieve 45%+ connection rates.',
-    icon: ICONS.invitation,
+    icon: ICONS.flame,
     steps: [
       { type: 'view' },
       { type: 'like' },
@@ -507,7 +507,7 @@ export function renderHorizontalFlow(pipelineSteps = [], prospectCount = 12, isI
       </div>
       <div class="flow-node-item">
         <div class="flow-node-card ${idx === activeStepIdx ? 'is-active-step' : ''}" data-step-idx="${idx}" style="${isInteractive ? 'cursor: pointer;' : ''} ${idx === activeStepIdx ? 'border-color: #ff6b00; box-shadow: 0 0 0 2px rgba(255, 107, 0, 0.22);' : ''}">
-          ${isInteractive ? `<button type="button" class="btn-delete-node" data-delete-idx="${idx}" title="Remove Step">✕</button>` : ''}
+          ${isInteractive ? `<button type="button" class="btn-delete-node" data-delete-idx="${idx}" title="Remove Step">${ICONS.x}</button>` : ''}
           <div class="node-icon-circle">${step.icon || ICONS.lightning}</div>
           <div class="node-text-group">
             <span class="node-title">${step.title || step.type}</span>
@@ -546,7 +546,7 @@ export function renderHorizontalFlow(pipelineSteps = [], prospectCount = 12, isI
 
 
 function ensureCampaignsStyles() {
-  const STYLE_ID = 'waalaxy-campaigns-view-css';
+  const STYLE_ID = 'OutFox-campaigns-view-css';
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
@@ -560,9 +560,9 @@ function ensureCampaignsStyles() {
     .tab-count-badge { background: #e2e8f0; color: #475569; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; }
     .camp-search-wrap { position: relative; display: flex; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0 12px; width: 220px; }
     .camp-search-wrap input { border: none; outline: none; font-size: 13px; padding: 8px 6px; width: 100%; background: transparent; }
-    .waalaxy-camp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
-    .waalaxy-camp-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; position: relative; box-shadow: 0 2px 6px rgba(0,0,0,0.02); transition: all 0.2s ease; cursor: pointer; display: flex; align-items: center; gap: 14px; }
-    .waalaxy-camp-card:hover { border-color: #c7d2fe; box-shadow: 0 6px 18px rgba(255, 107, 0, 0.08); transform: translateY(-1px); }
+    .OutFox-camp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+    .OutFox-camp-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; position: relative; box-shadow: 0 2px 6px rgba(0,0,0,0.02); transition: all 0.2s ease; cursor: pointer; display: flex; align-items: center; gap: 14px; }
+    .OutFox-camp-card:hover { border-color: #c7d2fe; box-shadow: 0 6px 18px rgba(255, 107, 0, 0.08); transform: translateY(-1px); }
     .planet-avatar { width: 44px; height: 44px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; position: relative; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #ff6b00; }
     .planet-avatar img { width: 28px; height: 28px; border-radius: 6px; object-fit: contain; }
     .planet-ring { display: none; }
@@ -1001,8 +1001,8 @@ export async function renderCampaignsView(container, ctx = {}) {
             <button type="button" class="btn-pill btn-secondary btn-sm" id="btn-manual-tick" style="font-size: 12px; padding: 7px 14px;">
               ${ICONS.lightning} Run Step Now
             </button>
-            <button type="button" class="btn-primary-start-camp" id="btn-start-wizard">
-              Start a campaign ⌵
+            <button type="button" class="btn-primary-start-camp" id="btn-start-wizard" style="display:inline-flex; align-items:center; gap:6px;">
+              Start a campaign ${ICONS.chevronDown}
             </button>
           </div>
         </div>
@@ -1040,7 +1040,7 @@ export async function renderCampaignsView(container, ctx = {}) {
         </div>
 
         <!-- Cards Grid (Screenshot 3) -->
-        <div class="waalaxy-camp-grid">
+        <div class="OutFox-camp-grid">
           ${
             currentList.length === 0
               ? `
@@ -1064,7 +1064,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                     const statusClass = isPaused ? 'dot-paused' : isDraft ? 'dot-draft' : 'dot-running';
 
                     return `
-              <div class="waalaxy-camp-card" data-camp-id="${id}">
+              <div class="OutFox-camp-card" data-camp-id="${id}">
                 <div class="planet-avatar">
                   <img src="${outfoxLogoUrl}" width="28" height="28" alt="OutFox" />
                 </div>
@@ -1072,13 +1072,13 @@ export async function renderCampaignsView(container, ctx = {}) {
                 <div class="camp-card-meta">
                   <span class="camp-card-name">${camp.name}</span>
                   <div class="camp-card-badges-row">
-                    <span class="camp-leads-pill">⚡ ${leads} leads</span>
+                    <span class="camp-leads-pill" style="display:inline-flex; align-items:center; gap:4px;">${ICONS.lightning} ${leads} leads</span>
                     <span class="camp-status-dot ${statusClass}" title="Status: ${camp.status || 'running'}"></span>
                   </div>
                 </div>
 
-                <button type="button" class="btn-camp-card-live btn-trigger-live-drawer" data-id="${id}" title="View live lead progress">
-                  ⚡ Live Status
+                <button type="button" class="btn-camp-card-live btn-trigger-live-drawer" data-id="${id}" title="View live lead progress" style="display:inline-flex; align-items:center; gap:5px;">
+                  ${ICONS.lightning} Live Status
                 </button>
 
                 <button type="button" class="btn-camp-3dots" data-dots-id="${id}" title="Campaign actions">
@@ -1088,7 +1088,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                 <!-- 3-Dots Dropdown Menu (Screenshot 3) -->
                 <div class="camp-3dots-menu" id="camp-menu-${id}">
                   <div class="camp-menu-item" data-action="live_status" data-id="${id}">
-                    <span style="color:#ff6b00;">⚡</span> View Live Leads Status
+                    <span style="color:#ff6b00; display:inline-flex; vertical-align:middle; margin-right:4px;">${ICONS.lightning}</span> View Live Leads Status
                   </div>
                   <div class="camp-menu-item" data-action="edit" data-id="${id}">
                     <span>${ICONS.edit}</span> Edit my campaign
@@ -1122,7 +1122,7 @@ export async function renderCampaignsView(container, ctx = {}) {
         <div class="modal-dialog" style="max-width: 820px;">
           <div class="modal-head">
             <h3 class="pane-title" id="flow-modal-title">Sequence Flow</h3>
-            <button type="button" class="btn-close-modal" id="btn-close-flow-modal">✕</button>
+            <button type="button" class="btn-close-modal" id="btn-close-flow-modal">${ICONS.x}</button>
           </div>
           <div class="modal-body" id="flow-modal-body"></div>
         </div>
@@ -1142,13 +1142,13 @@ export async function renderCampaignsView(container, ctx = {}) {
               </div>
             </div>
             <div class="camp-drawer-actions">
-              <button type="button" class="btn-pill btn-secondary btn-sm" id="btn-drawer-tick" style="font-size: 11.5px; padding: 5px 12px;">
-                ⚡ Run Step Now
+              <button type="button" class="btn-pill btn-secondary btn-sm" id="btn-drawer-tick" style="font-size: 11.5px; padding: 5px 12px; display:inline-flex; align-items:center; gap:4px;">
+                ${ICONS.lightning} Run Step Now
               </button>
-              <button type="button" class="btn-pill btn-secondary btn-sm" id="btn-drawer-refresh" style="font-size: 11.5px; padding: 5px 10px;">
-                🔄 Refresh
+              <button type="button" class="btn-pill btn-secondary btn-sm" id="btn-drawer-refresh" style="font-size: 11.5px; padding: 5px 10px; display:inline-flex; align-items:center; gap:4px;">
+                ${ICONS.refresh} Refresh
               </button>
-              <button type="button" class="btn-drawer-close" id="btn-drawer-close">✕</button>
+              <button type="button" class="btn-drawer-close" id="btn-drawer-close">${ICONS.x}</button>
             </div>
           </div>
           <div class="camp-drawer-toolbar">
@@ -1331,7 +1331,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       });
     });
 
-    container.querySelectorAll('.waalaxy-camp-card').forEach((card) => {
+    container.querySelectorAll('.OutFox-camp-card').forEach((card) => {
       card.addEventListener('click', (e) => {
         if (e.target.closest('.btn-camp-3dots') || e.target.closest('.camp-3dots-menu') || e.target.closest('.btn-trigger-live-drawer')) return;
         const id = card.dataset.campId;
@@ -1486,7 +1486,9 @@ export async function renderCampaignsView(container, ctx = {}) {
       if (nameEl) nameEl.textContent = data.campaignName || 'Campaign Live Status';
       if (subEl) {
         const isPaused = data.campaignStatus === 'paused';
-        const statusPill = isPaused ? '⏸️ Paused' : '⚡ Running';
+        const statusPill = isPaused
+          ? `<span class="badge-status badge-status-paused" style="display:inline-flex; align-items:center; gap:4px;">${ICONS.pause} Paused</span>`
+          : `<span class="badge-status badge-status-active" style="display:inline-flex; align-items:center; gap:4px;">${ICONS.lightning} Running</span>`;
         subEl.innerHTML = `${statusPill} &bull; ${data.summary?.total || 0} enrolled prospects &bull; Auto-refreshing every 5s`;
       }
 
@@ -1553,7 +1555,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       if (filtered.length === 0) {
         tableWrap.innerHTML = `
           <div style="padding: 48px 24px; text-align: center; color: #64748b;">
-            <div style="font-size: 28px; margin-bottom: 8px;">🔍</div>
+            <div style="display: flex; justify-content: center; margin-bottom: 8px; color: #94a3b8;">${ICONS.search}</div>
             <div style="font-weight: 700; color: #1e293b; margin-bottom: 4px;">No prospects found</div>
             <div style="font-size: 12.5px;">No leads match the selected filter "${drawerFilter}".</div>
           </div>
@@ -1582,9 +1584,9 @@ export async function renderCampaignsView(container, ctx = {}) {
                 let lastResultHtml = '<span style="color:#94a3b8; font-size:11.5px;">Not started</span>';
                 if (lead.lastError) {
                   const shortErr = lead.lastError.length > 30 ? lead.lastError.slice(0, 30) + '...' : lead.lastError;
-                  lastResultHtml = `<span style="color:#ef4444; font-size:11.5px; font-weight:600;" title="${lead.lastError}">⚠️ ${shortErr}</span>`;
+                  lastResultHtml = `<span style="color:#ef4444; font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" title="${lead.lastError}">${ICONS.warning} ${shortErr}</span>`;
                 } else if (lead.replied) {
-                  lastResultHtml = `<span style="color:#16a34a; font-weight:600; font-size:11.5px;">💬 Replied</span>`;
+                  lastResultHtml = `<span style="color:#16a34a; font-weight:600; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">${ICONS.message} Replied</span>`;
                 } else if (lead.lastActionAt) {
                   lastResultHtml = `<span style="color:#64748b; font-size:11.5px;">${formatTimeAgo(lead.lastActionAt)}</span>`;
                 }
@@ -1595,7 +1597,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       <div class="lead-meta-cell">
                         <div class="lead-name-row">
                           <span class="btn-open-lead-timeline" data-public-id="${lead.publicId}" style="cursor:pointer; font-weight:600; color:#1e293b; text-decoration:underline decoration-dotted;" title="Click to view outreach timeline">${lead.fullName}</span>
-                          ${lead.email ? `<span style="font-size:11px; color:#ff6b00; cursor:pointer;" title="${lead.email}">✉️</span>` : ''}
+                          ${lead.email ? `<span style="display:inline-flex; align-items:center; color:#ff6b00; cursor:pointer;" title="${lead.email}">${ICONS.email}</span>` : ''}
                         </div>
                         <div class="lead-company-sub">${lead.company || lead.publicId}</div>
                       </div>
@@ -1650,7 +1652,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       const btn = container.querySelector('#btn-drawer-tick');
       if (btn) {
         btn.disabled = true;
-        btn.innerHTML = `⚡ Running...`;
+        btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.lightning} Running...</span>`;
         try {
           await call(ACTIONS.CAMPAIGN_TICK, {});
           ctx.showToast?.('Step triggered! Refreshing live status...', 'success');
@@ -1659,7 +1661,7 @@ export async function renderCampaignsView(container, ctx = {}) {
           ctx.showToast?.(`Tick error: ${err.message}`, 'error');
         } finally {
           btn.disabled = false;
-          btn.innerHTML = `⚡ Run Step Now`;
+          btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.lightning} Run Step Now</span>`;
         }
       }
     });
@@ -1726,15 +1728,15 @@ export async function renderCampaignsView(container, ctx = {}) {
         <!-- Top Wizard Header with Breadcrumbs & Sender Badge -->
         <div class="wizard-top-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div class="wizard-head-left">
-            <button type="button" class="btn-back-link" id="btn-cancel-wizard">
-              ← Back to Campaigns
+            <button type="button" class="btn-back-link" id="btn-cancel-wizard" style="display:inline-flex; align-items:center; gap:6px;">
+              ${ICONS.arrowLeft} Back to Campaigns
             </button>
             <h2 class="view-main-title">Create a Campaign</h2>
           </div>
 
           <div class="wizard-head-center">
             <div style="display: flex; align-items: center; gap: 6px; background: #fff7ed; border: 1px solid #ffedd5; padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #ff6b00; font-weight: 700;">
-              <span>📧 Outreach Sender:</span>
+              <span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.email} Outreach Sender:</span>
               <span style="font-weight: 600; color: #9a3412;">${activeSenderEmail || 'Google Workspace / Gmail'}</span>
             </div>
           </div>
@@ -1745,12 +1747,12 @@ export async function renderCampaignsView(container, ctx = {}) {
               <span class="step-num">1</span>
               <span class="step-label">Pick Template</span>
             </div>
-            <span class="breadcrumb-separator">→</span>
+            <span class="breadcrumb-separator" style="display:inline-flex; align-items:center;">${ICONS.chevronRight}</span>
             <div class="breadcrumb-step ${wizardStep === 2 ? 'is-active' : ''} ${wizardStep > 2 ? 'is-done' : ''}">
               <span class="step-num">2</span>
               <span class="step-label">Add Prospects</span>
             </div>
-            <span class="breadcrumb-separator">→</span>
+            <span class="breadcrumb-separator" style="display:inline-flex; align-items:center;">${ICONS.chevronRight}</span>
             <div class="breadcrumb-step ${wizardStep === 3 ? 'is-active' : ''}">
               <span class="step-num">3</span>
               <span class="step-label">Content & Launch</span>
@@ -1783,7 +1785,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                   .join('')}
               </div>
 
-              <!-- Templates Grid (Custom + Waalaxy sequences) -->
+              <!-- Templates Grid (Custom + OutFox sequences) -->
               <div class="templates-grid">
                 ${filteredTemplates
                   .map(
@@ -1817,8 +1819,8 @@ export async function renderCampaignsView(container, ctx = {}) {
                       }
                       return '';
                     })()}
-                    <button type="button" class="btn-pill btn-soft btn-sm btn-select-tpl" style="margin-top: 14px; width: 100%;">
-                      ${selectedTemplate.id === tpl.id ? '✓ Selected' : 'Choose Template →'}
+                    <button type="button" class="btn-pill btn-soft btn-sm btn-select-tpl" style="margin-top: 14px; width: 100%; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+                      ${selectedTemplate.id === tpl.id ? `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.check} Selected</span>` : `<span style="display:inline-flex; align-items:center; gap:4px;">Choose Template ${ICONS.arrowRight}</span>`}
                     </button>
                   </div>
                 `,
@@ -1846,7 +1848,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                 <button type="button" class="subtab">From auto-import (LinkedIn Search)</button>
               </div>
 
-              <div class="waalaxy-card" style="margin-top: 16px;">
+              <div class="OutFox-card" style="margin-top: 16px;">
                 <div class="form-group">
                   <label>Campaign Name</label>
                   <input type="text" id="wizard-input-campname" class="form-input" value="${campaignName}" />
@@ -1881,7 +1883,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                 <!-- Vault Auto-enrichment toggle card -->
                 <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 14px 16px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 12px; margin-top: 16px;">
                   <div style="display: flex; gap: 12px; align-items: flex-start;">
-                    <span style="font-size: 20px; line-height: 1;">⚡</span>
+                    <span style="font-size: 20px; line-height: 1; display:inline-flex; color:#ff6b00;">${ICONS.lightning}</span>
                     <div>
                       <strong style="font-size: 13.5px; color: #9a3412; display: block; margin-bottom: 3px;">Auto-enrich missing emails via Vault</strong>
                       <span style="font-size: 12px; color: #c2410c; line-height: 1.4; display: block;">
@@ -1897,11 +1899,11 @@ export async function renderCampaignsView(container, ctx = {}) {
               </div>
 
               <div class="wizard-step-actions">
-                <button type="button" class="btn-pill btn-secondary" id="btn-step2-back">
-                  ← Back
+                <button type="button" class="btn-pill btn-secondary" id="btn-step2-back" style="display:inline-flex; align-items:center; gap:6px;">
+                  ${ICONS.arrowLeft} Back
                 </button>
-                <button type="button" class="btn-pill btn-primary" id="btn-step2-next">
-                  Next: Sequence & Copy →
+                <button type="button" class="btn-pill btn-primary" id="btn-step2-next" style="display:inline-flex; align-items:center; gap:6px;">
+                  Next: Sequence & Copy ${ICONS.arrowRight}
                 </button>
               </div>
             </div>
@@ -1916,7 +1918,7 @@ export async function renderCampaignsView(container, ctx = {}) {
             <div class="wizard-step-container">
               <div class="step-headline-group">
                 <h3 class="step-title">Interactive Sequence Flow & Outreach Copy</h3>
-                <p class="step-subtitle">Fully customize delays, delete steps (✕), or insert custom touchpoints (+). Click any step to edit its content.</p>
+                <p class="step-subtitle">Fully customize delays, delete steps, or insert custom touchpoints (+). Click any step to edit its content.</p>
               </div>
 
               ${(() => {
@@ -1936,7 +1938,7 @@ export async function renderCampaignsView(container, ctx = {}) {
               })()}
 
               <!-- Horizontal Visual Node Flow Canvas -->
-              <div class="waalaxy-card flow-canvas-card">
+              <div class="OutFox-card flow-canvas-card">
                 <div class="canvas-header-label">HORIZONTAL VISUAL SEQUENCE PIPELINE (CLICK ANY STEP TO EDIT, OR [+] TO INSERT)</div>
                 ${renderHorizontalFlow(pipelineSteps, prospectCount, true, activeStepIdx)}
               </div>
@@ -1945,7 +1947,7 @@ export async function renderCampaignsView(container, ctx = {}) {
               ${(() => {
                 if (pipelineSteps.length === 0) {
                   return `
-                    <div class="waalaxy-card" style="margin-top: 20px; text-align: center; padding: 30px;">
+                    <div class="OutFox-card" style="margin-top: 20px; text-align: center; padding: 30px;">
                       <p style="color: var(--text-muted); font-size: 14px;">Your sequence has no action steps. Click <strong>[+]</strong> above to insert a step.</p>
                     </div>
                   `;
@@ -1958,7 +1960,7 @@ export async function renderCampaignsView(container, ctx = {}) {
 
                 if (curStep.type === 'email') {
                   return `
-                    <div class="waalaxy-card message-editor-card" style="margin-top: 20px;">
+                    <div class="OutFox-card message-editor-card" style="margin-top: 20px;">
                       <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
                         <div class="editor-title-row" style="display: flex; align-items: center; gap: 10px;">
                           <span class="editor-icon" style="color: #ff6b00;">${ICONS.email}</span>
@@ -1968,7 +1970,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                           </div>
                         </div>
                         <div style="display: flex; align-items: center; gap: 6px; background: #fff7ed; border: 1px solid #ffedd5; padding: 4px 10px; border-radius: 12px; font-size: 12px; color: #ff6b00; font-weight: 600;">
-                          <span>📧 Sender:</span>
+                          <span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.email} Sender:</span>
                           <strong>${activeSenderEmail || 'Google Workspace / Gmail'}</strong>
                         </div>
                       </div>
@@ -2025,7 +2027,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       </div>
 
                       <div class="editor-foot-actions" style="margin-top: 20px;">
-                        <button type="button" class="btn-pill btn-secondary" id="btn-step3-back">← Back</button>
+                        <button type="button" class="btn-pill btn-secondary" id="btn-step3-back" style="display:inline-flex; align-items:center; gap:6px;">${ICONS.arrowLeft} Back</button>
                         <button type="button" class="btn-pill btn-primary btn-launch-big" id="btn-launch-campaign">
                           ${ICONS.rocket} Launch Campaign Now
                         </button>
@@ -2036,7 +2038,7 @@ export async function renderCampaignsView(container, ctx = {}) {
 
                 if (curStep.type === 'message') {
                   return `
-                    <div class="waalaxy-card message-editor-card" style="margin-top: 20px;">
+                    <div class="OutFox-card message-editor-card" style="margin-top: 20px;">
                       <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
                         <div class="editor-title-row" style="display: flex; align-items: center; gap: 10px;">
                           <span class="editor-icon" style="color: #ff6b00;">${ICONS.message}</span>
@@ -2066,7 +2068,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       </div>
 
                       <div class="editor-foot-actions" style="margin-top: 20px;">
-                        <button type="button" class="btn-pill btn-secondary" id="btn-step3-back">← Back</button>
+                        <button type="button" class="btn-pill btn-secondary" id="btn-step3-back" style="display:inline-flex; align-items:center; gap:6px;">${ICONS.arrowLeft} Back</button>
                         <button type="button" class="btn-pill btn-primary btn-launch-big" id="btn-launch-campaign">
                           ${ICONS.rocket} Launch Campaign Now
                         </button>
@@ -2078,7 +2080,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                 // Default / Invite step
                 const noteValue = curStep.note !== undefined ? curStep.note : customNote;
                 return `
-                  <div class="waalaxy-card message-editor-card" style="margin-top: 20px;">
+                  <div class="OutFox-card message-editor-card" style="margin-top: 20px;">
                     <div class="editor-head">
                       <div class="editor-title-row">
                         <span class="editor-icon">${ICONS.invitation}</span>
@@ -2113,7 +2115,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                     </div>
 
                     <div class="editor-foot-actions">
-                      <button type="button" class="btn-pill btn-secondary" id="btn-step3-back">← Back</button>
+                      <button type="button" class="btn-pill btn-secondary" id="btn-step3-back" style="display:inline-flex; align-items:center; gap:6px;">${ICONS.arrowLeft} Back</button>
                       <button type="button" class="btn-pill btn-primary btn-launch-big" id="btn-launch-campaign">
                         ${ICONS.rocket} Launch Campaign Now
                       </button>
@@ -2377,7 +2379,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       });
     });
 
-    // Step Deletion (✕ Button)
+    // Step Deletion ([x] Button)
     canvasCard.querySelectorAll('.btn-delete-node').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();

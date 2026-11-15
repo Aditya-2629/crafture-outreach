@@ -62,7 +62,7 @@ export function openTelegramGuideModal(onSaved) {
           <span class="guide-logo-icon" style="background:#229ED9; color:#fff;">${ICONS.telegram}</span>
           <h3 class="modal-title">Telegram Mobile AI Assistant — 1-Click Setup</h3>
         </div>
-        <button type="button" class="btn-close-modal" id="btn-close-tg-guide">✕</button>
+        <button type="button" class="btn-close-modal" id="btn-close-tg-guide">${ICONS.x}</button>
       </div>
 
       <div class="modal-body guide-body">
@@ -76,7 +76,7 @@ export function openTelegramGuideModal(onSaved) {
             <div class="step-num-badge">1</div>
             <div class="step-content">
               <strong>Create your Bot with @BotFather</strong>
-              <p>Open <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" class="guide-link">@BotFather ↗</a> in Telegram, send <code>/newbot</code>, follow the prompts, and copy the <strong>HTTP API Bot Token</strong>.</p>
+              <p>Open <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" class="guide-link" style="display:inline-flex; align-items:center; gap:3px;">@BotFather ${ICONS.arrowUpRight}</a> in Telegram, send <code>/newbot</code>, follow the prompts, and copy the <strong>HTTP API Bot Token</strong>.</p>
             </div>
           </div>
 
@@ -85,7 +85,7 @@ export function openTelegramGuideModal(onSaved) {
             <div class="step-num-badge">2</div>
             <div class="step-content">
               <strong>Get your Chat ID with @userinfobot</strong>
-              <p>Open <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer" class="guide-link">@userinfobot ↗</a> in Telegram, send <code>/start</code>, and copy your numeric <strong>Id</strong>.</p>
+              <p>Open <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer" class="guide-link" style="display:inline-flex; align-items:center; gap:3px;">@userinfobot ${ICONS.arrowUpRight}</a> in Telegram, send <code>/start</code>, and copy your numeric <strong>Id</strong>.</p>
             </div>
           </div>
 
@@ -113,7 +113,7 @@ export function openTelegramGuideModal(onSaved) {
                 </div>
 
                 <div style="margin-top: 2px;">
-                  <label style="font-size: 11.5px; font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">📅 10-Min Booking Link (Calendly / Cal.com):</label>
+                  <label style="font-size: 11.5px; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">${ICONS.calendar} 10-Min Booking Link (Calendly / Cal.com):</label>
                   <div style="display: flex; gap: 8px;">
                     <input type="text" id="input-tg-booking-link" placeholder="https://calendly.com/your-name/15min" style="flex: 1; padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: #fff;" />
                     <button type="button" class="btn btn-secondary" id="btn-paste-tg-booking" style="padding: 0 14px; font-size: 12px; font-weight: 600; cursor: pointer;">Paste</button>
@@ -123,7 +123,7 @@ export function openTelegramGuideModal(onSaved) {
 
               <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
                 <button type="button" class="btn btn-secondary" id="btn-test-tg-conn" style="padding: 8px 16px; font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
-                  ⚡ Test Connection
+                  ${ICONS.lightning} Test Connection
                 </button>
                 <button type="button" class="btn btn-primary" id="btn-save-tg" style="padding: 8px 18px; font-size: 12px; font-weight: 700; cursor: pointer; background: #229ED9; border-color: #229ED9;">
                   Save & Enable Mobile AI
@@ -221,9 +221,9 @@ export function openTelegramGuideModal(onSaved) {
           if (feedback) {
             feedback.style.display = 'block';
             feedback.style.color = '#10b981';
-            feedback.textContent = `✓ Connected to @${res.data.botUsername || 'bot'} (${res.data.latencyMs}ms)! Test message sent to your phone.`;
+            feedback.textContent = `Connected to @${res.data.botUsername || 'bot'} (${res.data.latencyMs}ms)! Test message sent to your phone.`;
           }
-          testBtn.textContent = `✓ Success! (${res.data.latencyMs}ms)`;
+          testBtn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.check} Success! (${res.data.latencyMs}ms)</span>`;
         } else {
           const errMsg = res?.error?.message || 'Connection failed';
           if (feedback) {
@@ -231,12 +231,12 @@ export function openTelegramGuideModal(onSaved) {
             feedback.style.color = '#ef4444';
             feedback.textContent = `Error: ${errMsg}`;
           }
-          testBtn.textContent = '⚡ Test Connection';
+          testBtn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.lightning} Test Connection</span>`;
         }
       });
     } catch (e) {
       testBtn.disabled = false;
-      testBtn.textContent = '⚡ Test Connection';
+      testBtn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.lightning} Test Connection</span>`;
       if (feedback) {
         feedback.style.display = 'block';
         feedback.style.color = '#ef4444';
@@ -299,7 +299,7 @@ export function openMcpGuideModal() {
           <span class="guide-logo-icon" style="background:#ff6b00; color:#fff;">${ICONS.terminal}</span>
           <h3 class="modal-title">OutFox MCP Server — Universal AI Agent Bridge</h3>
         </div>
-        <button type="button" class="btn-close-modal" id="btn-close-mcp-guide">✕</button>
+        <button type="button" class="btn-close-modal" id="btn-close-mcp-guide">${ICONS.x}</button>
       </div>
 
       <div class="modal-body guide-body">
@@ -365,7 +365,7 @@ export function openMcpGuideModal() {
     if (ok) {
       showGuideToast('MCP configuration snippet copied!');
       const btn = backdrop.querySelector('#btn-copy-mcp-config');
-      if (btn) btn.textContent = '✓ Copied!';
+      if (btn) btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.check} Copied!</span>`;
       setTimeout(() => { if (btn) btn.innerHTML = `${ICONS.duplicate || ''} Copy .mcp.json snippet`; }, 2500);
     }
   });

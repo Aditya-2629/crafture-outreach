@@ -40,6 +40,9 @@ export const ACTIONS = Object.freeze({
   NETWORK_UNFOLLOW_STATUS: 'network.unfollowStatus',
   NETWORK_WITHDRAW_STALE_INVITES: 'network.withdrawStaleInvites',
   NETWORK_WITHDRAW_OLD_INVITES: 'network.withdrawStaleInvites',
+  NETWORK_WITHDRAW_AUTO_START: 'network.withdrawAutoStart',
+  NETWORK_WITHDRAW_AUTO_STOP: 'network.withdrawAutoStop',
+  NETWORK_WITHDRAW_AUTO_STATUS: 'network.withdrawAutoStatus',
 
   OUTREACH_VIEW: 'outreach.view',
   OUTREACH_FOLLOW: 'outreach.follow',
@@ -483,6 +486,16 @@ const PARAM_SPECS = {
   [ACTIONS.NETWORK_WITHDRAW_STALE_INVITES]: {
     optional: { olderThanDays: 'number', maxCount: 'number' },
   },
+  [ACTIONS.NETWORK_WITHDRAW_AUTO_START]: {
+    optional: {
+      olderThanDays: 'number',
+      batchSize: 'number',
+      cooldownMinutes: 'number',
+      dailyCap: 'number',
+    },
+  },
+  [ACTIONS.NETWORK_WITHDRAW_AUTO_STOP]: {},
+  [ACTIONS.NETWORK_WITHDRAW_AUTO_STATUS]: {},
 
   [ACTIONS.OUTREACH_VIEW]: { required: { publicId: 'string' } },
   [ACTIONS.OUTREACH_FOLLOW]: { required: { publicId: 'string' } },

@@ -18,9 +18,18 @@ import {
   connectGoogleWorkspace,
   disconnectGoogleWorkspace,
   switchOutreachMailbox,
+  refreshGoogleToken,
+  exchangeGoogleCode,
+  AUTH_WORKER_URL,
 } from './gmail.js';
 
-export { getWorkspaceToken };
+export {
+  getWorkspaceToken,
+  getGoogleWorkspaceToken,
+  refreshGoogleToken,
+  exchangeGoogleCode,
+  AUTH_WORKER_URL,
+};
 
 const SHEETS_CRM_STORAGE_KEY = 'outfox_sheets_crm_meta';
 const DRIVE_BACKUP_FOLDER = 'OutFox Backups';

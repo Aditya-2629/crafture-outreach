@@ -130,6 +130,17 @@ export async function getLiveDashboardStats() {
     if (self && self.publicId) userName = self.publicId;
   } catch {}
 
+  // Cache networkStats in storage so dashboard never renders 0 on initial load
+  if (networkStats && (networkStats.connectionsCount != null || networkStats.pendingCount != null)) {
+    chrome.storage.local.set({
+      networkStats: {
+        connections: networkStats.connectionsCount,
+        pending: networkStats.pendingCount,
+        updatedAt: Date.now(),
+      },
+    }).catch(() => {});
+  }
+
   return {
     profile: {
       name: userName,
@@ -157,4 +168,15 @@ export async function getLiveDashboardStats() {
 
 // Register action for UI to call
 register(ACTIONS.DASHBOARD_LIVE_STATS, () => getLiveDashboardStats());
+
+register('network.stats', async () => {
+  const net = await getNetworkStats().catch(() => ({ pendingCount: 0, connectionsCount: 0 }));
+  const data = {
+    connections: net.connectionsCount,
+    pending: net.pendingCount,
+    updatedAt: Date.now(),
+  };
+  await chrome.storage.local.set({ networkStats: data }).catch(() => {});
+  return data;
+});
 

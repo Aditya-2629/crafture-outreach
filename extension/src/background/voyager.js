@@ -256,11 +256,10 @@ async function unverified(name, run) {
     return await run();
   } catch (e) {
     if (e instanceof EngineError && ACT_ON_THESE.has(e.code)) throw e;
-    const details = (e && e.response && (e.response.message || JSON.stringify(e.response))) || (e && e.message) || '';
     console.error(`[Voyager unverified error: ${name}]`, e);
     throw new EngineError(
       ERROR.LINKEDIN_ERROR,
-      `LinkedIn error on '${name}': ${details || 'Request refused by LinkedIn.'}`,
+      `LinkedIn error on '${name}'. The endpoint is unverified and may have changed.`,
       { howToFix: UNVERIFIED_FIX },
     );
   }
@@ -1068,6 +1067,7 @@ export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
           profileUrn: inv.profileUrn || '',
           firstName: inv.firstName || '',
           lastName: inv.lastName || '',
+          fullName: inv.fullName || [inv.firstName, inv.lastName].filter(Boolean).join(' ').trim() || '',
           vanityName: inv.vanityName || toPublicId,
           toMemberUrn: inv.toMemberUrn || '',
           toPublicId,
@@ -1095,6 +1095,7 @@ export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
       profileUrn: inv.profileUrn || '',
       firstName: inv.firstName || '',
       lastName: inv.lastName || '',
+      fullName: inv.fullName || [inv.firstName, inv.lastName].filter(Boolean).join(' ').trim() || '',
       vanityName: inv.vanityName || toPublicId,
       toMemberUrn: inv.toMemberUrn || '',
       toPublicId,
@@ -1111,37 +1112,144 @@ export const listSentInvitations = fetchSentInvitations;
  * Self-contained page script executed inside https://www.linkedin.com/mynetwork/invitation-manager/sent/
  * Locates invitation cards for given prospects and clicks the native Withdraw button and confirmation modal.
  */
-async function domWithdrawInPage(targetInvites) {
+export async function domWithdrawInPage(targetInvites, options = {}) {
   const results = [];
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const olderThanDays = typeof options?.olderThanDays === 'number' ? options.olderThanDays : 14;
+  const maxCount = typeof options?.maxCount === 'number'
+    ? options.maxCount
+    : (Array.isArray(targetInvites) && targetInvites.length > 0 ? targetInvites.length : 10);
+  const maxWaitMs = typeof options?.maxWaitMs === 'number' ? options.maxWaitMs : 15000;
 
-  if (!Array.isArray(targetInvites) || targetInvites.length === 0) {
-    return { results: [], matchedInDom: 0, loadMoreClicks: 0 };
-  }
-
-  // 1. Wait for Hydration: poll up to 15s until invitation cards or "Withdraw" buttons appear in DOM
+  const pageTitle = document.title || '';
   const hydrationStart = Date.now();
-  while (Date.now() - hydrationStart < 15000) {
-    const hasCards = document.querySelector(
-      '.invitation-card, li.invitation-card, .mn-invitation-list li, [data-view-name="invitation-card"], .mn-invitation-card, .artdeco-list__item, ul.mn-invitation-list > li',
+  let initialWithdrawButtons = 0;
+
+  function ensureSentTabSelected() {
+    const sentTabs = Array.from(
+      document.querySelectorAll('a[href*="/invitation-manager/sent"], button, [role="tab"]')
     );
-    const hasWithdrawBtn = Array.from(document.querySelectorAll('button')).some((b) => {
-      const txt = (b.innerText || b.textContent || '').trim().toLowerCase();
-      const aria = (b.getAttribute('aria-label') || '').toLowerCase();
-      return txt === 'withdraw' || aria.includes('withdraw');
+    const sentTab = sentTabs.find((el) => {
+      const txt = (el.innerText || el.textContent || '').trim();
+      const href = el.getAttribute('href') || '';
+      return /^sent$/i.test(txt) || href.includes('/invitation-manager/sent');
     });
 
-    if (hasCards || hasWithdrawBtn) {
+    if (sentTab) {
+      const isSelected =
+        sentTab.getAttribute('aria-selected') === 'true' ||
+        sentTab.classList.contains('artdeco-pill--selected') ||
+        sentTab.classList.contains('active') ||
+        sentTab.getAttribute('aria-current') === 'page';
+
+      if (!isSelected) {
+        try {
+          sentTab.click();
+        } catch {}
+      }
+    }
+  }
+
+  function isWithdrawElement(el) {
+    if (!el) return false;
+    const txt = (el.innerText || el.textContent || '').trim();
+    const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+    return /^withdraw$/i.test(txt) || aria.includes('withdraw');
+  }
+
+  function getWithdrawButtons() {
+    const candidates = Array.from(document.querySelectorAll('button, [role="button"], a'));
+    return candidates.filter(isWithdrawElement);
+  }
+
+  // If the "Sent" tab element is present and not selected, click it
+  ensureSentTabSelected();
+
+  // 1. Wait until at least 1 element matching button, [role="button"], a with /^withdraw$/i text or aria-label includes 'withdraw' appears (up to maxWaitMs)
+  while (Date.now() - hydrationStart < maxWaitMs) {
+    const withdrawBtns = getWithdrawButtons();
+    if (withdrawBtns.length > 0) {
+      initialWithdrawButtons = withdrawBtns.length;
       break;
+    }
+    if (Date.now() - hydrationStart > 4000) {
+      ensureSentTabSelected();
     }
     await sleep(400);
   }
+  if (initialWithdrawButtons === 0) {
+    initialWithdrawButtons = getWithdrawButtons().length;
+  }
+
+  let domDiagnostics = '';
+  if (initialWithdrawButtons === 0) {
+    const diagMsg = `url=${location.href}, bodySample=${JSON.stringify((document.body.innerText || document.body.textContent || '').replace(/\s+/g, ' ').slice(0, 220))}, buttons=${JSON.stringify([...document.querySelectorAll('button,[role="button"]')].slice(0, 12).map((b) => (b.innerText || b.textContent || '').trim()))}`;
+    try {
+      console.log(`[OutFox DOM] initialWithdrawButtons=0: ${diagMsg}`);
+    } catch {}
+    domDiagnostics = diagMsg;
+  } else {
+    try {
+      console.log(
+        `[OutFox DOM] Hydration check: initialWithdrawButtons=${initialWithdrawButtons}, pageTitle="${pageTitle}"`,
+      );
+    } catch {}
+  }
+
+  function findInvitationCards() {
+    const withdrawButtons = getWithdrawButtons();
+    const cards = [];
+    const seen = new Set();
+
+    for (const btn of withdrawButtons) {
+      let container =
+        btn.closest('li.invitation-card') ||
+        btn.closest('.invitation-card') ||
+        btn.closest('.mn-invitation-card') ||
+        btn.closest('.artdeco-list__item') ||
+        btn.closest('li');
+
+      if (!container) {
+        let p = btn.parentElement;
+        while (p && p !== document.body && p !== document.documentElement) {
+          const txt = p.textContent || '';
+          if (/sent\s+.*ago/i.test(txt) || /sent\s+/i.test(txt)) {
+            container = p;
+            break;
+          }
+          p = p.parentElement;
+        }
+      }
+
+      if (container && !seen.has(container)) {
+        seen.add(container);
+        cards.push(container);
+      }
+    }
+
+    const candidateList = Array.from(
+      document.querySelectorAll(
+        '.invitation-card, li.invitation-card, .mn-invitation-list li, [data-view-name="invitation-card"], .mn-invitation-card, .artdeco-list__item, ul.mn-invitation-list > li',
+      ),
+    );
+    for (const el of candidateList) {
+      if (!seen.has(el)) {
+        const hasWithdraw = Array.from(el.querySelectorAll('button, [role="button"], a')).some(isWithdrawElement);
+        if (hasWithdraw) {
+          seen.add(el);
+          cards.push(el);
+        }
+      }
+    }
+
+    return cards;
+  }
 
   function isCardMatch(card, target) {
-    const vanity = String(target.vanityName || target.publicId || '').toLowerCase().trim();
+    const vanity = String(target.vanityName || target.publicId || target.toPublicId || '').toLowerCase().trim();
     const firstName = String(target.firstName || '').toLowerCase().trim();
     const lastName = String(target.lastName || '').toLowerCase().trim();
-    const fullName = `${firstName} ${lastName}`.trim();
+    const fullName = String(target.fullName || `${firstName} ${lastName}`).toLowerCase().trim();
 
     const links = Array.from(card.querySelectorAll('a[href*="/in/"]')).map((a) =>
       (a.getAttribute('href') || '').toLowerCase(),
@@ -1169,108 +1277,199 @@ async function domWithdrawInPage(targetInvites) {
     return false;
   }
 
-  function getCandidateCards() {
-    return Array.from(
-      document.querySelectorAll(
-        '.invitation-card, li.invitation-card, .mn-invitation-list li, [data-view-name="invitation-card"], .mn-invitation-card, .artdeco-list__item, ul.mn-invitation-list > li',
-      ),
-    );
-  }
-
   function getLoadMoreButton() {
-    const buttons = Array.from(document.querySelectorAll('button'));
-    return buttons.find((btn) => {
-      const isVisible = btn.offsetWidth > 0 || btn.offsetHeight > 0 || btn.getClientRects().length > 0;
+    const candidates = Array.from(document.querySelectorAll('button, [role="button"]'));
+    return candidates.find((btn) => {
+      const hasLayout = btn.offsetWidth !== undefined && btn.offsetHeight !== undefined;
+      const isVisible = hasLayout
+        ? (btn.offsetWidth > 0 || btn.offsetHeight > 0 || (btn.getClientRects && btn.getClientRects().length > 0) || (btn.style && btn.style.display !== 'none' && !btn.hidden))
+        : (btn.style && btn.style.display !== 'none' && !btn.hidden);
       if (!isVisible) return false;
-      const txt = (btn.innerText || btn.textContent || '').trim().toLowerCase();
-      const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+      const txt = (btn.innerText || btn.textContent || '').trim();
+      const aria = (btn.getAttribute('aria-label') || '').trim();
       return (
-        txt.includes('load more') ||
-        txt.includes('see more') ||
-        txt.includes('show more') ||
-        aria.includes('load more') ||
-        btn.classList.contains('scaffold-finite-scroll__load-button')
+        /load\s*more|show\s*more/i.test(txt) ||
+        /load\s*more|show\s*more/i.test(aria) ||
+        (btn.classList && btn.classList.contains('scaffold-finite-scroll__load-button'))
       );
     });
   }
 
-  // 2. Click "Load more" to reach stale invites if any targets are missing from DOM
+  // 2. Fix "Load more" detection & scrolling:
+  // Scroll to the bottom, find visible "Load more", scroll into view, click it, and wait ~2s per click (up to 20 clicks)
   const MAX_LOAD_MORE_CLICKS = 20;
   let loadMoreClicks = 0;
+  const safeTargets = Array.isArray(targetInvites) ? targetInvites : [];
 
   while (loadMoreClicks < MAX_LOAD_MORE_CLICKS) {
-    const currentCards = getCandidateCards();
-    const unmatchedTargets = targetInvites.filter((t) => !currentCards.some((c) => isCardMatch(c, t)));
-    if (unmatchedTargets.length === 0) {
-      break; // All targets found!
-    }
-
-    const loadMoreBtn = getLoadMoreButton();
-    if (!loadMoreBtn) {
-      break; // No visible "Load more" button left
+    const currentCards = findInvitationCards();
+    const unmatchedTargets = safeTargets.filter((t) => !currentCards.some((c) => isCardMatch(c, t)));
+    if (safeTargets.length > 0 && unmatchedTargets.length === 0) {
+      break; // All targets already visible in DOM
     }
 
     try {
-      loadMoreBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (typeof window.scrollTo === 'function') {
+        window.scrollTo(0, document.body.scrollHeight || 999999);
+      }
+    } catch {}
+    await sleep(400);
+
+    const loadMoreBtn = getLoadMoreButton();
+    if (!loadMoreBtn) {
+      break; // No visible "Load more" button remains
+    }
+
+    try {
+      if (typeof loadMoreBtn.scrollIntoView === 'function') {
+        loadMoreBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       await sleep(300);
       loadMoreBtn.click();
       loadMoreClicks++;
-      await sleep(2000); // wait ~2s for new cards to append
+      await sleep(2000); // wait ~2s per click
     } catch {
       break;
     }
   }
 
-  // 3. Process each target invitation
-  const currentCards = getCandidateCards();
-  let matchedInDom = 0;
+  // 3. Match targets or Relative-Date Card Fallback
+  function parseCardAgeDays(card) {
+    const text = (card.textContent || '').replace(/\s+/g, ' ');
+    let match = text.match(/sent\s+(?:(\d+|an?|one)\s+)?(day|week|month|year|yesterday)s?(?:\s+ago)?/i);
+    if (!match) {
+      const candidates = Array.from(card.querySelectorAll('time, span, p, div'));
+      for (const el of candidates) {
+        const t = (el.getAttribute('aria-label') || el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ');
+        match = t.match(/sent\s+(?:(\d+|an?|one)\s+)?(day|week|month|year|yesterday)s?(?:\s+ago)?/i);
+        if (match) break;
+      }
+    }
+    if (!match) return 0;
 
-  for (const target of targetInvites) {
-    const vanity = String(target.vanityName || target.publicId || '').toLowerCase().trim();
-    const firstName = String(target.firstName || '').toLowerCase().trim();
-    const lastName = String(target.lastName || '').toLowerCase().trim();
-    const fullName = `${firstName} ${lastName}`.trim();
-    const identifier = vanity || fullName || target.invitationId || 'unknown';
+    const rawCount = match[1] ? match[1].toLowerCase() : '1';
+    const unit = match[2].toLowerCase();
+    let count = 1;
+    if (rawCount === 'a' || rawCount === 'an' || rawCount === 'one') {
+      count = 1;
+    } else {
+      const parsed = parseInt(rawCount, 10);
+      if (!isNaN(parsed)) count = parsed;
+    }
 
-    let matchedCard = currentCards.find((c) => isCardMatch(c, target));
+    if (unit === 'year') return count * 365;
+    if (unit === 'month') return count * 30;
+    if (unit === 'week') return count * 7;
+    if (unit === 'day' || unit === 'yesterday') return count * 1;
+    return 0;
+  }
 
-    // Secondary fallback: search any anchor pointing to vanity and get its closest card container
-    if (!matchedCard && vanity) {
-      const link = document.querySelector(`a[href*="/in/${vanity}"]`);
-      if (link) {
-        matchedCard =
-          link.closest('li') ||
-          link.closest('.invitation-card') ||
-          link.closest('.artdeco-list__item') ||
-          link.closest('div[class*="invitation"]') ||
-          link.parentElement?.parentElement;
+  const allCards = findInvitationCards();
+  const matchedTargets = [];
+  const matchedCardsSet = new Set();
+
+  for (const target of safeTargets) {
+    let matchedCard = allCards.find((c) => !matchedCardsSet.has(c) && isCardMatch(c, target));
+    if (!matchedCard) {
+      const vanity = String(target.vanityName || target.publicId || target.toPublicId || '').toLowerCase().trim();
+      if (vanity) {
+        const link = document.querySelector(`a[href*="/in/${vanity}"]`);
+        if (link) {
+          const candidate =
+            link.closest('li') ||
+            link.closest('.invitation-card') ||
+            link.closest('.artdeco-list__item') ||
+            link.parentElement?.parentElement;
+          if (candidate && !matchedCardsSet.has(candidate)) {
+            matchedCard = candidate;
+          }
+        }
       }
     }
 
-    if (!matchedCard) {
-      results.push({
-        invitationId: target.invitationId,
-        publicId: identifier,
-        success: false,
-        reason: 'Invitation card not found in DOM',
+    if (matchedCard) {
+      matchedCardsSet.add(matchedCard);
+      matchedTargets.push({ card: matchedCard, target });
+    }
+  }
+
+  const itemsToWithdraw = [];
+
+  if (matchedTargets.length > 0) {
+    for (const item of matchedTargets) {
+      itemsToWithdraw.push({
+        card: item.card,
+        invitationId: item.target.invitationId,
+        publicId: item.target.vanityName || item.target.publicId || item.target.fullName || item.target.invitationId,
       });
-      continue;
     }
 
-    matchedInDom++;
+    for (const target of safeTargets) {
+      if (!matchedTargets.some((m) => m.target === target)) {
+        results.push({
+          invitationId: target.invitationId,
+          publicId: target.vanityName || target.publicId || target.fullName || target.invitationId,
+          success: false,
+          reason: 'Invitation card not found in DOM',
+        });
+      }
+    }
+  } else {
+    // 0 cards matched by ID/name: Relative-Date Card Fallback
+    const staleCards = [];
+    for (const card of allCards) {
+      const ageDays = parseCardAgeDays(card);
+      if (ageDays >= olderThanDays) {
+        staleCards.push({ card, ageDays });
+      }
+    }
 
-    // Find the "Withdraw" button inside the matched card
-    const buttons = Array.from(matchedCard.querySelectorAll('button'));
-    const withdrawBtn = buttons.find((btn) => {
-      const txt = (btn.innerText || btn.textContent || '').trim().toLowerCase();
-      const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
-      return txt === 'withdraw' || aria.includes('withdraw');
-    });
+    const countToTake = Math.min(staleCards.length, maxCount);
+    for (let i = 0; i < countToTake; i++) {
+      const { card, ageDays } = staleCards[i];
+      const target = safeTargets[i];
+      const link = card.querySelector('a[href*="/in/"]');
+      const href = link ? link.getAttribute('href') : '';
+      const cardVanity = href ? (href.match(/\/in\/([^/?#]+)/) || [])[1] : '';
+      const nameEl = card.querySelector('.mn-invitation-card__title, .invitation-card__title, strong, a[href*="/in/"]');
+      const cardName = nameEl ? (nameEl.innerText || nameEl.textContent || '').trim() : '';
+
+      const invitationId = target?.invitationId || `dom_stale_${i + 1}`;
+      const publicId = target?.publicId || target?.vanityName || cardVanity || cardName || invitationId;
+
+      itemsToWithdraw.push({
+        card,
+        invitationId,
+        publicId,
+        relativeFallback: true,
+        ageDays,
+      });
+    }
+
+    if (countToTake < safeTargets.length) {
+      for (let i = countToTake; i < safeTargets.length; i++) {
+        results.push({
+          invitationId: safeTargets[i].invitationId,
+          publicId: safeTargets[i].vanityName || safeTargets[i].publicId || safeTargets[i].fullName || safeTargets[i].invitationId,
+          success: false,
+          reason: 'Invitation card not found in DOM',
+        });
+      }
+    }
+  }
+
+  const matchedInDom = itemsToWithdraw.length;
+
+  // 4. Click Withdraw on each selected card
+  for (const item of itemsToWithdraw) {
+    const card = item.card;
+    const buttons = Array.from(card.querySelectorAll('button, [role="button"], a'));
+    const withdrawBtn = buttons.find(isWithdrawElement);
 
     if (!withdrawBtn) {
       results.push({
-        invitationId: target.invitationId,
-        publicId: identifier,
+        invitationId: item.invitationId,
+        publicId: item.publicId,
         success: false,
         reason: 'Withdraw button not found in card',
       });
@@ -1278,14 +1477,14 @@ async function domWithdrawInPage(targetInvites) {
     }
 
     try {
-      // Scroll into view & click the card's Withdraw button
-      withdrawBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (typeof withdrawBtn.scrollIntoView === 'function') {
+        withdrawBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       await sleep(350);
       withdrawBtn.click();
 
-      // Wait ~600–1200ms for confirmation dialog
-      const waitModalMs = Math.round(600 + Math.random() * 600);
-      await sleep(waitModalMs);
+      // Wait ~800ms for confirmation dialog
+      await sleep(800);
 
       // Find and click confirmation modal "Withdraw" button
       const dialogSelectors = '[role="dialog"], .artdeco-modal, #artdeco-modal-outlet';
@@ -1293,29 +1492,24 @@ async function domWithdrawInPage(targetInvites) {
       let confirmBtn = null;
 
       for (const dialog of dialogs) {
-        const modalButtons = Array.from(dialog.querySelectorAll('button'));
-        confirmBtn = modalButtons.find((btn) => {
-          const txt = (btn.innerText || btn.textContent || '').trim();
-          const aria = (btn.getAttribute('aria-label') || '').trim();
-          return /^withdraw$/i.test(txt) || /^withdraw$/i.test(aria);
-        });
+        const modalButtons = Array.from(dialog.querySelectorAll('button, [role="button"], a'));
+        confirmBtn = modalButtons.find(isWithdrawElement);
         if (confirmBtn) break;
       }
 
       if (confirmBtn) {
         confirmBtn.click();
-        await sleep(800);
+        await sleep(500);
         results.push({
-          invitationId: target.invitationId,
-          publicId: identifier,
+          invitationId: item.invitationId,
+          publicId: item.publicId,
           success: true,
           method: 'dom_fallback',
         });
       } else {
-        // If modal didn't appear or withdrawal was instant
         results.push({
-          invitationId: target.invitationId,
-          publicId: identifier,
+          invitationId: item.invitationId,
+          publicId: item.publicId,
           success: true,
           method: 'dom_fallback',
           note: 'Card withdraw clicked without modal confirmation',
@@ -1323,19 +1517,25 @@ async function domWithdrawInPage(targetInvites) {
       }
     } catch (clickErr) {
       results.push({
-        invitationId: target.invitationId,
-        publicId: identifier,
+        invitationId: item.invitationId,
+        publicId: item.publicId,
         success: false,
         reason: clickErr?.message || 'Error clicking withdraw button',
       });
     }
 
-    // Wait ~1500–2500ms before next invite
-    const nextDelay = Math.round(1500 + Math.random() * 1000);
-    await sleep(nextDelay);
+    // Wait ~1500ms before next invite
+    await sleep(1500);
   }
 
-  return { results, matchedInDom, loadMoreClicks };
+  return {
+    results,
+    matchedInDom,
+    loadMoreClicks,
+    initialWithdrawButtons,
+    pageTitle,
+    domDiagnostics,
+  };
 }
 
 /**
@@ -1382,29 +1582,46 @@ function waitForTabLoad(tabId, maxWaitMs = 15000) {
 /**
  * Fallback to clicking native Withdraw buttons in a background tab session via chrome.scripting.
  *
- * @param {Array<{invitationId: string, vanityName?: string, firstName?: string, lastName?: string, publicId?: string}>} invitesBatch
- * @returns {Promise<{withdrawn: number, failed: number, matchedInDom: number, results: Array}>}
+ * @param {Array<{invitationId: string, vanityName?: string, firstName?: string, lastName?: string, fullName?: string, publicId?: string}>} invitesBatch
+ * @param {{ olderThanDays?: number, maxCount?: number }} [options]
+ * @returns {Promise<{withdrawn: number, failed: number, matchedInDom: number, loadMoreClicks: number, initialWithdrawButtons: number, pageTitle: string, results: Array}>}
  */
-export async function withdrawViaDomFallback(invitesBatch) {
-  if (!Array.isArray(invitesBatch) || invitesBatch.length === 0) {
-    return { withdrawn: 0, failed: 0, matchedInDom: 0, results: [] };
+export async function withdrawViaDomFallback(invitesBatch, options = {}) {
+  const olderThanDays = typeof options?.olderThanDays === 'number' ? options.olderThanDays : 14;
+  const maxCount = typeof options?.maxCount === 'number'
+    ? options.maxCount
+    : (Array.isArray(invitesBatch) && invitesBatch.length > 0 ? invitesBatch.length : 10);
+
+  if ((!Array.isArray(invitesBatch) || invitesBatch.length === 0) && (!options || !options.maxCount)) {
+    return { withdrawn: 0, failed: 0, matchedInDom: 0, loadMoreClicks: 0, initialWithdrawButtons: 0, pageTitle: '', domDiagnostics: '', results: [] };
   }
 
   if (typeof chrome === 'undefined' || !chrome.tabs?.create || !chrome.scripting?.executeScript) {
     throw new EngineError(ERROR.UNAVAILABLE, 'Chrome tabs or scripting API unavailable for DOM fallback');
   }
 
+  const targetsCount = Array.isArray(invitesBatch) ? invitesBatch.length : 0;
   logDebug(
     'info',
     'AutoWithdraw',
-    `[AutoWithdraw] Opening single background tab for ${invitesBatch.length} invitations via DOM fallback...`,
+    `[AutoWithdraw] Opening LinkedIn tab for ${targetsCount} invitations via DOM fallback...`,
   );
+
+  let prevTabId = null;
+  if (chrome.tabs?.query) {
+    try {
+      const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (Array.isArray(activeTabs) && activeTabs[0]?.id) {
+        prevTabId = activeTabs[0].id;
+      }
+    } catch {}
+  }
 
   let tab = null;
   try {
     tab = await chrome.tabs.create({
       url: 'https://www.linkedin.com/mynetwork/invitation-manager/sent/',
-      active: false,
+      active: true,
     });
 
     await waitForTabLoad(tab.id, 15000);
@@ -1414,7 +1631,7 @@ export async function withdrawViaDomFallback(invitesBatch) {
     const execResults = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       world: 'MAIN',
-      args: [invitesBatch],
+      args: [invitesBatch, { olderThanDays, maxCount }],
       func: domWithdrawInPage,
     });
 
@@ -1424,17 +1641,26 @@ export async function withdrawViaDomFallback(invitesBatch) {
       ? rawResult.matchedInDom
       : results.filter((r) => r.reason !== 'Invitation card not found in DOM').length;
     const loadMoreClicks = typeof rawResult?.loadMoreClicks === 'number' ? rawResult.loadMoreClicks : 0;
+    const initialWithdrawButtons = typeof rawResult?.initialWithdrawButtons === 'number'
+      ? rawResult.initialWithdrawButtons
+      : 0;
+    const pageTitle = rawResult?.pageTitle || '';
+    const domDiagnostics = rawResult?.domDiagnostics || '';
 
     const withdrawn = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
 
+    if (initialWithdrawButtons === 0 && domDiagnostics) {
+      logDebug('warn', 'AutoWithdraw', `[AutoWithdraw] initialWithdrawButtons=0: ${domDiagnostics}`);
+    }
+
     logDebug(
       'good',
       'AutoWithdraw',
-      `[AutoWithdraw] DOM fallback completed: matchedInDom=${matchedInDom}, withdrawn=${withdrawn}, failed=${failed}. (targets=${invitesBatch.length}, loadMoreClicks=${loadMoreClicks})`,
+      `[AutoWithdraw] DOM fallback completed: initialWithdrawButtons=${initialWithdrawButtons}, pageTitle="${pageTitle}", matchedInDom=${matchedInDom}, withdrawn=${withdrawn}, failed=${failed}. (targets=${targetsCount}, loadMoreClicks=${loadMoreClicks})`,
     );
 
-    return { withdrawn, failed, matchedInDom, results };
+    return { withdrawn, failed, matchedInDom, loadMoreClicks, initialWithdrawButtons, pageTitle, domDiagnostics, results };
   } catch (err) {
     logDebug('error', 'AutoWithdraw', `[AutoWithdraw] DOM fallback error: ${err.message || err}`);
     throw err;
@@ -1446,6 +1672,13 @@ export async function withdrawViaDomFallback(invitesBatch) {
         /* tab may already have been closed */
       }
     }
+    if (prevTabId && chrome.tabs?.update) {
+      try {
+        await chrome.tabs.update(prevTabId, { active: true });
+      } catch {
+        /* prev tab may no longer exist */
+      }
+    }
   }
 }
 
@@ -1453,12 +1686,12 @@ export async function withdrawViaDomFallback(invitesBatch) {
  * Withdraw a pending sent invitation using LinkedIn's current SDUI endpoint,
  * with automatic single-invite DOM fallback if SDUI returns 400/404/422.
  *
- * @param {string | { invitationId: string, profileUrn?: string, firstName?: string, lastName?: string, vanityName?: string }} invite
- * @param {{ allowDomFallback?: boolean }} [options]
+ * @param {string | number | { invitationId: string, profileUrn?: string, toMemberUrn?: string, firstName?: string, lastName?: string, vanityName?: string, publicId?: string, toPublicId?: string }} invitationId
+ * @param {{ profileUrn?: string, publicId?: string, firstName?: string, lastName?: string, allowDomFallback?: boolean }} [meta]
  * @returns {Promise<{ ok: boolean, method: string, data?: any }>}
  */
-export async function withdrawInvitation(invite, options = { allowDomFallback: true }) {
-  if (!invite) {
+export async function withdrawInvitation(invitationId, meta = {}) {
+  if (!invitationId) {
     throw new EngineError(ERROR.INVALID_PARAMS, 'invitationId or invite object is required to withdraw an invitation');
   }
 
@@ -1466,46 +1699,66 @@ export async function withdrawInvitation(invite, options = { allowDomFallback: t
   let profileUrn = '';
   let firstName = '';
   let lastName = '';
+  let fullName = '';
   let vanityName = '';
 
-  if (typeof invite === 'string' || typeof invite === 'number') {
-    rawId = String(invite);
-  } else if (typeof invite === 'object') {
-    rawId = String(invite.invitationId || invite.invitationUrn || invite.id || '');
-    profileUrn = invite.profileUrn || (invite.toMemberUrn ? String(invite.toMemberUrn).replace(/^urn:li:[^:]+:/, '') : '') || '';
-    firstName = invite.firstName || '';
-    lastName = invite.lastName || '';
-    vanityName = invite.vanityName || invite.publicId || invite.toPublicId || '';
+  if (typeof invitationId === 'object' && invitationId !== null) {
+    rawId = String(invitationId.invitationId || invitationId.invitationUrn || invitationId.id || '');
+    profileUrn = meta.profileUrn || invitationId.profileUrn || (invitationId.toMemberUrn ? String(invitationId.toMemberUrn).replace(/^urn:li:[^:]+:/, '') : '') || '';
+    firstName = meta.firstName || invitationId.firstName || '';
+    lastName = meta.lastName || invitationId.lastName || '';
+    fullName = meta.fullName || invitationId.fullName || [firstName, lastName].filter(Boolean).join(' ').trim();
+    vanityName = meta.publicId || meta.vanityName || invitationId.vanityName || invitationId.publicId || invitationId.toPublicId || '';
+  } else {
+    rawId = String(invitationId);
+    profileUrn = meta.profileUrn || '';
+    firstName = meta.firstName || '';
+    lastName = meta.lastName || '';
+    fullName = meta.fullName || [firstName, lastName].filter(Boolean).join(' ').trim();
+    vanityName = meta.publicId || meta.vanityName || '';
   }
 
-  const numericMatch = rawId.match(/\d+/);
-  const cleanInvitationId = numericMatch ? numericMatch[0] : rawId.replace(/^urn:li:[^:]+:/, '');
+  const cleanId = String(rawId).split(':').pop().replace(/\D+/g, '') || String(rawId).split(':').pop();
+  const cleanProfileUrn = String(profileUrn || '').split(':').pop();
 
-  if (!cleanInvitationId) {
+  if (!cleanId) {
     throw new EngineError(ERROR.INVALID_PARAMS, 'Valid numeric invitationId is required to withdraw an invitation');
   }
 
-  const sduiPayload = {
-    clientArguments: {
-      $type: 'proto.sdui.actions.requests.RequestedArguments',
-      requestedStateKeys: [],
-      knownTemplateIds: [],
-      requestMetadata: { $type: 'proto.sdui.common.RequestMetadata' },
-      states: [],
-      screenId: 'com.linkedin.sdui.flagshipnav.mynetwork.invitations.WithdrawConfirmationDialog',
-      payload: {
-        invitationUrn: { invitationId: cleanInvitationId },
-        invitationType: 1,
-        inviterActionType: 2,
-        trackingActionType: 'INVITATION_MANAGER_WITHDRAW',
-        queryName: 'ProfileMemberRelationshipRefreshById',
-        profileUrn: profileUrn || '',
-        inviteeVanityName: vanityName || '',
-        firstName: firstName || '',
-        lastName: lastName || '',
+  const requestedArguments = {
+    $type: 'proto.sdui.actions.requests.RequestedArguments',
+    knownTemplateIds: [],
+    payload: {
+      firstFiveInviteCount: { key: 'guidedFlowNumSentInvites', namespace: '' },
+      firstName: firstName || '',
+      guidedFlowUrlandProfileList: {
+        key: 'guidedFlowUrlAndPictureList',
+        namespace: 'guidedFlowUrlAndPictureListNameSpace',
       },
+      invitationType: 'GenericInvitationType_CONNECTION',
+      invitationUrn: { invitationId: cleanId },
+      inviteeVanityName: vanityName || '',
+      inviterActionType: 'InviterActionType_WITHDRAW',
+      lastName: lastName || '',
+      profileUrn: cleanProfileUrn,
+      queryName: 'ProfileMemberRelationshipRefreshById',
     },
-    isModal: true,
+    requestMetadata: { $type: 'proto.sdui.common.RequestMetadata' },
+    requestedStateKeys: [
+      { key: { value: { $case: 'id', id: 'guidedFlowNumSentInvites' } }, namespace: '' },
+    ],
+    screenId: 'com.linkedin.sdui.flagshipnav.mynetwork.invitations.WithdrawConfirmationDialog',
+    states: [],
+  };
+
+  const sduiPayload = {
+    requestId: 'com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation',
+    requestedArguments,
+    serverRequest: {
+      requestId: 'com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation',
+      requestedArguments,
+    },
+    states: [],
   };
 
   const withdrawPath =
@@ -1520,20 +1773,30 @@ export async function withdrawInvitation(invite, options = { allowDomFallback: t
         'content-type': 'application/json; charset=UTF-8',
       },
       body: sduiPayload,
+      rawText: true,
     });
-    return { ok: true, method: 'sdui_api', data: res };
+    const resText = typeof res === 'string' ? res : (res?.text || '');
+    const hasExplicitError =
+      /^(?:\d+:)?E:|"actionStatus"\s*:\s*"FAILED"|"errorCode"\s*:/i.test(resText) ||
+      /"errorMessage"\s*:\s*"[^"]+"/i.test(resText);
+    if (hasExplicitError) {
+      throw new EngineError(ERROR.LINKEDIN_ERROR, `SDUI action error: ${resText.slice(0, 300)}`);
+    }
+    return { ok: true, status: res?.status || 200, method: 'sdui_api', data: res };
   } catch (err) {
     const status = err?.status || err?.response?.status || err?.code || 0;
+    const isNetworkError = !status && /fetch|network|timeout|connection|offline/i.test(String(err?.message || ''));
     const isSduiRejection =
       status === 400 ||
       status === 404 ||
       status === 410 ||
       status === 422 ||
       status >= 500 ||
-      /400|404|410|422|500|502|503/i.test(String(err?.message));
+      isNetworkError ||
+      /400|404|410|422|500|502|503|SDUI action error/i.test(String(err?.message));
 
     const bodyText = err?.response?.text || err?.message || JSON.stringify(err);
-    logDebug('warn', 'Voyager', `[withdrawInvitation SDUI Failed] id=${cleanInvitationId} status=${status} response=${bodyText}`);
+    logDebug('warn', 'Voyager', `[withdrawInvitation SDUI Failed] id=${cleanId} status=${status} response=${bodyText}`);
 
     if (isSduiRejection) {
       // 1. Hot-swap retry: check if Vault has updated endpoint URL
@@ -1549,8 +1812,15 @@ export async function withdrawInvitation(invite, options = { allowDomFallback: t
               'content-type': 'application/json; charset=UTF-8',
             },
             body: sduiPayload,
+            rawText: true,
           });
-          return { ok: true, method: 'sdui_api_hotswap', data: retryRes };
+          const retryText = typeof retryRes === 'string' ? retryRes : (retryRes?.text || '');
+          const retryHasError =
+            /^(?:\d+:)?E:|"actionStatus"\s*:\s*"FAILED"|"errorCode"\s*:/i.test(retryText) ||
+            /"errorMessage"\s*:\s*"[^"]+"/i.test(retryText);
+          if (!retryHasError) {
+            return { ok: true, status: retryRes?.status || 200, method: 'sdui_api_hotswap', data: retryRes };
+          }
         }
       } catch (retryErr) {
         logDebug('warn', 'Voyager', `[withdrawInvitation] Hot-swap retry failed: ${retryErr.message}`);
@@ -1560,14 +1830,17 @@ export async function withdrawInvitation(invite, options = { allowDomFallback: t
       reportBrokenEndpoint('withdrawInvitation', status, withdrawPath, err).catch(() => {});
 
       // 3. Fall back seamlessly to background tab DOM automation
-      if (options.allowDomFallback && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      const allowDomFallback = meta?.allowDomFallback !== false;
+      if (allowDomFallback && typeof chrome !== 'undefined' && chrome.tabs?.create) {
         logDebug('warn', 'AutoWithdraw', '[AutoWithdraw] SDUI API failed, switching to DOM-click fallback...');
         const inviteObj = {
-          invitationId: cleanInvitationId,
-          profileUrn,
+          invitationId: cleanId,
+          profileUrn: cleanProfileUrn,
           firstName,
           lastName,
+          fullName,
           vanityName,
+          publicId: vanityName,
         };
         const domRes = await withdrawViaDomFallback([inviteObj]);
         if (domRes.withdrawn > 0) {
@@ -1638,11 +1911,177 @@ function inviteFailure(payload, fallback) {
   if (looksLikeDuplicate(code, message)) howToFix = INVITE_DUPLICATE_FIX;
   else if (looksLikeAllowance(code, message)) howToFix = INVITE_ALLOWANCE_FIX;
 
-  return new EngineError(
+  const err = new EngineError(
     ERROR.LINKEDIN_ERROR,
     code ? `LinkedIn refused the invitation (${code}): ${said}` : `LinkedIn refused the invitation: ${said}`,
     { howToFix },
   );
+  err.status = data.status || (payload && payload.status) || 400;
+  err.response = payload;
+  return err;
+}
+
+/**
+ * Dispatch LinkedIn Flagship SDUI Connect request (addaAddConnection).
+ *
+ * @param {{publicId?: string, fsdProfileUrn?: string, memberId: string|number, firstName?: string, lastName?: string}} params
+ * @returns {Promise<{ok: boolean, invitationUrn: string, inviteeUrn: string, method: string}>}
+ */
+export async function sendSduiConnectionRequest({
+  publicId,
+  fsdProfileUrn,
+  memberId,
+  firstName = '',
+  lastName = '',
+}) {
+  const cleanMemberId = String(memberId || '').replace(/^urn:li:member:/, '').replace(/\D+/g, '') || String(memberId || '');
+  const cleanPublicId = String(publicId || '').trim();
+  const cleanFsdProfileUrn = toFsdProfileUrn(fsdProfileUrn) || (fsdProfileUrn ? String(fsdProfileUrn) : '');
+
+  if (!cleanMemberId) {
+    throw new EngineError(ERROR.INVALID_PARAMS, 'Valid numeric memberId is required for SDUI connect');
+  }
+
+  const requestedArguments = {
+    $type: 'proto.sdui.actions.requests.RequestedArguments',
+    knownTemplateIds: [],
+    payload: {
+      connectionState: {
+        key: `state:invitation:urn:li:member:${cleanMemberId}`,
+        namespace: null,
+      },
+      firstName: firstName || '',
+      inviteeUrn: {
+        memberId: String(cleanMemberId),
+      },
+      isDisabled: {
+        key: `connect-button-disabled-${cleanPublicId}`,
+        namespace: null,
+      },
+      lastName: lastName || '',
+      nonIterableProfileId: cleanFsdProfileUrn,
+      origin: 'InvitationOrigin_PROFILE',
+      profileCanonicalUrl: `https://www.linkedin.com/in/${cleanPublicId}`,
+    },
+    requestMetadata: {
+      $type: 'proto.sdui.common.RequestMetadata',
+    },
+    requestedStateKeys: [],
+    screenId: 'com.linkedin.sdui.flagshipnav.mynetwork.invitations.CustomInvite',
+    states: [],
+  };
+
+  const serverRequest = {
+    isApfcEnabled: false,
+    isStreaming: false,
+    requestId: 'com.linkedin.sdui.requests.mynetwork.addaAddConnection',
+    requestedArguments,
+    rumPageKey: '',
+  };
+
+  const sduiPayload = {
+    serverRequest,
+    states: [],
+  };
+
+  const configuredPath = getEndpoint('sendInvite');
+  const sduiPath =
+    configuredPath && configuredPath.includes('server-request')
+      ? configuredPath
+      : '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaAddConnection';
+
+  try {
+    const res = await voyagerFetch(sduiPath, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/plain, */*',
+        'content-type': 'application/json; charset=UTF-8',
+      },
+      body: sduiPayload,
+      rawText: true,
+    });
+
+    const resText = typeof res === 'string' ? res : (res?.text || '');
+    const hasExplicitError =
+      /^(?:\d+:)?E:|"actionStatus"\s*:\s*"FAILED"|"errorCode"\s*:/i.test(resText) ||
+      /"errorMessage"\s*:\s*"[^"]+"/i.test(resText);
+    if (hasExplicitError) {
+      throw new EngineError(ERROR.LINKEDIN_ERROR, `SDUI action error: ${resText.slice(0, 300)}`);
+    }
+
+    return {
+      ok: true,
+      invitationUrn: `urn:li:fsd_invitation:${cleanMemberId}`,
+      inviteeUrn: cleanFsdProfileUrn,
+      method: 'sdui_api',
+    };
+  } catch (err) {
+    const status = err?.status || err?.response?.status || 0;
+    const isNetworkError = !status && /fetch|network|timeout|connection|offline/i.test(String(err?.message || ''));
+    const isSduiRejection =
+      status === 400 ||
+      status === 404 ||
+      status === 410 ||
+      status === 422 ||
+      status >= 500 ||
+      isNetworkError ||
+      /400|404|410|422|500|502|503|SDUI action error/i.test(String(err?.message));
+
+    logDebug('warn', 'Voyager', `[sendInvite SDUI Failed] memberId=${cleanMemberId} status=${status} error=${err?.message}`);
+
+    if (isSduiRejection) {
+      try {
+        const syncRes = await syncEndpointsFromVault(true);
+        if (syncRes?.changed) {
+          const freshPath = getEndpoint('sendInvite');
+          if (freshPath && freshPath.includes('server-request')) {
+            logDebug('good', 'Voyager', `[sendInvite] Hot-swapping to new Vault endpoint: ${freshPath}`);
+            const retryRes = await voyagerFetch(freshPath, {
+              method: 'POST',
+              headers: {
+                accept: 'application/json, text/plain, */*',
+                'content-type': 'application/json; charset=UTF-8',
+              },
+              body: sduiPayload,
+              rawText: true,
+            });
+            const retryText = typeof retryRes === 'string' ? retryRes : (retryRes?.text || '');
+            const retryHasError =
+              /^(?:\d+:)?E:|"actionStatus"\s*:\s*"FAILED"|"errorCode"\s*:/i.test(retryText) ||
+              /"errorMessage"\s*:\s*"[^"]+"/i.test(retryText);
+            if (!retryHasError) {
+              return {
+                ok: true,
+                invitationUrn: `urn:li:fsd_invitation:${cleanMemberId}`,
+                inviteeUrn: cleanFsdProfileUrn,
+                method: 'sdui_api_hotswap',
+              };
+            }
+          }
+        }
+      } catch (retryErr) {
+        logDebug('warn', 'Voyager', `[sendInvite] Hot-swap retry failed: ${retryErr.message}`);
+      }
+
+      reportBrokenEndpoint('sendInvite', status, sduiPath, err).catch(() => {});
+    }
+
+    const errMsg = String(err?.message || '');
+    if (looksLikePerProspectIssue('', errMsg)) {
+      throw new EngineError(ERROR.INVALID_PARAMS, `LinkedIn refused the invitation: ${errMsg}`, {
+        howToFix: INVITE_DUPLICATE_FIX,
+      });
+    }
+
+    if (status === 429 || /weekly.*limit/i.test(errMsg)) {
+      try {
+        await noteBucketBackoff('invite', 24 * 60 * 60 * 1000);
+      } catch (_) {}
+    }
+
+    if (err instanceof EngineError && err.code !== ERROR.LINKEDIN_ERROR) throw err;
+    throw inviteFailure(err?.response, errMsg);
+  }
 }
 
 /**
@@ -1650,15 +2089,21 @@ function inviteFailure(payload, fallback) {
  *
  * Verified against a real send on 2026-09-09 (client 1.13.46516): this is the
  * exact URL, decoration and body LinkedIn's own "Connect" dialog uses, and
- * success is the `*invitation` urn in the decorated answer. The `x-li-track`
- * and `x-li-page-instance` headers the page also sends are deliberately not
- * forged — they describe a browser viewport and a page view that did not
- * happen, and LinkedIn accepted the call without them.
+ * success is the `*invitation` urn in the decorated answer. Supports Flagship
+ * SDUI Connect (addaAddConnection) for blank requests and 400 fallbacks.
  *
- * @param {{publicId?: string, publicIdentifier?: string, profileUrn?: string, note?: string}} params
- * @returns {Promise<{invitationUrn: string, inviteeUrn: string}>}
+ * @param {{publicId?: string, publicIdentifier?: string, profileUrn?: string, note?: string, memberId?: string|number, firstName?: string, lastName?: string}} params
+ * @returns {Promise<{invitationUrn: string, inviteeUrn: string, ok?: boolean, method?: string, sentWithoutNote?: boolean}>}
  */
-export async function sendInvite({ publicId, publicIdentifier, profileUrn, note }) {
+export async function sendInvite({
+  publicId,
+  publicIdentifier,
+  profileUrn,
+  note,
+  memberId,
+  firstName,
+  lastName,
+}) {
   let message = note === undefined || note === null ? '' : String(note);
   let sentWithoutNote = false;
 
@@ -1684,15 +2129,54 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
   }
 
   const id = publicId || publicIdentifier;
-  const urn = toFsdProfileUrn(profileUrn) || (await resolveProfileUrn(id));
 
   const basePath = getEndpoint('sendInvite') || ENDPOINTS.createInvitation;
-  const path = `${basePath}?${qs({
-    action: 'verifyQuotaAndCreateV2',
-    decorationId: ENDPOINTS.decorations.invitationCreation,
-  })}`;
+  const isServerRequestEndpoint = basePath && basePath.includes('server-request');
 
-  const sendPost = async (customMsg) => {
+  // Resolve profile info if we have a public id or memberId is needed
+  let resolvedProfile = null;
+  let resolvedMemberId = memberId || (profileUrn ? String(profileUrn).match(/urn:li:member:(\d+)/)?.[1] : '');
+  let resolvedFirstName = firstName || '';
+  let resolvedLastName = lastName || '';
+  let resolvedFsdProfileUrn = toFsdProfileUrn(profileUrn) || '';
+
+  const ensureSduiProfile = async () => {
+    if (id && (!resolvedMemberId || !resolvedFsdProfileUrn)) {
+      try {
+        resolvedProfile = await getProfileNormalized(id);
+        if (resolvedProfile) {
+          resolvedMemberId = resolvedMemberId || resolvedProfile.memberId || (resolvedProfile.objectUrn ? String(resolvedProfile.objectUrn).replace(/^urn:li:member:/, '') : '');
+          resolvedFirstName = resolvedFirstName || resolvedProfile.firstName || '';
+          resolvedLastName = resolvedLastName || resolvedProfile.lastName || '';
+          resolvedFsdProfileUrn = resolvedFsdProfileUrn || toFsdProfileUrn(resolvedProfile.urn);
+        }
+      } catch (_) {}
+    }
+  };
+
+  const urn = resolvedFsdProfileUrn || (id ? await resolveProfileUrn(id) : toFsdProfileUrn(profileUrn));
+  resolvedFsdProfileUrn = urn;
+
+  const sendSdui = async () => {
+    await ensureSduiProfile();
+    const sduiRes = await sendSduiConnectionRequest({
+      publicId: id || resolvedProfile?.publicId || '',
+      fsdProfileUrn: urn || resolvedFsdProfileUrn,
+      memberId: resolvedMemberId,
+      firstName: resolvedFirstName,
+      lastName: resolvedLastName,
+    });
+    return {
+      ...sduiRes,
+      ...(sentWithoutNote ? { sentWithoutNote: true } : {}),
+    };
+  };
+
+  const sendLegacyPost = async (customMsg) => {
+    const path = `${basePath}?${qs({
+      action: 'verifyQuotaAndCreateV2',
+      decorationId: ENDPOINTS.decorations.invitationCreation,
+    })}`;
     const body = { invitee: { inviteeUnion: { memberProfile: urn } } };
     if (customMsg) body.customMessage = customMsg;
     return voyagerFetch(path, {
@@ -1702,11 +2186,19 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
     });
   };
 
+  // If endpoint points to server-request or if sending blank invite with available memberId/id:
+  if (isServerRequestEndpoint && (resolvedMemberId || id)) {
+    return sendSdui();
+  }
+  if (!message && (resolvedMemberId || id)) {
+    return sendSdui();
+  }
+
   let raw;
   const attemptedNote = Boolean(message);
 
   try {
-    raw = await sendPost(message);
+    raw = await sendLegacyPost(message);
   } catch (e) {
     const isCustomInviteLimit =
       e?.code === 'CUSTOM_INVITE_LIMIT_REACHED' ||
@@ -1717,24 +2209,57 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
 
     if (isCustomInviteLimit) {
       await setNoteLimitActive(24 * 60 * 60 * 1000);
+      sentWithoutNote = true;
     }
 
-    // If a personalized note was attempted and rejected, retry blank once without tripping bucket cooldown
+    const payload = e && e.response;
+    const msg = (e && e.message) || 'LinkedIn refused the invitation.';
+    const data = (payload && payload.data) || payload || {};
+    const errCode = String(data.code || data.status || e?.code || '');
+    const errMsg = String(data.message || msg);
+
+    if (looksLikePerProspectIssue(errCode, errMsg)) {
+      throw new EngineError(
+        ERROR.INVALID_PARAMS,
+        errCode ? `LinkedIn refused the invitation (${errCode}): ${errMsg}` : `LinkedIn refused the invitation: ${errMsg}`,
+        { howToFix: INVITE_DUPLICATE_FIX },
+      );
+    }
+
+    const status = e?.status || e?.response?.status || 0;
+    const isAllowanceLimit = looksLikeAllowance(errCode, errMsg);
+
+    // If verifyQuotaAndCreateV2 returns HTTP 400 (non-limit), fallback to SDUI addaAddConnection!
+    if (status === 400 && !isAllowanceLimit && !isCustomInviteLimit && (resolvedMemberId || id)) {
+      logDebug(
+        'warn',
+        'Outreach',
+        `[Outreach] HTTP 400 (non-limit) on legacy invite (code=${errCode}). Retrying via SDUI addaAddConnection...`,
+      );
+      try {
+        return await sendSdui();
+      } catch (sduiErr) {
+        logDebug('warn', 'Outreach', `[Outreach] SDUI fallback also failed: ${sduiErr?.message}`);
+        throw sduiErr;
+      }
+    }
+
+    // Fallback legacy blank retry for when no memberId/id was resolvable
     if (attemptedNote || isCustomInviteLimit) {
       logDebug(
         'warn',
         'Outreach',
-        `[Outreach] Note rejected (status=${e?.status || 'unknown'}, code=${e?.code || 'none'}, msg=${e?.message || 'none'}). Retrying blank connection request...`,
+        `[Outreach] Note rejected (status=${status}, code=${errCode}). Retrying blank connection request...`,
       );
       try {
-        raw = await sendPost('');
+        raw = await sendLegacyPost('');
         const val = (raw && raw.data && raw.data.value) || {};
         const blankUrn = val['*invitation'] || val.invitationUrn || '';
         if (blankUrn) {
           sentWithoutNote = true;
           await setNoteLimitActive(24 * 60 * 60 * 1000);
         } else {
-          throw inviteFailure(raw || e?.response, 'LinkedIn answered with no invitation urn.');
+          throw inviteFailure(e?.response || raw, e?.message || 'LinkedIn answered with no invitation urn.');
         }
       } catch (blankErr) {
         logDebug(
@@ -1743,13 +2268,12 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
           `[Outreach] Blank invite retry failed (status=${blankErr?.status || 'unknown'}, code=${blankErr?.code || blankErr?.response?.code || 'none'}, msg=${blankErr?.message || 'none'})`,
         );
 
-        const blankPayload = blankErr?.response || e?.response;
+        const blankPayload = (blankErr?.response && (blankErr.response.data || blankErr.response.code)) ? blankErr.response : (e?.response || blankErr?.response);
         const blankMsg = blankErr?.message || e?.message || 'LinkedIn refused the invitation.';
         const blankData = (blankPayload && blankPayload.data) || blankPayload || {};
         const bCode = String(blankData.code || blankData.status || blankErr?.code || '');
         const bMsg = String(blankData.message || blankMsg);
 
-        // If blankErr indicates a per-prospect issue (already invited, pending, withdrawn recently, or email required to connect), throw INVALID_PARAMS
         if (looksLikePerProspectIssue(bCode, bMsg)) {
           throw new EngineError(
             ERROR.INVALID_PARAMS,
@@ -1758,8 +2282,6 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
           );
         }
 
-        // Only trip RATE_LIMITED / bucket cooldown if the BLANK invitation also fails with 429 or weekly limit
-        // (CUSTOM_INVITE_LIMIT_REACHED is NOT a weekly limit)
         const isBlankCustomLimit =
           blankErr?.code === 'CUSTOM_INVITE_LIMIT_REACHED' ||
           blankErr?.isCustomInviteLimit ||
@@ -1775,7 +2297,7 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
         }
         const bStatus = blankErr?.status || blankErr?.response?.status || 0;
         if (bStatus === 400 || bStatus === 404 || bStatus === 410 || bStatus === 422) {
-          reportBrokenEndpoint('sendInvite', bStatus, path, blankErr).catch(() => {});
+          reportBrokenEndpoint('sendInvite', bStatus, basePath, blankErr).catch(() => {});
         }
         if (blankErr instanceof EngineError && blankErr.code !== ERROR.LINKEDIN_ERROR) throw blankErr;
         throw inviteFailure(
@@ -1784,30 +2306,8 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
         );
       }
     } else {
-      // It was already blank when it failed
-      const payload = e && e.response;
-      const msg = (e && e.message) || 'LinkedIn refused the invitation.';
-      const data = (payload && payload.data) || payload || {};
-      const errCode = String(data.code || data.status || e?.code || '');
-      const errMsg = String(data.message || msg);
-
-      // If already-invited or per-prospect issue, throw INVALID_PARAMS immediately (permanent per-lead skip)
-      if (looksLikePerProspectIssue(errCode, errMsg)) {
-        throw new EngineError(
-          ERROR.INVALID_PARAMS,
-          errCode ? `LinkedIn refused the invitation (${errCode}): ${errMsg}` : `LinkedIn refused the invitation: ${errMsg}`,
-          { howToFix: INVITE_DUPLICATE_FIX },
-        );
-      }
-
-      const isBlankCustomLimit =
-        e?.code === 'CUSTOM_INVITE_LIMIT_REACHED' ||
-        e?.isCustomInviteLimit ||
-        /CUSTOM_INVITE_LIMIT_REACHED/i.test(e?.message || '');
-
       if (
-        !isBlankCustomLimit &&
-        (e?.status === 429 || /weekly.*limit/i.test(e?.message || ''))
+        e?.status === 429 || /weekly.*limit/i.test(e?.message || '')
       ) {
         try {
           await noteBucketBackoff('invite', 24 * 60 * 60 * 1000);
@@ -1815,7 +2315,7 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
       }
       const eStatus = e?.status || e?.response?.status || 0;
       if (eStatus === 400 || eStatus === 404 || eStatus === 410 || eStatus === 422) {
-        reportBrokenEndpoint('sendInvite', eStatus, path, e).catch(() => {});
+        reportBrokenEndpoint('sendInvite', eStatus, basePath, e).catch(() => {});
       }
       if (e instanceof EngineError && e.code !== ERROR.LINKEDIN_ERROR) throw e;
       throw inviteFailure(e && e.response, (e && e.message) || 'LinkedIn refused the invitation.');
@@ -1825,15 +2325,18 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
   let value = (raw && raw.data && raw.data.value) || {};
   let invitationUrn = value['*invitation'] || value.invitationUrn || '';
 
-  // If answered without invitation urn on a note attempt, retry blank
+  // If answered without invitation urn on a note attempt, retry
   if (!invitationUrn && attemptedNote && !sentWithoutNote) {
+    if (resolvedMemberId || id) {
+      return sendSdui();
+    }
     logDebug(
       'warn',
       'Outreach',
       `[Outreach] Note attempt returned no invitation URN. Retrying blank connection request...`,
     );
     try {
-      raw = await sendPost('');
+      raw = await sendLegacyPost('');
       const val = (raw && raw.data && raw.data.value) || {};
       const blankUrn = val['*invitation'] || val.invitationUrn || '';
       if (blankUrn) {
@@ -1845,12 +2348,6 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
         throw inviteFailure(raw, 'LinkedIn answered with no invitation urn.');
       }
     } catch (blankErr) {
-      logDebug(
-        'warn',
-        'Outreach',
-        `[Outreach] Blank invite retry failed (status=${blankErr?.status || 'unknown'}, code=${blankErr?.code || blankErr?.response?.code || 'none'}, msg=${blankErr?.message || 'none'})`,
-      );
-
       const blankPayload = blankErr?.response || raw;
       const blankMsg = blankErr?.message || 'LinkedIn refused the invitation.';
       const blankData = (blankPayload && blankPayload.data) || blankPayload || {};
@@ -1880,6 +2377,8 @@ export async function sendInvite({ publicId, publicIdentifier, profileUrn, note 
     ...(sentWithoutNote ? { sentWithoutNote: true } : {}),
   };
 }
+
+export const sendConnectionRequest = sendInvite;
 
 /**
  * Send a message (`subtype: 'INMAIL'` for an InMail).

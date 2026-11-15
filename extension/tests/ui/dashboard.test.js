@@ -61,7 +61,7 @@ describe('Dashboard', () => {
 
     await dashboard.mount(host, ctx);
 
-    expect(host.textContent).toContain('bridge ✓ :47829');
+    expect(host.textContent).toContain('bridge active :47829');
   });
 
   it('asks for confirmation before turning Autopilot on, then calls config.set', async () => {

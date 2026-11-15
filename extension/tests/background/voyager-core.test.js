@@ -60,6 +60,30 @@ describe('voyagerFetch — every request', () => {
     expect(await voyagerFetch('/a')).toEqual({ ok: true });
     expect(await voyagerFetch('/b')).toEqual({ ok: true });
   });
+
+  it('returns raw text and status when options.rawText is true or expectJson is false', async () => {
+    net.push(landed({ status: 200, contentType: 'text/plain', text: 'raw-string-body' }));
+    const res = await voyagerFetch('/some-endpoint', { rawText: true });
+    expect(res).toEqual({ ok: true, status: 200, text: 'raw-string-body' });
+
+    net.push(landed({ status: 200, contentType: 'text/plain', text: 'another-raw-string' }));
+    const res2 = await voyagerFetch('/some-endpoint-2', { expectJson: false });
+    expect(res2).toEqual({ ok: true, status: 200, text: 'another-raw-string' });
+  });
+
+  it('allows non-JSON RSC responses on /rsc-action/ without throwing', async () => {
+    net.push(
+      landed({
+        status: 200,
+        contentType: 'text/x-component',
+        text: '1:I["$@1",["foo"]]\n2:{"data":{"result":"ok"}}\n',
+      }),
+    );
+    const res = await voyagerFetch('/flagship-web/rsc-action/actions/server-request?sduiid=test');
+    expect(res.ok).toBe(true);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('1:I["$@1"');
+  });
 });
 
 describe('voyagerFetch — redirected to a security check', () => {

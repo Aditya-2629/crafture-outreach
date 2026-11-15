@@ -1,5 +1,5 @@
 /**
- * OutFox — Waalaxy Queue & Daily Quotas View
+ * OutFox — OutFox Queue & Daily Quotas View
  * Matches 1:1 Screenshots: Queued actions table, filters, bulk delete,
  * live runner status banner with auto-refresh, and live LinkedIn Daily Quotas progress cards.
  * 100% Manifest V3 CSP Compliant · Zero Emojis in Core UI · Pure SVG Icons
@@ -206,8 +206,8 @@ function renderRowStatusPill(item, now = Date.now()) {
   if ((e.retryCount || 0) > 0 && e.lastError) {
     const errorText = escapeHtml(e.lastError);
     return `
-      <span class="status-pill status-retry" title="${errorText}">
-        🔁 Retry ${e.retryCount}/3
+      <span class="status-pill status-retry" title="${errorText}" style="display:inline-flex; align-items:center; gap:4px;">
+        ${ICONS.refresh} Retry ${e.retryCount}/3
       </span>
     `;
   }
@@ -218,15 +218,15 @@ function renderRowStatusPill(item, now = Date.now()) {
     if (diffMs > 2 * 3600 * 1000) {
       const resumeTime = new Date(cooldownUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       return `
-        <span class="status-pill status-quota-full" title="Daily quota reached. Resumes tomorrow at ${resumeTime}">
-          📅 Quota Full (Tomorrow)
+        <span class="status-pill status-quota-full" title="Daily quota reached. Resumes tomorrow at ${resumeTime}" style="display:inline-flex; align-items:center; gap:4px;">
+          ${ICONS.calendar} Quota Full (Tomorrow)
         </span>
       `;
     } else {
       const minsLeft = Math.max(1, Math.round(diffMs / 60000));
       return `
-        <span class="status-pill status-cooling" title="Account safety cooldown active (~${minsLeft}m left)">
-          🛡️ Cooldown (${minsLeft}m left)
+        <span class="status-pill status-cooling" title="Account safety cooldown active (~${minsLeft}m left)" style="display:inline-flex; align-items:center; gap:4px;">
+          ${ICONS.shield} Cooldown (${minsLeft}m left)
         </span>
       `;
     }
@@ -235,8 +235,8 @@ function renderRowStatusPill(item, now = Date.now()) {
   // 3. Needs Connection
   if (e.status === 'blocked_not_connected' || (e.error && e.error.includes('1st-degree'))) {
     return `
-      <span class="status-pill status-needs-conn" title="Must accept connection request before messaging">
-        ⚠️ Needs Connection
+      <span class="status-pill status-needs-conn" title="Must accept connection request before messaging" style="display:inline-flex; align-items:center; gap:4px;">
+        ${ICONS.warning} Needs Connection
       </span>
     `;
   }
@@ -245,27 +245,27 @@ function renderRowStatusPill(item, now = Date.now()) {
   if ((e.nextAt || 0) > now) {
     const timeRemaining = formatTimeRemaining(e.nextAt - now);
     return `
-      <span class="status-pill status-scheduled" title="Scheduled for ${new Date(e.nextAt).toLocaleTimeString()}">
-        ⏳ Scheduled (in ${timeRemaining})
+      <span class="status-pill status-scheduled" title="Scheduled for ${new Date(e.nextAt).toLocaleTimeString()}" style="display:inline-flex; align-items:center; gap:4px;">
+        ${ICONS.clock} Scheduled (in ${timeRemaining})
       </span>
     `;
   }
 
   // 5. Due Now
   return `
-    <span class="status-pill status-due-now" title="Ready to execute on next runner tick">
-      ⚡ Due Now
+    <span class="status-pill status-due-now" title="Ready to execute on next runner tick" style="display:inline-flex; align-items:center; gap:4px;">
+      ${ICONS.lightning} Due Now
     </span>
   `;
 }
 
 function ensureQueueStyles() {
-  const STYLE_ID = 'waalaxy-queue-view-css';
+  const STYLE_ID = 'OutFox-queue-view-css';
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
-    .waalaxy-queue-layout { display: grid; grid-template-columns: 1fr 300px; gap: 24px; max-width: 1200px; margin: 0 auto; }
+    .OutFox-queue-layout { display: grid; grid-template-columns: 1fr 300px; gap: 24px; max-width: 1200px; margin: 0 auto; }
     .queue-main-panel { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
     .queue-header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
     .queue-view-title { font-size: 22px; font-weight: 800; color: #14142b; margin: 0; }
@@ -643,7 +643,7 @@ function paint(state) {
   const totalSelected = selectedQueueIds.size;
 
   container.innerHTML = `
-    <div class="waalaxy-queue-layout">
+    <div class="OutFox-queue-layout">
       <div class="queue-main-panel">
         <!-- Top Live Runner Status Banner -->
         <div class="queue-live-banner" id="queue-live-banner">
@@ -708,8 +708,8 @@ function paint(state) {
           </div>
 
           <div class="dropdown-filter-wrap" style="position:relative;">
-            <button type="button" class="filter-pill-btn" id="btn-action-type-dropdown">
-              Action type ⌵
+            <button type="button" class="filter-pill-btn" id="btn-action-type-dropdown" style="display:inline-flex; align-items:center; gap:4px;">
+              Action type ${ICONS.chevronDown}
             </button>
             <div class="action-type-menu hidden" id="action-type-menu">
               ${['Invitation', 'Message', 'Visit', 'Follow', 'Email'].map((t) => `

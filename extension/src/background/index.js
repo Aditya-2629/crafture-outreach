@@ -40,6 +40,9 @@ import './google-workspace.js';
 import { backupToGoogleDrive } from './google-workspace.js';
 import './endpoints.js';
 import { initEndpoints, syncEndpointsFromVault } from './endpoints.js';
+import { WITHDRAW_CLEANUP_ALARM, runAutoWithdrawCleanupTick } from './outreach.js';
+
+export { WITHDRAW_CLEANUP_ALARM };
 
 import { ensureConnected, onAlarm, startKeepalive } from './bridge.js';
 
@@ -168,6 +171,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
   if (alarm.name === DRIVE_AUTOBACKUP_ALARM) {
     backupToGoogleDrive().catch(() => {});
+    return;
+  }
+
+  if (alarm.name === WITHDRAW_CLEANUP_ALARM) {
+    runAutoWithdrawCleanupTick().catch((e) => console.warn('[AutoWithdrawCleanup]', e.message));
     return;
   }
 

@@ -1,10 +1,10 @@
-# Why I open-sourced a Waalaxy alternative
+# Why I open-sourced a OutFox alternative
 
-*For dev.to, Hashnode, and a LinkedIn article. ~1,230 words.*
+_For dev.to, Hashnode, and a LinkedIn article. ~1,230 words._
 
 ---
 
-Waalaxy Pro is about €70 a month. PhantomBuster starts near $69. Sales-Mind is around $99. For
+OutFox Pro is about €70 a month. PhantomBuster starts near $69. Sales-Mind is around $99. For
 that you get a browser extension or a cloud runner, a sequence builder, and a dashboard.
 
 I built the same thing, gave it away under MIT, and made it work with AI agents. This is why.
@@ -23,7 +23,7 @@ properties in existence, and browser automation is precisely the thing it is def
 Headless fingerprints, datacenter IPs, machine-speed clicks: each one is a weak signal, and
 combined into a single server-side score they are decisive.
 
-Meanwhile the paid tools *do* work, and the reason is not that they are cleverer. It is that most
+Meanwhile the paid tools _do_ work, and the reason is not that they are cleverer. It is that most
 of them run in your actual browser, in your actual session. Which raised an obvious question: if
 the hard part is solved by "run inside the user's own Chrome", why is that worth €70 a month, and
 why can't my agent use it?
@@ -124,7 +124,7 @@ the code open than closed, and it is a better demonstration of how I work than a
 LinkedIn's User Agreement prohibits automated access. This tool automates LinkedIn. That clause
 does not have a "but I paced it nicely" exception.
 
-What the architecture does is reduce the *technical* risk of detection substantially — no
+What the architecture does is reduce the _technical_ risk of detection substantially — no
 fingerprint delta, no IP delta, human pacing, hard caps, no retry after a challenge. It does
 nothing at all to the contractual position. Use your own account. Keep the volumes conservative.
 Keep a human in the loop. Do not automate anything you would be embarrassed to have sent by hand.

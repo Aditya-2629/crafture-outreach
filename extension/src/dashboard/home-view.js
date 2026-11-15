@@ -1,6 +1,6 @@
 /**
- * OutFox — Authentic Waalaxy Home Dashboard View
- * Matches 1:1 Real Waalaxy:
+ * OutFox — Authentic OutFox Home Dashboard View
+ * Matches 1:1 Real OutFox:
  * - Single Greeting Header with Date Range & Campaigns dropdowns
  * - Hero Blue Banner (in LinkedIn Message responses & Response rate circle)
  * - LinkedIn Accordion with 2 KPI Cards (Accepted invitations, Answered messages)
@@ -20,85 +20,252 @@ let selectedDays = '30';
 let selectedCampaignId = 'all';
 
 function ensureHomeStyles() {
-  const STYLE_ID = 'waalaxy-home-view-css';
+  const STYLE_ID = 'OutFox-home-view-css';
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
-    .waalaxy-home-grid { display: grid; grid-template-columns: 1fr 280px; gap: 24px; max-width: 1200px; margin: 0 auto; }
-    .home-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-    .home-greeting { font-size: 24px; font-weight: 800; color: #14142b; margin: 0; text-transform: capitalize; }
+    .OutFox-home-grid { display: grid; grid-template-columns: 1fr 280px; gap: 24px; max-width: 1240px; margin: 0 auto; }
+    .home-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+    .home-greeting { font-size: 24px; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -0.02em; }
     .home-filters-row { display: flex; gap: 10px; }
-    .filter-pill-wrap { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 20px; padding: 4px 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
-    .home-filter-select { border: none; background: transparent; font-size: 12px; font-weight: 700; color: #ff6b00; outline: none; cursor: pointer; }
-    .hero-blue-banner { background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 24px 32px; color: #ffffff; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08); margin-bottom: 24px; }
-    .hero-banner-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 700; margin-bottom: 14px; }
+    .filter-pill-wrap { background: #ffffff; border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 9999px; padding: 5px 14px; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04), inset 0 1px 2px rgba(255, 255, 255, 0.9); transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1); }
+    .filter-pill-wrap:hover { transform: translateY(-1px); }
+    .home-filter-select { border: none; background: transparent; font-size: 12px; font-weight: 700; color: #ff6b00; outline: none; cursor: pointer; font-family: inherit; }
+
+    /* Engine & Quota Strip */
+    .engine-quota-strip {
+      background: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 22px;
+      padding: 14px 22px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.07), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(15, 23, 42, 0.04);
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .strip-item { display: flex; flex-direction: column; gap: 4px; }
+    .strip-label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
+    .strip-value { font-size: 13.5px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 6px; }
+    .strip-ico { display: inline-flex; color: #ff6b00; }
+    .strip-divider { width: 1px; height: 32px; background: rgba(226, 232, 240, 0.7); }
+    .strip-quotas-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+    .quota-pill { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 3px 8px; font-size: 11.5px; color: #475569; font-weight: 500; }
+    .quota-pill strong { color: #0f172a; font-weight: 700; }
+    .badge-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; }
+    .badge-status-running { background: #ecfdf5; color: #059669; border: 1px solid rgba(16, 185, 129, 0.2); }
+    .badge-status-paused { background: #fef3c7; color: #d97706; border: 1px solid rgba(245, 158, 11, 0.2); }
+    .badge-status-resting { background: #eff6ff; color: #2563eb; border: 1px solid rgba(37, 99, 235, 0.2); }
+    .badge-note-limit { display: inline-flex; align-items: center; gap: 6px; background: #fffbeb; color: #b45309; border: 1px solid #fde68a; padding: 4px 10px; border-radius: 9999px; font-size: 11.5px; font-weight: 700; }
+
+    /* Funnel Strip */
+    .funnel-kpis-strip {
+      background: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 22px;
+      padding: 18px 24px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.07), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(15, 23, 42, 0.04);
+      margin-bottom: 22px;
+    }
+    .funnel-tile { text-align: center; display: flex; flex-direction: column; align-items: center; }
+    .funnel-tile-ico { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; background: #f8fafc; color: #ff6b00; margin-bottom: 6px; }
+    .funnel-tile-val { font-size: 19px; font-weight: 800; color: #0f172a; line-height: 1.1; }
+    .funnel-tile-pct { font-size: 13px; font-weight: 700; color: #ff6b00; margin-left: 2px; }
+    .funnel-tile-lbl { font-size: 11px; font-weight: 600; color: #64748b; margin-top: 4px; }
+
+    /* Attention & Shortcuts Card */
+    .recent-attention-card {
+      background: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 22px;
+      padding: 18px 22px;
+      box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.07), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(15, 23, 42, 0.04);
+      margin-bottom: 22px;
+    }
+    .attention-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .attention-title-group { display: flex; align-items: center; gap: 8px; }
+    .attention-ico { color: #ff6b00; display: flex; align-items: center; }
+    .attention-title { font-size: 14px; font-weight: 800; color: #0f172a; }
+    .attention-actions { display: flex; gap: 10px; }
+    .btn-attention-link {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 9999px;
+      padding: 6px 14px;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #0f172a;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04), inset 0 1px 2px rgba(255, 255, 255, 0.9);
+      transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease, border-color 180ms ease;
+    }
+    .btn-attention-link:hover { transform: translateY(-1.5px); border-color: #cbd5e1; box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08); }
+    .btn-attention-link:active { transform: translateY(1px) scale(0.985); }
+    .attention-threads-list { display: flex; flex-direction: column; gap: 8px; }
+    .attention-thread-item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #f8fafc; border-radius: 12px; cursor: pointer; transition: background 150ms ease; }
+    .attention-thread-item:hover { background: #f1f5f9; }
+    .att-avatar { width: 28px; height: 28px; border-radius: 50%; background: #ffedd5; color: #ff6b00; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+    .att-meta { flex: 1; min-width: 0; }
+    .att-name { font-size: 12.5px; font-weight: 700; color: #0f172a; }
+    .att-snippet { font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px; }
+    .att-badge { font-size: 10.5px; font-weight: 700; color: #059669; background: #ecfdf5; padding: 2px 8px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 4px; }
+    .attention-empty-hint { font-size: 12px; color: #64748b; }
+
+    /* Hero Banner */
+    .hero-blue-banner { background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 22px; padding: 24px 32px; color: #ffffff; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 14px 32px -4px rgba(15, 23, 42, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2); margin-bottom: 22px; }
+    .hero-banner-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.12); padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 700; margin-bottom: 14px; }
     .hero-metric-box { display: flex; align-items: center; gap: 16px; }
     .hero-curved-arrow { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
     .hero-metric-val { font-size: 32px; font-weight: 900; line-height: 1; }
     .hero-metric-label { font-size: 13px; opacity: 0.9; margin-top: 4px; }
-    .radial-rate-circle { width: 72px; height: 72px; border-radius: 50%; border: 4px solid rgba(255,255,255,0.3); border-top-color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; margin: 0 auto 6px auto; }
+    .radial-rate-circle { width: 72px; height: 72px; border-radius: 50%; border: 4px solid rgba(255,255,255,0.25); border-top-color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; margin: 0 auto 6px auto; }
     .radial-rate-label { font-size: 12px; opacity: 0.9; text-align: center; display: block; }
+
+    /* Accordions & KPI Cards */
     .accordion-head-row { display: flex; justify-content: space-between; align-items: center; margin: 20px 0 12px 0; }
-    .accordion-title-group { display: flex; align-items: center; gap: 8px; }
-    .li-badge-box, .email-badge-box { width: 24px; height: 24px; border-radius: 6px; background: #0077b5; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+    .accordion-title-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .li-badge-box, .email-badge-box { width: 24px; height: 24px; border-radius: 8px; background: #0077b5; color: #fff; display: flex; align-items: center; justify-content: center; }
     .email-badge-box { background: #8b5cf6; }
-    .accordion-title-text { font-size: 15px; font-weight: 800; color: #14142b; }
-    .accordion-chevron { font-size: 12px; color: #94a3b8; }
-    .linkedin-kpis-pair, .email-kpis-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+    .accordion-title-text { font-size: 15px; font-weight: 800; color: #0f172a; }
+    .status-pill-gmail-connected { font-size: 11.5px; font-weight: 700; color: #059669; background: #ecfdf5; border: 1px solid rgba(16, 185, 129, 0.25); padding: 3px 10px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 5px; }
+    .status-pill-gmail-disconnected { font-size: 11.5px; font-weight: 700; color: #d97706; background: #fef3c7; border: 1px solid rgba(245, 158, 11, 0.25); padding: 3px 10px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 5px; }
+    .btn-connect-gmail-mini {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 9999px;
+      padding: 3px 12px;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #ff6b00;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+      transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .btn-connect-gmail-mini:hover { transform: translateY(-1px); }
+
+    .linkedin-kpis-pair, .email-kpis-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; }
     .email-kpis-grid { grid-template-columns: repeat(3, 1fr); }
-    .kpi-card-white { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px 20px; display: flex; align-items: center; position: relative; box-shadow: 0 1px 4px rgba(0,0,0,0.02); }
+    .kpi-card-white {
+      background: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 22px;
+      padding: 18px 22px;
+      display: flex;
+      align-items: center;
+      position: relative;
+      box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.07), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(15, 23, 42, 0.04);
+    }
     .kpi-card-left { display: flex; align-items: center; gap: 14px; flex: 1; }
-    .kpi-icon-round { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .kpi-icon-round { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .round-blue { background: #fff7ed; color: #ff6b00; }
     .round-green { background: #ecfdf5; color: #059669; }
-    .round-cyan { background: #e0f2fe; color: #0284c7; }
-    .kpi-main-number { font-size: 20px; font-weight: 800; color: #14142b; }
-    .kpi-sub-label { font-size: 11.5px; color: #64748b; margin-top: 2px; }
-    .kpi-vertical-divider { width: 1px; height: 32px; background: #f1f5f9; margin: 0 16px; }
+    .round-purple { background: #f5f3ff; color: #7c3aed; }
+    .kpi-main-number { font-size: 20px; font-weight: 800; color: #0f172a; }
+    .kpi-sub-label { font-size: 11.5px; color: #64748b; margin-top: 2px; font-weight: 600; }
+    .kpi-vertical-divider { width: 1px; height: 32px; background: rgba(226, 232, 240, 0.7); margin: 0 16px; }
     .kpi-card-right { text-align: right; }
     .kpi-rate-number { font-size: 16px; font-weight: 800; color: #ff6b00; }
     .kpi-info-icon { position: absolute; top: 12px; right: 12px; color: #cbd5e1; cursor: pointer; display: flex; align-items: center; }
     .kpi-info-icon:hover { color: #ff6b00; }
-    .actions-sent-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
+
+    /* Actions Sent & Chart */
+    .actions-sent-card {
+      background: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 22px;
+      padding: 22px;
+      box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.07), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(15, 23, 42, 0.04);
+      margin-bottom: 22px;
+    }
     .actions-sent-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-    .actions-sent-title { font-size: 15px; font-weight: 800; color: #14142b; display: flex; align-items: center; gap: 6px; }
-    .actions-type-tabs { display: flex; gap: 10px; margin-bottom: 16px; }
-    .action-type-pill { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 14px; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.15s; }
-    .action-type-pill.is-active { background: #ffffff; border-color: #ff6b00; box-shadow: 0 2px 8px rgba(255, 107, 0, 0.1); }
+    .actions-sent-title { font-size: 15px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 6px; }
+    .actions-type-tabs { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .action-type-pill {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease, border-color 180ms ease;
+    }
+    .action-type-pill:hover { transform: translateY(-1.5px); }
+    .action-type-pill:active { transform: translateY(1px) scale(0.985); }
+    .action-type-pill.is-active { background: #ffffff; border-color: #ff6b00; box-shadow: 0 4px 14px rgba(255, 107, 0, 0.12), inset 0 1px 2px rgba(255, 255, 255, 0.9); }
     .pill-ico { display: flex; align-items: center; justify-content: center; }
     .ico-blue { color: #ff6b00; }
     .ico-cyan { color: #00c2ff; }
     .ico-coral { color: #ff7675; }
     .ico-purple { color: #7c71f8; }
-    .pill-num { font-size: 13px; font-weight: 800; color: #14142b; }
+    .pill-num { font-size: 13px; font-weight: 800; color: #0f172a; }
     .pill-name { font-size: 12px; color: #64748b; font-weight: 600; }
-    .chart-legend-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; font-weight: 700; color: #14142b; }
-    .btn-download-chart-csv { background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 4px; display: flex; align-items: center; }
+    .chart-legend-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; font-weight: 700; color: #0f172a; }
+    .btn-download-chart-csv { background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 150ms ease; }
     .btn-download-chart-csv:hover { color: #ff6b00; }
-    .emails-sent-empty-box { background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 14px; padding: 28px; text-align: center; margin-top: 14px; }
-    .empty-cat-icon { width: 44px; height: 44px; border-radius: 12px; background: #fff7ed; color: #ff6b00; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px auto; }
-    .empty-email-title { font-size: 14px; font-weight: 800; color: #14142b; margin: 0 0 4px 0; }
-    .empty-email-sub { font-size: 12px; color: #64748b; margin: 0 0 16px 0; }
-    .btn-email-strategy { background: #ff6b00; color: #ffffff; border: none; border-radius: 20px; padding: 8px 20px; font-size: 12px; font-weight: 700; cursor: pointer; }
-    .home-side-col { display: flex; flex-direction: column; gap: 20px; }
-    .side-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
-    .card-plan-badge { font-size: 10.5px; font-weight: 700; background: #f1f5f9; color: #475569; padding: 4px 10px; border-radius: 6px; display: inline-block; margin-bottom: 16px; }
-    .avatar-center-wrapper { display: flex; flex-direction: column; align-items: center; text-align: center; }
-    .waalaxy-alien-avatar { width: 56px; height: 56px; border-radius: 50%; background: #1e293b; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; position: relative; margin-bottom: 10px; }
-    .li-corner-badge { position: absolute; bottom: -2px; right: -2px; width: 18px; height: 18px; border-radius: 50%; background: #0077b5; color: #fff; display: flex; align-items: center; justify-content: center; }
-    .profile-username { font-size: 15px; font-weight: 800; color: #14142b; margin: 0; }
-    .status-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-    .status-title { font-size: 13.5px; font-weight: 800; color: #14142b; }
-    .badge-status-reached { font-size: 11px; font-weight: 700; background: #fef2f2; color: #dc2626; padding: 3px 8px; border-radius: 6px; }
-    .badge-status-running { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; background: #ecfdf5; color: #059669; padding: 3px 8px; border-radius: 6px; }
-    .status-kpis-pair { display: flex; flex-direction: column; gap: 12px; }
-    .status-metric-box { display: flex; align-items: center; gap: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; }
-    .status-icon-circle { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-    .status-metric-val { font-size: 16px; font-weight: 800; color: #14142b; }
-    .status-metric-lbl { font-size: 11px; color: #64748b; font-weight: 600; }
-    .chart-tooltip { position: absolute; background: #14142b; color: #ffffff; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; pointer-events: none; z-index: 10; white-space: nowrap; }
+    .chart-tooltip { position: absolute; background: #0f172a; color: #ffffff; padding: 6px 10px; border-radius: 8px; font-size: 11px; font-weight: 600; pointer-events: none; z-index: 10; white-space: nowrap; box-shadow: 0 8px 20px rgba(0,0,0,0.2); transition: opacity 150ms ease, transform 150ms ease; }
     .chart-tooltip.hidden { display: none; }
+
+    /* Email Strategy Box */
+    .emails-sent-empty-box {
+      background: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 22px;
+      padding: 28px;
+      text-align: center;
+      margin-top: 14px;
+      box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.07), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(15, 23, 42, 0.04);
+    }
+    .empty-cat-icon { width: 44px; height: 44px; border-radius: 14px; background: #fff7ed; color: #ff6b00; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px auto; }
+    .empty-email-title { font-size: 14px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0; }
+    .empty-email-sub { font-size: 12px; color: #64748b; margin: 0 0 16px 0; }
+    .btn-email-strategy {
+      background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);
+      color: #ffffff;
+      border: none;
+      border-radius: 9999px;
+      padding: 9px 22px;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(255, 107, 0, 0.28), inset 0 2px 3px rgba(255, 255, 255, 0.35);
+      transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease;
+    }
+    .btn-email-strategy:hover { transform: translateY(-1.5px); box-shadow: 0 12px 24px rgba(255, 107, 0, 0.36); }
+    .btn-email-strategy:active { transform: translateY(1px) scale(0.985); }
+
+    /* Side Column */
+    .home-side-col { display: flex; flex-direction: column; gap: 20px; }
+    .side-card {
+      background: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 22px;
+      padding: 20px;
+      box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.07), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(15, 23, 42, 0.04);
+    }
+    .avatar-center-wrapper { display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .OutFox-alien-avatar { width: 56px; height: 56px; border-radius: 50%; background: #0f172a; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; position: relative; margin-bottom: 10px; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.15); }
+    .li-corner-badge { position: absolute; bottom: -2px; right: -2px; width: 18px; height: 18px; border-radius: 50%; background: #0077b5; color: #fff; display: flex; align-items: center; justify-content: center; }
+    .profile-username { font-size: 15px; font-weight: 800; color: #0f172a; margin: 0; text-transform: capitalize; }
+    .status-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .status-title { font-size: 13.5px; font-weight: 800; color: #0f172a; }
+    .status-kpis-pair { display: flex; flex-direction: column; gap: 12px; }
+    .status-metric-box { display: flex; align-items: center; gap: 12px; background: #f8fafc; border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 14px; padding: 12px 14px; }
+    .status-icon-circle { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+    .status-metric-val { font-size: 16px; font-weight: 800; color: #0f172a; }
+    .status-metric-lbl { font-size: 11px; color: #64748b; font-weight: 600; }
   `;
   document.head.appendChild(style);
 }
@@ -176,6 +343,7 @@ export async function renderHomeView(container, ctx = {}) {
       queuedActionsCount = enrollments.filter((e) => e.state === 'active' || e.state === 'running' || e.status === 'active' || !e.status).length;
     }
 
+    // 24h Note limit status
     const noteLimitUntil = Number(storage.outfox_note_limit_until) || 0;
     const isNoteLimitActive = Date.now() < noteLimitUntil;
     let noteLimitRemaining = '';
@@ -186,42 +354,209 @@ export async function renderHomeView(container, ctx = {}) {
       noteLimitRemaining = h > 0 ? `${h}h ${m}m` : `${m}m`;
     }
 
+    // Runner status & nextActionAt
+    let soonestNextAt = 0;
+    campaigns.forEach((camp) => {
+      const enrollments = storage[`enrollments:${camp.campaignId || camp.id}`] || [];
+      enrollments.forEach((e) => {
+        if ((e.status === 'active' || e.state === 'active') && e.nextAt && e.nextAt > Date.now()) {
+          if (!soonestNextAt || e.nextAt < soonestNextAt) soonestNextAt = e.nextAt;
+        }
+      });
+    });
+
+    let nextActionCountdown = 'Ready';
+    if (soonestNextAt > Date.now()) {
+      const diffSec = Math.round((soonestNextAt - Date.now()) / 1000);
+      if (diffSec < 60) {
+        nextActionCountdown = `in ${diffSec}s`;
+      } else {
+        const m = Math.floor(diffSec / 60);
+        const s = diffSec % 60;
+        nextActionCountdown = `in ${m}m ${s}s`;
+      }
+    }
+
+    let runnerStatusText = 'Running';
+    let runnerStatusClass = 'badge-status-running';
+    if (activeCampaignsCount === 0) {
+      runnerStatusText = 'Paused';
+      runnerStatusClass = 'badge-status-paused';
+    } else if (isQuotaReached) {
+      runnerStatusText = 'Quota Resting';
+      runnerStatusClass = 'badge-status-resting';
+    }
+
+    // Today's Remaining Quotas
+    const remainingInvites = quotas.invite?.remaining ?? (quotas.invite?.max ? Math.max(0, quotas.invite.max - (quotas.invite.usedToday || 0)) : 25);
+    const remainingMessages = quotas.message?.remaining ?? (quotas.message?.max ? Math.max(0, quotas.message.max - (quotas.message.usedToday || 0)) : 50);
+    const remainingVisits = quotas.visit?.remaining ?? (quotas.visit?.max ? Math.max(0, quotas.visit.max - (quotas.visit.usedToday || 0)) : 80);
+    const remainingEmails = quotas.email?.remaining ?? (storage.config?.dailyEmailCap || 100);
+
+    // Gmail status and counts
+    const isGmailConnected = Boolean(storage.config?.mailbox?.connected || storage.config?.googleWorkspace?.connected || storage.outfox_google_workspace_token || storage.outfox_outreach_gmail_token);
+    const gmailEmail = storage.config?.mailbox?.email || storage.config?.googleWorkspace?.email || storage.outfox_google_workspace_token?.email || '';
+
+    let queuedEmailsCount = 0;
+    campaigns.forEach((camp) => {
+      const enrollments = storage[`enrollments:${camp.campaignId || camp.id}`] || [];
+      enrollments.forEach((e) => {
+        if (e.status === 'active' || e.state === 'active') {
+          const steps = camp.steps || [];
+          const nextStep = steps[e.stepIndex];
+          if (nextStep && (nextStep.type === 'email' || nextStep.type === 'outreach.email')) {
+            queuedEmailsCount++;
+          }
+        }
+      });
+    });
+    const emailRepliesCount = kpis.emailReplies || 0;
+
+    // Attention / Threads
+    const threads = Array.isArray(storage.threads) ? storage.threads : [];
+    const recentReplies = threads
+      .filter((t) => t.unread || (t.messages && t.messages.some((m) => !m.fromMe)))
+      .slice(0, 3);
+    const pendingQueueCount = stats.queue?.pending ?? 0;
+
+    // Account network metrics: read cached networkStats from storage immediately
+    const cachedNet = storage.networkStats || null;
+    const connectionsDisplay = cachedNet?.connections != null
+      ? Number(cachedNet.connections).toLocaleString()
+      : (stats.profile?.connections != null && stats.profile.connections > 0
+          ? Number(stats.profile.connections).toLocaleString()
+          : '—');
+    const pendingDisplay = cachedNet?.pending != null
+      ? Number(cachedNet.pending).toLocaleString()
+      : (stats.profile?.pending != null && stats.profile.pending > 0
+          ? Number(stats.profile.pending).toLocaleString()
+          : '—');
+
+    const cleanGreeting = firstName ? firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase() : 'Aditya';
+
     container.innerHTML = `
-      <div class="waalaxy-home-grid">
+      <div class="OutFox-home-grid">
         <div class="home-main-col">
           <div class="home-header-row">
-            <h1 class="home-greeting">Hello ${displayGreeting} ,</h1>
+            <h1 class="home-greeting">Hello, ${cleanGreeting}</h1>
             <div class="home-filters-row">
               <div class="filter-pill-wrap">
                 <select class="home-filter-select" id="home-filter-range">
-                  <option value="1" ${selectedDays === '1' ? 'selected' : ''}>Today ⌵</option>
-                  <option value="7" ${selectedDays === '7' ? 'selected' : ''}>Last 7 days ⌵</option>
-                  <option value="30" ${selectedDays === '30' ? 'selected' : ''}>Last 30 days ⌵</option>
-                  <option value="all" ${selectedDays === 'all' ? 'selected' : ''}>All time ⌵</option>
+                  <option value="1" ${selectedDays === '1' ? 'selected' : ''}>Today</option>
+                  <option value="7" ${selectedDays === '7' ? 'selected' : ''}>Last 7 days</option>
+                  <option value="30" ${selectedDays === '30' ? 'selected' : ''}>Last 30 days</option>
+                  <option value="all" ${selectedDays === 'all' ? 'selected' : ''}>All time</option>
                 </select>
               </div>
               <div class="filter-pill-wrap">
                 <select class="home-filter-select" id="home-filter-campaign">
-                  <option value="all" ${selectedCampaignId === 'all' ? 'selected' : ''}>All campaigns ⌵</option>
-                  ${campaigns.map((c) => `<option value="${c.campaignId || c.id}" ${selectedCampaignId === (c.campaignId || c.id) ? 'selected' : ''}>${c.name || c.campaignId} ⌵</option>`).join('')}
+                  <option value="all" ${selectedCampaignId === 'all' ? 'selected' : ''}>All campaigns</option>
+                  ${campaigns.map((c) => `<option value="${c.campaignId || c.id}" ${selectedCampaignId === (c.campaignId || c.id) ? 'selected' : ''}>${c.name || c.campaignId}</option>`).join('')}
                 </select>
               </div>
             </div>
           </div>
 
-          ${isNoteLimitActive ? `
-            <div class="note-limit-fallback-banner" style="display: flex; align-items: center; gap: 10px; padding: 12px 18px; margin-bottom: 20px; border-radius: 12px; background: #fffbeb; border: 1.5px solid #fef3c7; color: #b45309; font-size: 13px; font-weight: 600; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.08);">
-              <span style="display: inline-flex; color: #f59e0b; flex-shrink: 0;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <!-- Live Engine & Quota Strip -->
+          <div class="engine-quota-strip">
+            <div class="strip-item">
+              <span class="strip-label">Runner Status</span>
+              <span class="badge-status ${runnerStatusClass}">
+                <span class="live-dot-circle"></span> ${runnerStatusText}
               </span>
-              <span>Monthly personalized note limit reached — sending blank invites automatically for the next <strong>${noteLimitRemaining}</strong></span>
             </div>
-          ` : ''}
+            <div class="strip-divider"></div>
+            <div class="strip-item">
+              <span class="strip-label">Next Action</span>
+              <span class="strip-value"><span class="strip-ico">${ICONS.clock}</span> ${nextActionCountdown}</span>
+            </div>
+            <div class="strip-divider"></div>
+            <div class="strip-item">
+              <span class="strip-label">Today's Remaining Quotas</span>
+              <div class="strip-quotas-pills">
+                <span class="quota-pill" title="Invitations remaining today"><strong>${remainingInvites}</strong> invites</span>
+                <span class="quota-pill" title="Messages remaining today"><strong>${remainingMessages}</strong> msgs</span>
+                <span class="quota-pill" title="Profile visits remaining today"><strong>${remainingVisits}</strong> visits</span>
+                <span class="quota-pill" title="Emails remaining today"><strong>${remainingEmails}</strong> emails</span>
+              </div>
+            </div>
+            ${isNoteLimitActive ? `
+              <div class="strip-divider"></div>
+              <div class="strip-item">
+                <span class="badge-note-limit" title="Personalized note ceiling reached; blank invites running">
+                  ${ICONS.warning} Blank-Invite Limit (${noteLimitRemaining})
+                </span>
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Real Funnel KPIs Strip -->
+          <div class="funnel-kpis-strip">
+            <div class="funnel-tile">
+              <div class="funnel-tile-ico">${ICONS.invitation}</div>
+              <div class="funnel-tile-val">${kpis.totalInvitesSent || 0}</div>
+              <div class="funnel-tile-lbl">Invitations Sent</div>
+            </div>
+            <div class="funnel-tile">
+              <div class="funnel-tile-ico" style="color:#059669; background:#ecfdf5;">${ICONS.check}</div>
+              <div class="funnel-tile-val">${kpis.acceptedInvites || 0} <span class="funnel-tile-pct">(${kpis.acceptanceRate || 0}%)</span></div>
+              <div class="funnel-tile-lbl">Accepted</div>
+            </div>
+            <div class="funnel-tile">
+              <div class="funnel-tile-ico" style="color:#0284c7; background:#e0f2fe;">${ICONS.message}</div>
+              <div class="funnel-tile-val">${kpis.totalMessagesSent || 0}</div>
+              <div class="funnel-tile-lbl">Messages Sent</div>
+            </div>
+            <div class="funnel-tile">
+              <div class="funnel-tile-ico" style="color:#7c3aed; background:#f5f3ff;">${ICONS.reply}</div>
+              <div class="funnel-tile-val">${kpis.messageResponses || 0} <span class="funnel-tile-pct">(${kpis.responseRate || 0}%)</span></div>
+              <div class="funnel-tile-lbl">Replies</div>
+            </div>
+            <div class="funnel-tile">
+              <div class="funnel-tile-ico" style="color:#e11d48; background:#ffe4e6;">${ICONS.visit}</div>
+              <div class="funnel-tile-val">${kpis.totalVisits || 0}</div>
+              <div class="funnel-tile-lbl">Profile Visits</div>
+            </div>
+          </div>
+
+          <!-- Recent Attention & Quick Shortcuts -->
+          <div class="recent-attention-card">
+            <div class="attention-head">
+              <div class="attention-title-group">
+                <span class="attention-ico">${ICONS.inbox}</span>
+                <span class="attention-title">Recent Activity & Actionable Shortcuts</span>
+              </div>
+              <div class="attention-actions">
+                <button type="button" class="btn-attention-link" id="btn-home-go-inbox">${ICONS.message} Open Inbox</button>
+                <button type="button" class="btn-attention-link" id="btn-home-go-queue">${ICONS.queue} Review Queue (${pendingQueueCount})</button>
+              </div>
+            </div>
+            <div class="attention-body">
+              ${recentReplies.length > 0 ? `
+                <div class="attention-threads-list">
+                  ${recentReplies.map((t) => `
+                    <div class="attention-thread-item" data-thread-id="${t.threadId || t.id}">
+                      <div class="att-avatar">${(t.participants?.[0]?.name || 'P')[0].toUpperCase()}</div>
+                      <div class="att-meta">
+                        <div class="att-name">${t.participants?.[0]?.name || 'Prospect'}</div>
+                        <div class="att-snippet">${t.snippet || (t.messages && t.messages[t.messages.length - 1]?.text) || 'Replied to campaign'}</div>
+                      </div>
+                      <span class="att-badge">${ICONS.reply} Replied</span>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : `
+                <div class="attention-empty-hint">
+                  All active conversations are up to date. Approval queue has <strong>${pendingQueueCount}</strong> pending items awaiting dispatch.
+                </div>
+              `}
+            </div>
+          </div>
 
           <div class="hero-blue-banner">
             <div class="hero-banner-left">
               <div class="hero-banner-badge">
-                <span class="li-in-icon">${ICONS.linkedin}</span> LinkedIn
+                <span class="li-in-icon">${ICONS.linkedin}</span> LinkedIn Responses
               </div>
               <div class="hero-metric-box">
                 <span class="hero-curved-arrow">${ICONS.reply}</span>
@@ -243,9 +578,8 @@ export async function renderHomeView(container, ctx = {}) {
           <div class="accordion-head-row">
             <div class="accordion-title-group">
               <span class="li-badge-box">${ICONS.linkedin}</span>
-              <span class="accordion-title-text">LinkedIn</span>
+              <span class="accordion-title-text">LinkedIn Performance</span>
             </div>
-            <span class="accordion-chevron">${ICONS.chevronDown}</span>
           </div>
 
           <div class="linkedin-kpis-pair">
@@ -305,7 +639,7 @@ export async function renderHomeView(container, ctx = {}) {
               </button>
               <button type="button" class="action-type-pill ${activeChartAction === 'follows' ? 'is-active' : ''}" data-action="follows">
                 <span class="pill-ico ico-purple">${ICONS.follow}</span>
-                <span class="pill-num">0</span>
+                <span class="pill-num">${kpis.totalFollows || 0}</span>
                 <span class="pill-name">Follows</span>
               </button>
             </div>
@@ -322,86 +656,95 @@ export async function renderHomeView(container, ctx = {}) {
             </div>
           </div>
 
+          <!-- Real-Only Email Channel Card -->
           <div class="accordion-head-row" style="margin-top:28px;">
             <div class="accordion-title-group">
               <span class="email-badge-box">${ICONS.email}</span>
-              <span class="accordion-title-text">Email</span>
+              <span class="accordion-title-text">Email Channel</span>
+              ${isGmailConnected ? `
+                <span class="status-pill-gmail-connected">${ICONS.check} Connected (${gmailEmail})</span>
+              ` : `
+                <span class="status-pill-gmail-disconnected">${ICONS.warning} Not Connected</span>
+                <button type="button" class="btn-connect-gmail-mini" id="btn-connect-gmail-home">${ICONS.google} Connect Gmail</button>
+              `}
             </div>
-            <span class="accordion-chevron">${ICONS.chevronDown}</span>
           </div>
 
           <div class="email-kpis-grid">
             <div class="kpi-card-white">
               <div class="kpi-card-left">
                 <div class="kpi-icon-round round-blue">${ICONS.email}</div>
-                <div><div class="kpi-main-number">0</div><div class="kpi-sub-label">Delivered</div></div>
+                <div><div class="kpi-main-number">${kpis.totalEmailsSent || 0}</div><div class="kpi-sub-label">Emails Sent</div></div>
               </div>
-              <div class="kpi-vertical-divider"></div>
-              <div class="kpi-card-right"><div class="kpi-rate-number">0%</div><div class="kpi-sub-label">Deliverability rate</div></div>
             </div>
             <div class="kpi-card-white">
               <div class="kpi-card-left">
-                <div class="kpi-icon-round round-cyan">${ICONS.email}</div>
-                <div><div class="kpi-main-number">0</div><div class="kpi-sub-label">Opened</div></div>
+                <div class="kpi-icon-round round-purple">${ICONS.queue}</div>
+                <div><div class="kpi-main-number">${queuedEmailsCount}</div><div class="kpi-sub-label">Queued</div></div>
               </div>
-              <div class="kpi-vertical-divider"></div>
-              <div class="kpi-card-right"><div class="kpi-rate-number">0%</div><div class="kpi-sub-label">Open rate</div></div>
             </div>
             <div class="kpi-card-white">
               <div class="kpi-card-left">
                 <div class="kpi-icon-round round-green">${ICONS.message}</div>
-                <div><div class="kpi-main-number">0</div><div class="kpi-sub-label">Responses</div></div>
+                <div><div class="kpi-main-number">${emailRepliesCount}</div><div class="kpi-sub-label">Replies</div></div>
               </div>
-              <div class="kpi-vertical-divider"></div>
-              <div class="kpi-card-right"><div class="kpi-rate-number">0%</div><div class="kpi-sub-label">Response rate</div></div>
             </div>
           </div>
 
-          <div class="emails-sent-empty-box">
-            <img src="../../icons/icon48.png" width="40" height="40" alt="OutFox" style="border-radius: 10px; margin-bottom: 12px; box-shadow: 0 4px 14px rgba(255, 107, 0, 0.2);" />
-            <h4 class="empty-email-title">You haven't sent any emails yet</h4>
-            <p class="empty-email-sub">Start reaching out directly via integrated Google or Outlook mailbox!</p>
-            <button type="button" class="btn-email-strategy" id="btn-start-email-strategy" style="background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);">
-              Start my email campaign strategy
-            </button>
-          </div>
+          ${!isGmailConnected ? `
+            <div class="emails-sent-empty-box">
+              <div class="empty-cat-icon">${ICONS.email}</div>
+              <h4 class="empty-email-title">Connect your Gmail or Google Workspace Account</h4>
+              <p class="empty-email-sub">Power automated cold email sequences and multichannel LinkedIn outreach with permanent token refresh.</p>
+              <button type="button" class="btn-email-strategy" id="btn-connect-gmail-strategy">
+                ${ICONS.google} Connect Gmail Account
+              </button>
+            </div>
+          ` : `
+            <div class="emails-sent-empty-box">
+              <div class="empty-cat-icon" style="background:#ecfdf5; color:#059669;">${ICONS.check}</div>
+              <h4 class="empty-email-title">Gmail Outreach Mailbox Active</h4>
+              <p class="empty-email-sub">Connected as <strong>${gmailEmail}</strong>. Multi-channel sequences will dispatch cold emails automatically.</p>
+              <button type="button" class="btn-email-strategy" id="btn-start-email-strategy">
+                Create Outreach Campaign →
+              </button>
+            </div>
+          `}
         </div>
 
         <aside class="home-side-col">
-          <div class="side-card profile-card-waalaxy">
+          <div class="side-card profile-card-OutFox">
             <div class="avatar-center-wrapper">
-              <div class="waalaxy-alien-avatar">
+              <div class="OutFox-alien-avatar">
                 <span class="avatar-initials-txt">${initials}</span>
                 <span class="li-corner-badge">${ICONS.linkedin}</span>
               </div>
               <h3 class="profile-username">${profile.name}</h3>
-              <div style="display:flex; justify-content:center; gap:16px; margin-top:14px; border-top:1px solid #f1f5f9; padding-top:12px; width:100%;">
+              <div style="display:flex; justify-content:center; gap:16px; margin-top:14px; border-top:1px solid rgba(226, 232, 240, 0.7); padding-top:14px; width:100%;">
                 <div style="text-align:center;">
-                  <div style="font-size:14px; font-weight:800; color:#14142b;">${profile.connections ?? 0}</div>
-                  <div style="font-size:10px; color:#94a3b8; font-weight:600;">Connections · Account</div>
+                  <div id="profile-connections-val" style="font-size:16px; font-weight:800; color:#0f172a;">${connectionsDisplay}</div>
+                  <div style="font-size:11px; color:#64748b; font-weight:600; margin-top:2px;">Connections</div>
                 </div>
-                <div style="width:1px; background:#f1f5f9;"></div>
+                <div style="width:1px; background:rgba(226, 232, 240, 0.7);"></div>
                 <div style="text-align:center;">
-                  <div style="font-size:14px; font-weight:800; color:#14142b;">${profile.pending ?? 0}</div>
-                  <div style="font-size:10px; color:#94a3b8; font-weight:600;">Pending · Account</div>
+                  <div id="profile-pending-val" style="font-size:16px; font-weight:800; color:#0f172a;">${pendingDisplay}</div>
+                  <div style="font-size:11px; color:#64748b; font-weight:600; margin-top:2px;">Pending Sent</div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="side-card status-card-waalaxy">
+          <div class="side-card status-card-OutFox">
             <div class="status-card-head">
               <span class="status-title">Prospecting status</span>
-              ${isQuotaReached ? `
-                <span class="badge-status-reached">Quotas reached</span>
-              ` : `
-                <span class="badge-status-running"><span class="live-dot-circle"></span> Running</span>
-              `}
+              <span class="badge-status ${runnerStatusClass}">
+                <span class="live-dot-circle"></span> ${runnerStatusText}
+              </span>
             </div>
 
             <div class="status-kpis-pair">
               <div class="status-metric-box">
-                <div class="status-icon-circle icon-bg-blue">${ICONS.rocket}</div>
+                <div class="status-icon-circle" style="background:#fff7ed; color:#ff6b00;">${ICONS.rocket}</div>
                 <div>
                   <div class="status-metric-val">${activeCampaignsCount}</div>
                   <div class="status-metric-lbl">Active campaigns</div>
@@ -409,7 +752,7 @@ export async function renderHomeView(container, ctx = {}) {
               </div>
 
               <div class="status-metric-box">
-                <div class="status-icon-circle icon-bg-purple">${ICONS.queue}</div>
+                <div class="status-icon-circle" style="background:#f5f3ff; color:#7c3aed;">${ICONS.queue}</div>
                 <div>
                   <div class="status-metric-val">${queuedActionsCount}</div>
                   <div class="status-metric-lbl">Queued actions</div>
@@ -425,6 +768,23 @@ export async function renderHomeView(container, ctx = {}) {
   }
 
   function wireHomeEvents(currentTimeline) {
+    // Background refresh of live network stats if missing or stale (>5 min)
+    const cachedNet = storage.networkStats || null;
+    const lastUpdated = cachedNet?.updatedAt || 0;
+    if (Date.now() - lastUpdated > 5 * 60 * 1000) {
+      call('network.stats', {}).then((fresh) => {
+        if (!fresh) return;
+        const connEl = container.querySelector('#profile-connections-val');
+        const pendEl = container.querySelector('#profile-pending-val');
+        if (connEl && fresh.connections != null) {
+          connEl.textContent = Number(fresh.connections).toLocaleString();
+        }
+        if (pendEl && fresh.pending != null) {
+          pendEl.textContent = Number(fresh.pending).toLocaleString();
+        }
+      }).catch(() => {});
+    }
+
     container.querySelector('#home-filter-range')?.addEventListener('change', async (e) => {
       selectedDays = e.target.value;
       const latestStorage = await new Promise((r) => chrome.storage.local.get(null, r)).catch(() => null);
@@ -457,6 +817,29 @@ export async function renderHomeView(container, ctx = {}) {
       }));
       await downloadCsv(`outfox-activity-${today()}.csv`, rows);
     });
+
+    container.querySelector('#btn-home-go-inbox')?.addEventListener('click', () => {
+      ctx.switchView?.('inbox');
+    });
+
+    container.querySelector('#btn-home-go-queue')?.addEventListener('click', () => {
+      ctx.switchView?.('queue');
+    });
+
+    const triggerConnectGmail = async () => {
+      try {
+        await call(ACTIONS.GOOGLE_WORKSPACE_CONNECT, { interactive: true });
+        ctx.showToast?.('Google account connected successfully', 'success');
+        const latestStorage = await new Promise((r) => chrome.storage.local.get(null, r)).catch(() => null);
+        if (latestStorage) storage = latestStorage;
+        paint();
+      } catch (err) {
+        ctx.switchView?.('settings');
+      }
+    };
+
+    container.querySelector('#btn-connect-gmail-home')?.addEventListener('click', triggerConnectGmail);
+    container.querySelector('#btn-connect-gmail-strategy')?.addEventListener('click', triggerConnectGmail);
 
     container.querySelector('#btn-start-email-strategy')?.addEventListener('click', () => {
       ctx.switchView?.('campaigns');
@@ -511,13 +894,16 @@ function renderSvg30DayChart(timeline, activeAction) {
   const activeColor = colors[activeAction] || '#ff6b00';
 
   let gridSvg = `
-    <line x1="${padL}" y1="${padT}" x2="${w - padR}" y2="${padT}" stroke="#fff7ed" stroke-width="1" />
-    <line x1="${padL}" y1="${padT + chartH / 2}" x2="${w - padR}" y2="${padT + chartH / 2}" stroke="#fff7ed" stroke-width="1" />
+    <line x1="${padL}" y1="${padT}" x2="${w - padR}" y2="${padT}" stroke="#f1f5f9" stroke-width="1" />
+    <line x1="${padL}" y1="${padT + chartH / 2}" x2="${w - padR}" y2="${padT + chartH / 2}" stroke="#f1f5f9" stroke-width="1" />
     <line x1="${padL}" y1="${padT + chartH}" x2="${w - padR}" y2="${padT + chartH}" stroke="#e2e8f0" stroke-width="1" />
-    <text x="${padL - 10}" y="${padT + 4}" fill="#94a3b8" font-size="10" text-anchor="end">${maxVal}</text>
-    <text x="${padL - 10}" y="${padT + chartH / 2 + 4}" fill="#94a3b8" font-size="10" text-anchor="end">${Math.round(maxVal / 2)}</text>
-    <text x="${padL - 10}" y="${padT + chartH + 4}" fill="#94a3b8" font-size="10" text-anchor="end">0</text>
+    <text x="${padL - 10}" y="${padT + 4}" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="end">${maxVal}</text>
+    <text x="${padL - 10}" y="${padT + chartH / 2 + 4}" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="end">${Math.round(maxVal / 2)}</text>
+    <text x="${padL - 10}" y="${padT + chartH + 4}" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="end">0</text>
   `;
+
+  // Stride calculation: ensures labels are spaced evenly and adjacent dates (e.g. Nov 14 / Nov 15) never overlap
+  const stride = numDays <= 7 ? 1 : numDays <= 14 ? 2 : Math.max(3, Math.floor(numDays / 6));
 
   let colsSvg = '';
   timeline.forEach((slot, idx) => {
@@ -526,16 +912,20 @@ function renderSvg30DayChart(timeline, activeAction) {
     const x = padL + idx * stepX + (stepX - colW) / 2;
     const y = padT + chartH - barH;
 
-    const showDate = numDays <= 7 ? true : (idx % 2 === 0 || idx === numDays - 1);
+    // Show date on stride, but omit the stride label if it's within 2 slots of the final label
+    const isLast = idx === numDays - 1;
+    const isTooCloseToLast = (numDays - 1 - idx) > 0 && (numDays - 1 - idx) < Math.max(2, Math.floor(stride * 0.75));
+    const showDate = isLast || (idx % stride === 0 && !isTooCloseToLast);
+
     const dateTextSvg = showDate ? `
-      <text x="${x + colW / 2}" y="${padT + chartH + 18}" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="sans-serif">
+      <text x="${x + colW / 2}" y="${padT + chartH + 18}" fill="#94a3b8" font-size="9.5" font-weight="600" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
         ${slot.label}
       </text>
     ` : '';
 
     colsSvg += `
       <g class="chart-col-group" data-tooltip="${slot.label}: ${val} ${activeAction}">
-        <rect x="${x}" y="${y}" width="${colW}" height="${barH}" rx="2" ry="2" fill="${activeColor}" />
+        <rect x="${x}" y="${y}" width="${colW}" height="${barH}" rx="4" ry="4" fill="${activeColor}" />
         <rect x="${x - 3}" y="${padT}" width="${colW + 6}" height="${chartH}" fill="transparent" style="cursor:pointer;" />
         ${dateTextSvg}
       </g>

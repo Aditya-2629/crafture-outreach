@@ -38,7 +38,14 @@ describe('withdrawStaleInvites', () => {
     const res = await outreach.withdrawStaleInvites({ olderThanDays: 14, maxCount: 10 });
 
     expect(fetchSpy).toHaveBeenCalled();
-    expect(withdrawSpy).toHaveBeenCalledWith(mockInvites[0], expect.anything());
+    expect(withdrawSpy).toHaveBeenCalledWith(
+      '7504239478362759168',
+      expect.objectContaining({
+        profileUrn: 'ACoAA0106FIXTURE',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+      }),
+    );
     expect(res.withdrawnCount).toBe(1);
     expect(res.skippedCount).toBe(0);
 
@@ -74,7 +81,10 @@ describe('withdrawStaleInvites', () => {
     const res = await outreach.withdrawStaleInvites({ olderThanDays: 14, maxCount: 10 });
 
     expect(withdrawSpy).toHaveBeenCalledTimes(2);
-    expect(domFallbackSpy).toHaveBeenCalledWith([mockInvites[2], mockInvites[3]]);
+    expect(domFallbackSpy).toHaveBeenCalledWith(
+      [mockInvites[2], mockInvites[3]],
+      expect.objectContaining({ olderThanDays: 14, maxCount: 10 }),
+    );
     expect(res.withdrawnCount).toBe(2);
     expect(res.method).toBe('dom_fallback');
 
@@ -173,6 +183,170 @@ describe('withdrawStaleInvites', () => {
     expect(res.totalPending).toBe(102);
     expect(res.staleCount).toBe(2);
     expect(res.withdrawnCount).toBe(2);
+
+    fetchSpy.mockRestore();
+    withdrawSpy.mockRestore();
+  });
+});
+
+describe('auto-withdraw cleanup scheduler', () => {
+  beforeEach(async () => {
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation((fn) => {
+      if (typeof fn === 'function') fn();
+      return 0;
+    });
+    await chrome.storage.local.clear();
+    await chrome.alarms.clearAll();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('starts cleanup, runs immediate first batch, and schedules drip alarm when more stale invites remain', async () => {
+    const now = Date.now();
+    const staleTime = now - 20 * 24 * 60 * 60 * 1000;
+    // 20 stale invites
+    const mockInvites = Array.from({ length: 20 }, (_, i) => ({
+      invitationId: `inv_${i}`,
+      sentTime: staleTime,
+      publicId: `user_${i}`,
+    }));
+
+    const fetchSpy = vi.spyOn(voyager, 'fetchSentInvitations').mockResolvedValue(mockInvites);
+    const withdrawSpy = vi.spyOn(voyager, 'withdrawInvitation').mockResolvedValue({ ok: true });
+
+    const state = await outreach.startAutoWithdrawCleanup({
+      olderThanDays: 14,
+      batchSize: 5,
+      cooldownMinutes: 10,
+      dailyCap: 50,
+    });
+
+    expect(state.active).toBe(true);
+    expect(state.totalWithdrawnToday).toBe(5);
+    expect(state.batchSize).toBe(5);
+    expect(state.cooldownMinutes).toBe(10);
+    expect(state.dailyCap).toBe(50);
+    expect(chrome.alarms.create).toHaveBeenCalledWith(
+      outreach.WITHDRAW_CLEANUP_ALARM,
+      { delayInMinutes: 10 },
+    );
+
+    // Verify persisted in storage
+    const stored = await outreach.getAutoWithdrawCleanupStatus();
+    expect(stored.active).toBe(true);
+    expect(stored.totalWithdrawnToday).toBe(5);
+
+    fetchSpy.mockRestore();
+    withdrawSpy.mockRestore();
+  });
+
+  it('stops cleanly and clears alarm when initial batch clears all stale invites', async () => {
+    const now = Date.now();
+    const staleTime = now - 20 * 24 * 60 * 60 * 1000;
+    const mockInvites = [
+      { invitationId: 'inv_1', sentTime: staleTime, publicId: 'user_1' },
+    ];
+
+    const fetchSpy = vi.spyOn(voyager, 'fetchSentInvitations').mockResolvedValue(mockInvites);
+    const withdrawSpy = vi.spyOn(voyager, 'withdrawInvitation').mockResolvedValue({ ok: true });
+
+    const state = await outreach.startAutoWithdrawCleanup({
+      olderThanDays: 14,
+      batchSize: 15,
+      dailyCap: 75,
+    });
+
+    expect(state.active).toBe(false);
+    expect(state.stoppedReason).toBe('completed');
+    expect(state.totalWithdrawnToday).toBe(1);
+
+    fetchSpy.mockRestore();
+    withdrawSpy.mockRestore();
+  });
+
+  it('stops cleanly when daily cap is reached', async () => {
+    const now = Date.now();
+    const staleTime = now - 20 * 24 * 60 * 60 * 1000;
+    const mockInvites = Array.from({ length: 10 }, (_, i) => ({
+      invitationId: `inv_${i}`,
+      sentTime: staleTime,
+      publicId: `user_${i}`,
+    }));
+
+    const fetchSpy = vi.spyOn(voyager, 'fetchSentInvitations').mockResolvedValue(mockInvites);
+    const withdrawSpy = vi.spyOn(voyager, 'withdrawInvitation').mockResolvedValue({ ok: true });
+
+    // With dailyCap of 3 and batchSize of 5, it should only withdraw 3 and stop
+    const state = await outreach.startAutoWithdrawCleanup({
+      olderThanDays: 14,
+      batchSize: 5,
+      dailyCap: 3,
+    });
+
+    expect(state.active).toBe(false);
+    expect(state.stoppedReason).toBe('daily_cap_reached');
+    expect(state.totalWithdrawnToday).toBe(3);
+
+    // Attempting to start again on same day should reject cleanly
+    const reState = await outreach.startAutoWithdrawCleanup({ dailyCap: 3 });
+    expect(reState.active).toBe(false);
+    expect(reState.stoppedReason).toBe('daily_cap_reached');
+
+    fetchSpy.mockRestore();
+    withdrawSpy.mockRestore();
+  });
+
+  it('stops auto-clean and clears alarms on stopAutoWithdrawCleanup', async () => {
+    await chrome.storage.local.set({
+      [outreach.WITHDRAW_CLEANUP_STORAGE_KEY]: {
+        active: true,
+        totalWithdrawnToday: 10,
+      },
+    });
+    chrome.alarms.create(outreach.WITHDRAW_CLEANUP_ALARM, { delayInMinutes: 15 });
+
+    const stopped = await outreach.stopAutoWithdrawCleanup('manual_pause');
+    expect(stopped.active).toBe(false);
+    expect(stopped.stoppedReason).toBe('manual_pause');
+    expect(chrome.alarms.clear).toHaveBeenCalledWith(outreach.WITHDRAW_CLEANUP_ALARM);
+  });
+
+  it('runAutoWithdrawCleanupTick processes next drip batch and reschedules or terminates', async () => {
+    const now = Date.now();
+    const staleTime = now - 20 * 24 * 60 * 60 * 1000;
+
+    await chrome.storage.local.set({
+      [outreach.WITHDRAW_CLEANUP_STORAGE_KEY]: {
+        active: true,
+        olderThanDays: 14,
+        batchSize: 2,
+        cooldownMinutes: 15,
+        dailyCap: 10,
+        totalWithdrawnToday: 2,
+        today: new Date().toDateString(),
+      },
+    });
+
+    const mockInvites = [
+      { invitationId: 'inv_10', sentTime: staleTime, publicId: 'u10' },
+      { invitationId: 'inv_11', sentTime: staleTime, publicId: 'u11' },
+      { invitationId: 'inv_12', sentTime: staleTime, publicId: 'u12' },
+    ];
+
+    const fetchSpy = vi.spyOn(voyager, 'fetchSentInvitations').mockResolvedValue(mockInvites);
+    const withdrawSpy = vi.spyOn(voyager, 'withdrawInvitation').mockResolvedValue({ ok: true });
+
+    await outreach.runAutoWithdrawCleanupTick();
+
+    const updated = await outreach.getAutoWithdrawCleanupStatus();
+    expect(updated.active).toBe(true);
+    expect(updated.totalWithdrawnToday).toBe(4);
+    expect(chrome.alarms.create).toHaveBeenCalledWith(
+      outreach.WITHDRAW_CLEANUP_ALARM,
+      { delayInMinutes: 15 },
+    );
 
     fetchSpy.mockRestore();
     withdrawSpy.mockRestore();

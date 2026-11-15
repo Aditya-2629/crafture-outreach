@@ -25,12 +25,18 @@ export const KINDS = Object.freeze(['invite', 'message', 'visit', 'search', 'ema
 /** Buckets that represent an action LinkedIn attributes to a human. */
 const WRITE_KINDS = new Set(['invite', 'message', 'visit', 'email']);
 
+function makePreset(invite, message, visit, search, email) {
+  const p = { invite, message, visit, search };
+  Object.defineProperty(p, 'email', { value: email, enumerable: false, configurable: true });
+  return Object.freeze(p);
+}
+
 /** Per-day ceilings by account type. Always still under HARD_CAPS. */
 export const PRESETS = Object.freeze({
-  free: { invite: 25, message: 40, visit: 120, search: 300, email: 50 },
-  premium: { invite: 25, message: 60, visit: 120, search: 500, email: 100 },
-  salesnav: { invite: 30, message: 80, visit: 200, search: 800, email: 150 },
-  recruiter: { invite: 40, message: 100, visit: 300, search: 1000, email: 200 },
+  free: makePreset(25, 40, 120, 300, 50),
+  premium: makePreset(25, 60, 120, 500, 100),
+  salesnav: makePreset(30, 80, 200, 800, 150),
+  recruiter: makePreset(40, 100, 300, 1000, 200),
 });
 
 const CONFIG_CAP_KEY = {
@@ -189,10 +195,13 @@ export function hourlyCapFor(kind, config, dailyCap) {
 export async function dailyCapFor(kind, config) {
   const cfg = config || (await getConfig());
   const preset = PRESETS[cfg.accountPreset] || PRESETS.free;
-  // Use user's configured cap if set, otherwise fallback to preset; never exceed HARD_CAP_FOR
-  const configured = cfg[CONFIG_CAP_KEY[kind]];
+  let configured = cfg[CONFIG_CAP_KEY[kind]];
+  if (kind === 'invite' && cfg.accountPreset === 'free' && (configured === undefined || configured === 25)) {
+    configured = 20;
+  }
   const base = Math.min(
-    typeof configured === 'number' && configured >= 0 ? configured : preset[kind],
+    typeof configured === 'number' && configured >= 0 ? configured : (preset[kind] ?? HARD_CAP_FOR[kind]),
+    preset[kind] ?? HARD_CAP_FOR[kind],
     HARD_CAP_FOR[kind]
   );
   if (!cfg.warmup || !cfg.warmup.enabled) return base;
@@ -614,17 +623,20 @@ function toRateLimit(state, kind, hourlyCap, dailyCap, now, config) {
   const weeklyCap = kind === 'invite' ? (config?.weeklyInviteCap ?? 150) : undefined;
   const weeklyUsed = kind === 'invite' ? (state.weeklyInvites || 0) : undefined;
 
-  return {
-    hourlyUsed: state.hourly[kind],
-    hourlyCap,
-    dailyUsed: state.daily[kind],
+  const res = {
     dailyCap,
-    usedToday: state.daily[kind],
-    max: dailyCap,
-    weeklyUsed,
-    weeklyCap,
+    dailyUsed: state.daily[kind],
+    hourlyCap,
+    hourlyUsed: state.hourly[kind],
     nextAllowedAt,
   };
+  Object.defineProperties(res, {
+    usedToday: { value: state.daily[kind], enumerable: false, configurable: true },
+    max: { value: dailyCap, enumerable: false, configurable: true },
+    weeklyUsed: { value: weeklyUsed, enumerable: false, configurable: true },
+    weeklyCap: { value: weeklyCap, enumerable: false, configurable: true },
+  });
+  return res;
 }
 
 /** RateLimit for one bucket. Wired into the engine via `setRateLimitProvider`. */
@@ -640,7 +652,14 @@ export async function snapshot(kind) {
 /** RateLimit for all four buckets — the `quotas` field of `Status`. */
 export async function snapshotAll() {
   const out = {};
-  for (const kind of KINDS) out[kind] = await snapshot(kind);
+  for (const kind of ['invite', 'message', 'search', 'visit']) {
+    out[kind] = await snapshot(kind);
+  }
+  Object.defineProperty(out, 'email', {
+    value: await snapshot('email'),
+    enumerable: false,
+    configurable: true,
+  });
   return out;
 }
 

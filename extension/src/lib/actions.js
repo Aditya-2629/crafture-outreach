@@ -521,8 +521,7 @@ const PARAM_SPECS = {
     optional: { dryRun: 'boolean' },
   },
   [ACTIONS.OUTREACH_LIKE]: {
-    required: { postUrl: 'string' },
-    optional: { dryRun: 'boolean' },
+    optional: { postUrl: 'string', publicId: 'string', dryRun: 'boolean' },
   },
   [ACTIONS.OUTREACH_COMMENT]: {
     required: { postUrl: 'string', body: 'string' },

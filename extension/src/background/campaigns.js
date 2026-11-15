@@ -20,6 +20,7 @@ import { isWithinBusinessHours, getBucketCooldowns, setBucketCooldown, isBucketC
 import * as lists from './lists.js';
 import * as queue from './queue.js';
 import { enrichLead } from './enrich.js';
+import * as voyager from './voyager.js';
 
 // network.status must be registered for the 'accepted' branch to resolve.
 import './extract.js';
@@ -871,6 +872,31 @@ async function stepParams(campaign, step, enrollment, routed = null) {
   }
   if (step.type === 'like' || step.type === 'comment') {
     params.postUrl = step.postUrl || '';
+    if (step.type === 'like' && !params.postUrl) {
+      try {
+        let profileUrn = params.profileUrn;
+        if (!profileUrn) {
+          const stored = await getStoredProfile(enrollment.publicId);
+          profileUrn = stored?.urn || stored?.profileUrn;
+        }
+        if (!profileUrn && voyager.resolveProfileUrn) {
+          profileUrn = await voyager.resolveProfileUrn(enrollment.publicId).catch(() => null);
+        }
+        if (voyager.getMemberPosts) {
+          const posts = await voyager.getMemberPosts({
+            profileUrn,
+            publicId: enrollment.publicId,
+            count: 1,
+          }).catch(() => []);
+          const firstPost = Array.isArray(posts) ? posts[0] : null;
+          if (firstPost && (firstPost.url || firstPost.urn)) {
+            params.postUrl = firstPost.url || firstPost.urn;
+          }
+        }
+      } catch (err) {
+        logDebug('warn', 'Runner', `[Like Step] Failed to fetch latest post for ${enrollment.publicId}: ${err.message}`);
+      }
+    }
     if (step.type === 'comment') params.body = renderTemplate(variant || step.body, profile);
   }
   return { params, variantUsed };
@@ -1390,7 +1416,7 @@ export async function tick() {
           lastProspectActionAt.set(enrollment.publicId, Date.now());
         }
         wrote = true;
-        if (res.ok && res.data?.status !== 'queued') {
+        if (res.ok && res.data?.status !== 'queued' && res.data?.status !== 'skipped') {
           attemptedWrites += 1;
         }
 
@@ -1553,6 +1579,15 @@ export async function tick() {
             label: `Sent to approval queue`,
             status: 'queued',
           });
+        } else if (res.data.status === 'skipped') {
+          enrollment.nextAt = 0;
+          recordHistory(enrollment, {
+            step: step.type,
+            label: `Skipped ${step.type} (${res.data.reason || 'no post'})`,
+            status: 'skipped',
+            reason: res.data.reason || 'skipped',
+          });
+          advance(campaign, enrollment);
         } else {
           executed += 1;
           enrollment.lastActionAt = Date.now();

@@ -145,6 +145,18 @@ export async function send(action, params, origin = 'approved', context = {}) {
     await quota.record(kind);
   }
 
+  // Graceful skip (e.g. like step when prospect has no posts)
+  if (sendResult?.status === 'skipped') {
+    if (kind !== 'invite') {
+      await quota.release(kind);
+    }
+    return {
+      status: 'skipped',
+      reason: sendResult.reason || 'skipped',
+      sentAt: Date.now(),
+    };
+  }
+
   const result = {
     status: 'sent',
     sentAt: Date.now(),

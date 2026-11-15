@@ -9,6 +9,7 @@ import * as inbox from '../../src/background/inbox.js';
 import * as queue from '../../src/background/queue.js';
 import * as quota from '../../src/background/quota.js';
 import * as storage from '../../src/lib/storage.js';
+import * as voyager from '../../src/background/voyager.js';
 import '../../src/background/outreach.js';
 import '../../src/background/lists.js';
 import { routeBackground, seedSession, stubFetch } from '../helpers/net.js';
@@ -1107,5 +1108,70 @@ describe('v1 migration', () => {
     jump(61000);
     const tick3 = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
     expect(tick3.data.executed).toBe(1);
+  });
+
+  it('auto-fetches prospect latest post and likes it when like step has no postUrl', async () => {
+    await storage.putProfile({
+      publicId: 'lead_like_has_posts',
+      firstName: 'Post',
+      lastName: 'Author',
+      urn: 'urn:li:fsd_profile:ACoAA12345',
+    });
+    const c = (await handle(ACTIONS.CAMPAIGN_CREATE, {
+      name: 'LikeWithPostsTest',
+      steps: [{ type: 'like' }, { type: 'follow' }],
+      publicIds: ['lead_like_has_posts'],
+      settings: { autopilot: true },
+    })).data;
+
+    const mockPosts = [
+      {
+        url: 'https://www.linkedin.com/feed/update/urn:li:activity:7000000000000000001/',
+        text: 'Hello world',
+        likes: 5,
+        comments: 2,
+      },
+    ];
+    const postsSpy = vi.spyOn(voyager, 'getMemberPosts').mockResolvedValue(mockPosts);
+    const likeSpy = vi.spyOn(voyager, 'likePost').mockResolvedValue({ ok: true });
+
+    const tick = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+    expect(tick.data.executed).toBe(1);
+    expect(likeSpy).toHaveBeenCalledWith({
+      postUrl: 'https://www.linkedin.com/feed/update/urn:li:activity:7000000000000000001/',
+    });
+
+    const enrollments = await campaigns.readEnrollments(c.campaignId);
+    expect(enrollments[0].stepIndex).toBe(1);
+
+    postsSpy.mockRestore();
+    likeSpy.mockRestore();
+  });
+
+  it('gracefully skips like step when prospect has no posts and advances to next step', async () => {
+    await storage.putProfile({
+      publicId: 'lead_like_no_posts',
+      firstName: 'No',
+      lastName: 'Posts',
+      urn: 'urn:li:fsd_profile:ACoAA67890',
+    });
+    const c = (await handle(ACTIONS.CAMPAIGN_CREATE, {
+      name: 'LikeNoPostsTest',
+      steps: [{ type: 'like' }, { type: 'follow' }],
+      publicIds: ['lead_like_no_posts'],
+      settings: { autopilot: true },
+    })).data;
+
+    const postsSpy = vi.spyOn(voyager, 'getMemberPosts').mockResolvedValue([]);
+    const likeSpy = vi.spyOn(voyager, 'likePost');
+
+    const tick = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
+    expect(likeSpy).not.toHaveBeenCalled();
+
+    const enrollments = await campaigns.readEnrollments(c.campaignId);
+    expect(enrollments[0].stepIndex).toBe(1);
+    expect(enrollments[0].history.some((h) => h.status === 'skipped' && h.reason === 'no_post_url')).toBe(true);
+
+    postsSpy.mockRestore();
   });
 });

@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { ACTIONS } from '../../src/lib/actions.js';
+import { setConfig } from '../../src/lib/config.js';
 import * as outreach from '../../src/background/outreach.js';
 import * as voyager from '../../src/background/voyager.js';
 
@@ -350,5 +352,18 @@ describe('auto-withdraw cleanup scheduler', () => {
 
     fetchSpy.mockRestore();
     withdrawSpy.mockRestore();
+  });
+
+  describe('ACTIONS.OUTREACH_LIKE graceful skip', () => {
+    it('returns skipped status and releases reserved quota when postUrl is missing or empty', async () => {
+      await setConfig({ businessHoursOnly: false });
+      const res = await outreach.send(ACTIONS.OUTREACH_LIKE, { publicId: 'test_user' });
+      expect(res.status).toBe('skipped');
+      expect(res.reason).toBe('no_post_url');
+
+      const resEmpty = await outreach.send(ACTIONS.OUTREACH_LIKE, { publicId: 'test_user', postUrl: '' });
+      expect(resEmpty.status).toBe('skipped');
+      expect(resEmpty.reason).toBe('no_post_url');
+    });
   });
 });

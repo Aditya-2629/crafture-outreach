@@ -183,6 +183,7 @@ body.OutFox-layout {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
   background: var(--bg-page);
 }
 
@@ -795,6 +796,10 @@ table.prospects-table tr:hover td {
   align-items: center;
   justify-content: center;
   z-index: 100;
+}
+
+.modal-backdrop.hidden {
+  display: none !important;
 }
 
 .modal-dialog {
@@ -6339,16 +6344,16 @@ input:checked + .slider:before {
 }
 
 .hero-blue-banner {
-  background: #0f172a;
-  border: 1px solid #1e293b;
-  border-radius: 12px;
+  background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 22px;
   padding: 24px 28px;
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 24px;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 16px 36px -6px rgba(255, 107, 0, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -3px 6px rgba(0, 0, 0, 0.1);
 }
 
 .hero-banner-badge {
@@ -7353,11 +7358,12 @@ body.OutFox-layout {
   border: 1px solid rgba(255, 255, 255, 0.75) !important;
 }
 
-/* Hero Dark Clay Banner */
+/* Hero Vibrant OutFox Clay Banner */
 .hero-blue-banner {
-  background: #0f172a !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 16px 36px -4px rgba(15, 23, 42, 0.28), inset 0 1px 2px rgba(255, 255, 255, 0.2) !important;
+  background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 16px 36px -6px rgba(255, 107, 0, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -3px 6px rgba(0, 0, 0, 0.1) !important;
+  color: #ffffff !important;
 }
 
 /* Claymorphism Tactile Buttons */

@@ -169,7 +169,7 @@ export async function getLiveDashboardStats() {
 // Register action for UI to call
 register(ACTIONS.DASHBOARD_LIVE_STATS, () => getLiveDashboardStats());
 
-register('network.stats', async () => {
+register(ACTIONS.NETWORK_STATS || 'network.stats', async () => {
   const net = await getNetworkStats().catch(() => ({ pendingCount: 0, connectionsCount: 0 }));
   const data = {
     connections: net.connectionsCount,

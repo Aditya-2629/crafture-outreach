@@ -172,19 +172,26 @@ async function syncUserProfile() {
   try {
     const stats = await call(ACTIONS.DASHBOARD_LIVE_STATS || 'dashboard.live_stats', {}).catch(() => ({}));
     const profile = stats?.profile;
-    if (profile && profile.name) {
-      const name = profile.name;
-      const initials = name.split(/[\s-_]+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
-      const topTitle = document.getElementById('greeting-title');
-      if (topTitle) topTitle.textContent = `Hello ${name.split(/[\s-_]+/)[0] || 'Member'}`;
-      const topUser = document.querySelector('.user-pill span');
-      if (topUser) topUser.innerHTML = `${name} <span style="display:inline-flex; align-items:center; margin-left:4px;">${ICONS.chevronDown}</span>`;
-      const miniAv = document.querySelector('.user-avatar-mini');
-      if (miniAv) miniAv.textContent = initials || 'LI';
-      const sideAv = document.querySelector('.profile-avatar');
-      if (sideAv) sideAv.textContent = initials || 'LI';
-      const sideName = document.querySelector('.profile-name');
-      if (sideName) sideName.textContent = name;
+    const accountStatusEl = document.getElementById('sidebar-account-status');
+    if (profile && (profile.name || profile.connections != null)) {
+      if (accountStatusEl) {
+        accountStatusEl.innerHTML = '<span class="status-dot-circle is-active"></span> LinkedIn Online';
+        accountStatusEl.style.color = 'var(--success)';
+      }
+      if (profile.name) {
+        const name = profile.name;
+        const initials = name.split(/[\s-_]+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+        const topTitle = document.getElementById('greeting-title');
+        if (topTitle) topTitle.textContent = `Hello ${name.split(/[\s-_]+/)[0] || 'Member'}`;
+        const topUser = document.querySelector('.user-pill span');
+        if (topUser) topUser.innerHTML = `${name} <span style="display:inline-flex; align-items:center; margin-left:4px;">${ICONS.chevronDown}</span>`;
+        const miniAv = document.querySelector('.user-avatar-mini');
+        if (miniAv) miniAv.textContent = initials || 'LI';
+        const sideAv = document.querySelector('.profile-avatar');
+        if (sideAv) sideAv.textContent = initials || 'LI';
+        const sideName = document.querySelector('.profile-name');
+        if (sideName) sideName.textContent = name;
+      }
     }
   } catch (err) {
     console.warn('[Dashboard] Profile sync notice:', err);
@@ -247,9 +254,9 @@ async function initDashboard() {
     const status = await call(ACTIONS.STATUS_GET, {}).catch(() => ({}));
     if (accountStatusEl) {
       if (status.loggedIn) {
-        accountStatusEl.innerHTML = '<span class="status-dot-circle is-active"></span> Currently Active';
+        accountStatusEl.innerHTML = '<span class="status-dot-circle is-active"></span> LinkedIn Online';
         accountStatusEl.style.color = 'var(--success)';
-      } else {
+      } else if (!accountStatusEl.textContent.includes('Online')) {
         accountStatusEl.innerHTML = '<span class="status-dot-circle is-offline"></span> LinkedIn Offline';
         accountStatusEl.style.color = 'var(--warning)';
       }

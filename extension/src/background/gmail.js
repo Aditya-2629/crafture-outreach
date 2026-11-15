@@ -220,6 +220,14 @@ async function acquireToken(key, scopes, interactive = false) {
   if (existing && (existing.accessToken || existing.token)) {
     const token = existing.accessToken || existing.token;
     if (typeof existing.expiresAt === 'number' && Date.now() < existing.expiresAt - 60000) {
+      if (key === STORAGE_KEYS.WORKSPACE_TOKEN && existing.email) {
+        try {
+          const cfg = await getConfig();
+          if (!cfg.googleWorkspace?.connected) {
+            await setConfig({ googleWorkspace: { connected: true, email: existing.email } });
+          }
+        } catch {}
+      }
       return token;
     }
 
@@ -282,6 +290,14 @@ async function acquireToken(key, scopes, interactive = false) {
     email: email || '',
   };
   await setStoredToken(key, tokenRecord);
+  if (key === STORAGE_KEYS.WORKSPACE_TOKEN && tokenRecord.email) {
+    try {
+      const cfg = await getConfig();
+      if (!cfg.googleWorkspace?.connected) {
+        await setConfig({ googleWorkspace: { connected: true, email: tokenRecord.email } });
+      }
+    } catch {}
+  }
   return token;
 }
 

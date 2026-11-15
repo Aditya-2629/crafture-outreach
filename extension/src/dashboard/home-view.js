@@ -120,14 +120,97 @@ function ensureHomeStyles() {
     .attention-empty-hint { font-size: 12px; color: #64748b; }
 
     /* Hero Banner */
-    .hero-blue-banner { background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 22px; padding: 24px 32px; color: #ffffff; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 14px 32px -4px rgba(15, 23, 42, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2); margin-bottom: 22px; }
-    .hero-banner-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.12); padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 700; margin-bottom: 14px; }
-    .hero-metric-box { display: flex; align-items: center; gap: 16px; }
-    .hero-curved-arrow { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
-    .hero-metric-val { font-size: 32px; font-weight: 900; line-height: 1; }
-    .hero-metric-label { font-size: 13px; opacity: 0.9; margin-top: 4px; }
-    .radial-rate-circle { width: 72px; height: 72px; border-radius: 50%; border: 4px solid rgba(255,255,255,0.25); border-top-color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; margin: 0 auto 6px auto; }
-    .radial-rate-label { font-size: 12px; opacity: 0.9; text-align: center; display: block; }
+    .hero-blue-banner {
+      background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 22px;
+      padding: 22px 28px;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 16px 36px -6px rgba(255, 107, 0, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -3px 6px rgba(0, 0, 0, 0.1);
+      margin-bottom: 22px;
+    }
+    .hero-banner-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .hero-pills-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .hero-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+    }
+    .hero-status-pill.is-warning {
+      background: rgba(254, 243, 199, 0.28);
+      border-color: rgba(254, 243, 199, 0.5);
+      color: #fffbeb;
+    }
+    .is-hero-dot {
+      background: #ffffff !important;
+      box-shadow: 0 0 8px #ffffff !important;
+    }
+    .hero-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .hero-metric-tile {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 16px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.25);
+    }
+    .hero-tile-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .hero-tile-num {
+      font-size: 24px;
+      font-weight: 900;
+      line-height: 1.1;
+      color: #ffffff;
+    }
+    .hero-tile-badge {
+      font-size: 11px;
+      font-weight: 800;
+      background: rgba(255, 255, 255, 0.22);
+      padding: 2px 7px;
+      border-radius: 9999px;
+      color: #ffffff;
+      white-space: nowrap;
+    }
+    .hero-tile-lbl {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.9);
+    }
 
     /* Accordions & KPI Cards */
     .accordion-head-row { display: flex; justify-content: space-between; align-items: center; margin: 20px 0 12px 0; }
@@ -423,12 +506,12 @@ export async function renderHomeView(container, ctx = {}) {
     const cachedNet = storage.networkStats || null;
     const connectionsDisplay = cachedNet?.connections != null
       ? Number(cachedNet.connections).toLocaleString()
-      : (stats.profile?.connections != null && stats.profile.connections > 0
+      : (stats.profile?.connections != null
           ? Number(stats.profile.connections).toLocaleString()
           : '—');
     const pendingDisplay = cachedNet?.pending != null
       ? Number(cachedNet.pending).toLocaleString()
-      : (stats.profile?.pending != null && stats.profile.pending > 0
+      : (stats.profile?.pending != null
           ? Number(stats.profile.pending).toLocaleString()
           : '—');
 
@@ -457,65 +540,59 @@ export async function renderHomeView(container, ctx = {}) {
             </div>
           </div>
 
-          <!-- Live Engine & Quota Strip -->
-          <div class="engine-quota-strip">
-            <div class="strip-item">
-              <span class="strip-label">Runner Status</span>
-              <span class="badge-status ${runnerStatusClass}">
-                <span class="live-dot-circle"></span> ${runnerStatusText}
-              </span>
-            </div>
-            <div class="strip-divider"></div>
-            <div class="strip-item">
-              <span class="strip-label">Next Action</span>
-              <span class="strip-value"><span class="strip-ico">${ICONS.clock}</span> ${nextActionCountdown}</span>
-            </div>
-            <div class="strip-divider"></div>
-            <div class="strip-item">
-              <span class="strip-label">Today's Remaining Quotas</span>
-              <div class="strip-quotas-pills">
-                <span class="quota-pill" title="Invitations remaining today"><strong>${remainingInvites}</strong> invites</span>
-                <span class="quota-pill" title="Messages remaining today"><strong>${remainingMessages}</strong> msgs</span>
-                <span class="quota-pill" title="Profile visits remaining today"><strong>${remainingVisits}</strong> visits</span>
-                <span class="quota-pill" title="Emails remaining today"><strong>${remainingEmails}</strong> emails</span>
-              </div>
-            </div>
-            ${isNoteLimitActive ? `
-              <div class="strip-divider"></div>
-              <div class="strip-item">
-                <span class="badge-note-limit" title="Personalized note ceiling reached; blank invites running">
-                  ${ICONS.warning} Blank-Invite Limit (${noteLimitRemaining})
+          <!-- Vibrant OutFox Clay Hero Banner -->
+          <div class="hero-blue-banner">
+            <div class="hero-banner-top">
+              <div class="hero-pills-row">
+                <span class="hero-status-pill">
+                  <span class="live-dot-circle is-hero-dot"></span> Runner ${runnerStatusText}
                 </span>
+                <span class="hero-status-pill">
+                  ${ICONS.clock} Next Action: ${nextActionCountdown}
+                </span>
+                <span class="hero-status-pill" title="Today's remaining: ${remainingMessages} msgs, ${remainingVisits} visits, ${remainingEmails} emails">
+                  ${ICONS.lightning} ${remainingInvites} invites left
+                </span>
+                ${isNoteLimitActive ? `
+                  <span class="hero-status-pill is-warning" title="Personalized note ceiling reached; blank invites running">
+                    ${ICONS.warning} Note Limit (${noteLimitRemaining})
+                  </span>
+                ` : ''}
               </div>
-            ` : ''}
-          </div>
+            </div>
 
-          <!-- Real Funnel KPIs Strip -->
-          <div class="funnel-kpis-strip">
-            <div class="funnel-tile">
-              <div class="funnel-tile-ico">${ICONS.invitation}</div>
-              <div class="funnel-tile-val">${kpis.totalInvitesSent || 0}</div>
-              <div class="funnel-tile-lbl">Invitations Sent</div>
-            </div>
-            <div class="funnel-tile">
-              <div class="funnel-tile-ico" style="color:#059669; background:#ecfdf5;">${ICONS.check}</div>
-              <div class="funnel-tile-val">${kpis.acceptedInvites || 0} <span class="funnel-tile-pct">(${kpis.acceptanceRate || 0}%)</span></div>
-              <div class="funnel-tile-lbl">Accepted</div>
-            </div>
-            <div class="funnel-tile">
-              <div class="funnel-tile-ico" style="color:#0284c7; background:#e0f2fe;">${ICONS.message}</div>
-              <div class="funnel-tile-val">${kpis.totalMessagesSent || 0}</div>
-              <div class="funnel-tile-lbl">Messages Sent</div>
-            </div>
-            <div class="funnel-tile">
-              <div class="funnel-tile-ico" style="color:#7c3aed; background:#f5f3ff;">${ICONS.reply}</div>
-              <div class="funnel-tile-val">${kpis.messageResponses || 0} <span class="funnel-tile-pct">(${kpis.responseRate || 0}%)</span></div>
-              <div class="funnel-tile-lbl">Replies</div>
-            </div>
-            <div class="funnel-tile">
-              <div class="funnel-tile-ico" style="color:#e11d48; background:#ffe4e6;">${ICONS.visit}</div>
-              <div class="funnel-tile-val">${kpis.totalVisits || 0}</div>
-              <div class="funnel-tile-lbl">Profile Visits</div>
+            <div class="hero-metrics-grid">
+              <div class="hero-metric-tile">
+                <div class="hero-tile-top">
+                  <span class="hero-tile-num">${kpis.messageResponses || 0}</span>
+                  <span class="hero-tile-badge">${kpis.responseRate || 0}% rate</span>
+                </div>
+                <span class="hero-tile-lbl">Message Responses</span>
+              </div>
+
+              <div class="hero-metric-tile">
+                <div class="hero-tile-top">
+                  <span class="hero-tile-num">${kpis.acceptedInvites || 0}</span>
+                  <span class="hero-tile-badge">${kpis.acceptanceRate || 0}% rate</span>
+                </div>
+                <span class="hero-tile-lbl">Accepted Invitations</span>
+              </div>
+
+              <div class="hero-metric-tile">
+                <div class="hero-tile-top">
+                  <span class="hero-tile-num">${kpis.totalInvitesSent || 0}</span>
+                  <span class="hero-tile-badge">Sent</span>
+                </div>
+                <span class="hero-tile-lbl">Invitations Sent</span>
+              </div>
+
+              <div class="hero-metric-tile">
+                <div class="hero-tile-top">
+                  <span class="hero-tile-num">${kpis.totalMessagesSent || 0}</span>
+                  <span class="hero-tile-badge">Sent</span>
+                </div>
+                <span class="hero-tile-lbl">Messages Sent</span>
+              </div>
             </div>
           </div>
 
@@ -550,69 +627,6 @@ export async function renderHomeView(container, ctx = {}) {
                   All active conversations are up to date. Approval queue has <strong>${pendingQueueCount}</strong> pending items awaiting dispatch.
                 </div>
               `}
-            </div>
-          </div>
-
-          <div class="hero-blue-banner">
-            <div class="hero-banner-left">
-              <div class="hero-banner-badge">
-                <span class="li-in-icon">${ICONS.linkedin}</span> LinkedIn Responses
-              </div>
-              <div class="hero-metric-box">
-                <span class="hero-curved-arrow">${ICONS.reply}</span>
-                <div>
-                  <div class="hero-metric-val">${kpis.messageResponses || 0}</div>
-                  <div class="hero-metric-label">Message responses</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="hero-banner-right">
-              <div class="radial-rate-circle">
-                <span>${kpis.responseRate || 0}%</span>
-              </div>
-              <span class="radial-rate-label">Response rate</span>
-            </div>
-          </div>
-
-          <div class="accordion-head-row">
-            <div class="accordion-title-group">
-              <span class="li-badge-box">${ICONS.linkedin}</span>
-              <span class="accordion-title-text">LinkedIn Performance</span>
-            </div>
-          </div>
-
-          <div class="linkedin-kpis-pair">
-            <div class="kpi-card-white">
-              <div class="kpi-card-left">
-                <div class="kpi-icon-round round-blue">${ICONS.invitation}</div>
-                <div>
-                  <div class="kpi-main-number">${kpis.acceptedInvites || 0}</div>
-                  <div class="kpi-sub-label">Accepted invitations</div>
-                </div>
-              </div>
-              <div class="kpi-vertical-divider"></div>
-              <div class="kpi-card-right">
-                <div class="kpi-rate-number">${kpis.acceptanceRate || 0}%</div>
-                <div class="kpi-sub-label">Acceptance rate</div>
-              </div>
-              <span class="kpi-info-icon" title="Invitations accepted by prospects">${ICONS.info}</span>
-            </div>
-
-            <div class="kpi-card-white">
-              <div class="kpi-card-left">
-                <div class="kpi-icon-round round-green">${ICONS.message}</div>
-                <div>
-                  <div class="kpi-main-number">${kpis.messageResponses || 0}</div>
-                  <div class="kpi-sub-label">Answered messages</div>
-                </div>
-              </div>
-              <div class="kpi-vertical-divider"></div>
-              <div class="kpi-card-right">
-                <div class="kpi-rate-number">${kpis.responseRate || 0}%</div>
-                <div class="kpi-sub-label">Response rate</div>
-              </div>
-              <span class="kpi-info-icon" title="Responses received from prospects">${ICONS.info}</span>
             </div>
           </div>
 
@@ -768,12 +782,13 @@ export async function renderHomeView(container, ctx = {}) {
   }
 
   function wireHomeEvents(currentTimeline) {
-    // Background refresh of live network stats if missing or stale (>5 min)
+    // Background refresh of live network stats if missing or stale (>3 min)
     const cachedNet = storage.networkStats || null;
     const lastUpdated = cachedNet?.updatedAt || 0;
-    if (Date.now() - lastUpdated > 5 * 60 * 1000) {
-      call('network.stats', {}).then((fresh) => {
+    if (!cachedNet || Date.now() - lastUpdated > 3 * 60 * 1000) {
+      call(ACTIONS.NETWORK_STATS || 'network.stats', {}).then((fresh) => {
         if (!fresh) return;
+        storage.networkStats = fresh;
         const connEl = container.querySelector('#profile-connections-val');
         const pendEl = container.querySelector('#profile-pending-val');
         if (connEl && fresh.connections != null) {

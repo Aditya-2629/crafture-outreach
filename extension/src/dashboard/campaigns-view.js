@@ -551,7 +551,7 @@ function ensureCampaignsStyles() {
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
-    .campaigns-view-shell { max-width: 1200px; margin: 0 auto; }
+    .campaigns-view-shell { max-width: 1200px; margin: 0 auto; overflow-x: hidden; }
     .campaigns-top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .camp-tabs-and-search-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; gap: 16px; }
     .camp-state-tabs-bar { display: flex; gap: 8px; background: #f1f5f9; padding: 4px; border-radius: 12px; }
@@ -561,8 +561,24 @@ function ensureCampaignsStyles() {
     .camp-search-wrap { position: relative; display: flex; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0 12px; width: 220px; }
     .camp-search-wrap input { border: none; outline: none; font-size: 13px; padding: 8px 6px; width: 100%; background: transparent; }
     .OutFox-camp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
-    .OutFox-camp-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; position: relative; box-shadow: 0 2px 6px rgba(0,0,0,0.02); transition: all 0.2s ease; cursor: pointer; display: flex; align-items: center; gap: 14px; }
-    .OutFox-camp-card:hover { border-color: #c7d2fe; box-shadow: 0 6px 18px rgba(255, 107, 0, 0.08); transform: translateY(-1px); }
+    .OutFox-camp-card {
+      background: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 22px;
+      padding: 20px;
+      position: relative;
+      box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.07), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(15, 23, 42, 0.04);
+      transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .OutFox-camp-card:hover {
+      border-color: rgba(255, 107, 0, 0.25);
+      box-shadow: 0 16px 32px -4px rgba(255, 107, 0, 0.12), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(15, 23, 42, 0.04);
+      transform: translateY(-2px);
+    }
     .planet-avatar { width: 44px; height: 44px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; position: relative; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #ff6b00; }
     .planet-avatar img { width: 28px; height: 28px; border-radius: 6px; object-fit: contain; }
     .planet-ring { display: none; }
@@ -635,14 +651,17 @@ function ensureCampaignsStyles() {
       bottom: 0;
       background: rgba(15, 23, 42, 0.45);
       backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
       z-index: 99990;
-      display: flex;
+      display: none;
       justify-content: flex-end;
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.2s ease;
+      overflow-x: hidden;
     }
     .camp-drawer-backdrop.is-open {
+      display: flex !important;
       opacity: 1;
       pointer-events: auto;
     }
@@ -1064,7 +1083,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                     const statusClass = isPaused ? 'dot-paused' : isDraft ? 'dot-draft' : 'dot-running';
 
                     return `
-              <div class="OutFox-camp-card" data-camp-id="${id}">
+              <div class="OutFox-camp-card clay-card" data-camp-id="${id}">
                 <div class="planet-avatar">
                   <img src="${outfoxLogoUrl}" width="28" height="28" alt="OutFox" />
                 </div>
@@ -1118,7 +1137,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       </div>
 
       <!-- Flow Modal Placeholder -->
-      <div class="modal-backdrop hidden" id="flow-modal">
+      <div class="modal-backdrop hidden" id="flow-modal" style="display: none;">
         <div class="modal-dialog" style="max-width: 820px;">
           <div class="modal-head">
             <h3 class="pane-title" id="flow-modal-title">Sequence Flow</h3>
@@ -1129,7 +1148,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       </div>
 
       <!-- Live Campaign Status Drawer -->
-      <div class="camp-drawer-backdrop" id="camp-live-drawer-backdrop">
+      <div class="camp-drawer-backdrop hidden" id="camp-live-drawer-backdrop" style="display: none;">
         <div class="camp-drawer" id="camp-live-drawer">
           <div class="camp-drawer-head">
             <div class="camp-drawer-head-info">
@@ -1381,7 +1400,11 @@ export async function renderCampaignsView(container, ctx = {}) {
     });
 
     container.querySelector('#btn-close-flow-modal')?.addEventListener('click', () => {
-      container.querySelector('#flow-modal')?.classList.add('hidden');
+      const fm = container.querySelector('#flow-modal');
+      if (fm) {
+        fm.classList.add('hidden');
+        fm.style.display = 'none';
+      }
     });
 
     // =========================================================================
@@ -1423,6 +1446,8 @@ export async function renderCampaignsView(container, ctx = {}) {
 
       const backdrop = container.querySelector('#camp-live-drawer-backdrop');
       if (!backdrop) return;
+      backdrop.style.display = 'flex';
+      backdrop.classList.remove('hidden');
       backdrop.classList.add('is-open');
 
       renderDrawerLoading();
@@ -1446,7 +1471,11 @@ export async function renderCampaignsView(container, ctx = {}) {
         drawerInterval = null;
       }
       const backdrop = container.querySelector('#camp-live-drawer-backdrop');
-      if (backdrop) backdrop.classList.remove('is-open');
+      if (backdrop) {
+        backdrop.classList.remove('is-open');
+        backdrop.classList.add('hidden');
+        backdrop.style.display = 'none';
+      }
     }
 
     function renderDrawerLoading() {

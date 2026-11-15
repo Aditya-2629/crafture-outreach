@@ -34,6 +34,7 @@ export const ACTIONS = Object.freeze({
   NETWORK_CONNECTIONS: 'network.connections',
   NETWORK_FOLLOWERS: 'network.followers',
   NETWORK_STATUS: 'network.status',
+  NETWORK_STATS: 'network.stats',
   NETWORK_UNFOLLOW_COUNT: 'network.unfollowCount',
   NETWORK_UNFOLLOW_ALL: 'network.unfollowAll',
   NETWORK_UNFOLLOW_STOP: 'network.unfollowStop',
@@ -459,6 +460,7 @@ const PARAM_SPECS = {
   [ACTIONS.NETWORK_CONNECTIONS]: { optional: { start: 'number', count: 'number' } },
   [ACTIONS.NETWORK_FOLLOWERS]: { optional: { start: 'number', count: 'number' } },
   [ACTIONS.NETWORK_STATUS]: { required: { publicIds: 'array' } },
+  [ACTIONS.NETWORK_STATS]: {},
   [ACTIONS.NETWORK_UNFOLLOW_COUNT]: {
     optional: { mode: 'string', scope: 'string' },
     enums: { mode: UNFOLLOW_MODES, scope: UNFOLLOW_SCOPES },
@@ -688,6 +690,8 @@ const PARAM_SPECS = {
   [ACTIONS.BACKUP_DRIVE_SAVE]: {},
   [ACTIONS.BACKUP_DRIVE_RESTORE]: {},
   [ACTIONS.OUTREACH_MAILBOX_SWITCH]: { required: { mode: 'string' }, optional: { email: 'string' } },
+  [ACTIONS.VAULT_SYNC_ENDPOINTS]: { optional: { force: 'boolean' } },
+  [ACTIONS.VAULT_HEALTH_AUDIT]: {},
 };
 
 function typeOf(value) {

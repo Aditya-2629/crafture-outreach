@@ -519,6 +519,16 @@ export async function renderSettingsView(container, ctx = {}) {
     const vaultLastSyncAt = Number(remoteEndpointsData.lastSyncAt) || 0;
     const vaultLastSyncText = formatTimeAgo(vaultLastSyncAt);
 
+    const wsTokenRecord = storage.outfox_google_workspace_token || storage.outfox_outreach_gmail_token || null;
+    const hasStoredWsToken = Boolean(
+      wsTokenRecord?.accessToken ||
+      wsTokenRecord?.token ||
+      wsTokenRecord?.refreshToken
+    );
+    const isWsConnected = Boolean(googleWorkspace.connected || hasStoredWsToken);
+    const wsEmail = googleWorkspace.email || wsTokenRecord?.email || mailbox.email || 'Connected Google Account';
+    const wsSheetUrl = googleWorkspace.spreadsheetUrl || storage.outfox_sheets_crm_meta?.spreadsheetUrl || storage.outfox_sheets_crm?.spreadsheetUrl || '';
+
     container.innerHTML = `
       <div class="OutFox-settings-layout">
         <!-- SUB-SIDEBAR (4 Working Tabs Only) -->
@@ -927,15 +937,15 @@ export async function renderSettingsView(container, ctx = {}) {
                         ${mailbox.email || 'No outreach sender selected'}
                       </div>
                       <div style="font-size: 11.5px; color: #64748b;">
-                        ${mailbox.connected ? (mailbox.mode === 'custom_gmail' ? 'Separate outreach Gmail mailbox' : `Connected via primary Google Workspace (${googleWorkspace.email || mailbox.email})`) : 'Outreach sender is disabled. Google Drive Backups and Sheets CRM remain active.'}
+                        ${mailbox.connected ? (mailbox.mode === 'custom_gmail' ? 'Separate outreach Gmail mailbox' : `Connected via primary Google Workspace (${wsEmail})`) : 'Outreach sender is disabled. Google Drive Backups and Sheets CRM remain active.'}
                       </div>
                     </div>
                   </div>
 
                   <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    ${googleWorkspace.connected && mailbox.mode !== 'workspace' ? `
+                    ${isWsConnected && mailbox.mode !== 'workspace' ? `
                       <button type="button" class="btn-int-action" id="btn-use-default-workspace-mail" style="font-size: 11.5px; padding: 6px 12px;">
-                        Use Default (${googleWorkspace.email || 'Workspace'})
+                        Use Default (${wsEmail})
                       </button>
                     ` : ''}
                     <button type="button" class="btn-int-action" id="btn-switch-custom-gmail" style="font-size: 11.5px; padding: 6px 12px; display:inline-flex; align-items:center; gap:5px;">
@@ -1076,27 +1086,27 @@ export async function renderSettingsView(container, ctx = {}) {
                       <span class="int-logo-ico" style="background:#0f9d58; color:#fff;">${ICONS.sheets}</span>
                       <h3 class="int-card-title">Google Live CRM & Workspace</h3>
                     </div>
-                    ${googleWorkspace.connected
+                    ${isWsConnected
                       ? `<span class="badge-status-running"><span class="live-dot-circle"></span> Connected</span>`
                       : `<span class="live-activity-pill is-paused" style="font-size:11px;">○ Not Connected</span>`}
                   </div>
                   <p class="int-card-desc" style="margin-bottom: 12px; min-height: 40px;">
                     Auto-creates "OutFox Live CRM" Sheet with frozen headers and syncs campaign steps, invites, and replies in real-time.
                   </p>
-                  ${googleWorkspace.connected ? `
+                  ${isWsConnected ? `
                     <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:12px; color:#475569;">
-                      <div><strong>Account:</strong> ${googleWorkspace.email}</div>
-                      ${googleWorkspace.spreadsheetUrl ? `<div style="margin-top:4px;"><strong>Sheet:</strong> <a href="${googleWorkspace.spreadsheetUrl}" target="_blank" style="color:#ff6b00; text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:3px;">OutFox Live CRM ${ICONS.arrowUpRight}</a></div>` : ''}
+                      <div><strong>Account:</strong> ${wsEmail}</div>
+                      ${wsSheetUrl ? `<div style="margin-top:4px;"><strong>Sheet:</strong> <a href="${wsSheetUrl}" target="_blank" style="color:#ff6b00; text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:3px;">OutFox Live CRM ${ICONS.arrowUpRight}</a></div>` : ''}
                       <div style="margin-top:4px; font-size:11px; color:#94a3b8;">Last synced: ${googleWorkspace.lastSyncAt ? new Date(googleWorkspace.lastSyncAt).toLocaleString() : 'Never'}</div>
                     </div>
                   ` : ''}
                   <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-                    ${googleWorkspace.connected ? `
+                    ${isWsConnected ? `
                       <button type="button" class="btn-card-action" id="btn-disconnect-google-ws" style="font-size:11.5px; padding:6px 12px; color:#ef4444; border-color:#fecaca;">
                         Disconnect
                       </button>
-                      ${googleWorkspace.spreadsheetUrl ? `
-                        <a href="${googleWorkspace.spreadsheetUrl}" target="_blank" class="btn-int-action" style="font-size:11.5px; padding:6px 14px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                      ${wsSheetUrl ? `
+                        <a href="${wsSheetUrl}" target="_blank" class="btn-int-action" style="font-size:11.5px; padding:6px 14px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
                           Open Live Sheet ${ICONS.arrowUpRight}
                         </a>
                       ` : ''}
@@ -1118,7 +1128,7 @@ export async function renderSettingsView(container, ctx = {}) {
                       <span class="int-logo-ico" style="background:#4285f4; color:#fff;">${ICONS.cloud}</span>
                       <h3 class="int-card-title">Cloud & Local Data Backup</h3>
                     </div>
-                    ${googleWorkspace.connected
+                    ${isWsConnected
                       ? `<span class="badge-status-running"><span class="live-dot-circle"></span> 24h Auto-Backup Ready</span>`
                       : `<span class="live-activity-pill is-paused" style="font-size:11px;">○ Local Only</span>`}
                   </div>
@@ -1126,11 +1136,11 @@ export async function renderSettingsView(container, ctx = {}) {
                     Safeguards campaigns, prospects, lists and templates. Daily 24h automated backup to "OutFox Backups" in Google Drive + instant local JSON snapshots.
                   </p>
                   <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:12px; color:#475569;">
-                    <div><strong>Cloud Storage:</strong> ${googleWorkspace.connected ? `Google Drive (${googleWorkspace.email})` : 'Connect Google Workspace for cloud backups'}</div>
+                    <div><strong>Cloud Storage:</strong> ${isWsConnected ? `Google Drive (${wsEmail})` : 'Connect Google Workspace for cloud backups'}</div>
                     <div style="margin-top:4px; font-size:11px; color:#94a3b8;">Last Drive Backup: ${googleWorkspace.lastBackupAt ? new Date(googleWorkspace.lastBackupAt).toLocaleString() : 'Never'}</div>
                   </div>
                   <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-                    ${googleWorkspace.connected ? `
+                    ${isWsConnected ? `
                       <button type="button" class="btn-int-action btn-int-active" id="btn-drive-backup-now" style="font-size:11.5px; padding:6px 12px; display:inline-flex; align-items:center; gap:5px;">
                         ${ICONS.cloud} Backup to Drive
                       </button>

@@ -1137,9 +1137,12 @@ describe('v1 migration', () => {
 
     const tick = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
     expect(tick.data.executed).toBe(1);
-    expect(likeSpy).toHaveBeenCalledWith({
-      postUrl: 'https://www.linkedin.com/feed/update/urn:li:activity:7000000000000000001/',
-    });
+    expect(likeSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        postUrl: 'https://www.linkedin.com/feed/update/urn:li:activity:7000000000000000001/',
+        publicId: 'lead_like_has_posts',
+      }),
+    );
 
     const enrollments = await campaigns.readEnrollments(c.campaignId);
     expect(enrollments[0].stepIndex).toBe(1);
@@ -1166,13 +1169,18 @@ describe('v1 migration', () => {
     const likeSpy = vi.spyOn(voyager, 'likePost');
 
     const tick = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
-    expect(likeSpy).not.toHaveBeenCalled();
+    expect(likeSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        publicId: 'lead_like_no_posts',
+      }),
+    );
 
     const enrollments = await campaigns.readEnrollments(c.campaignId);
     expect(enrollments[0].stepIndex).toBe(1);
-    expect(enrollments[0].history.some((h) => h.status === 'skipped' && h.reason === 'no_post_url')).toBe(true);
+    expect(enrollments[0].history.some((h) => h.status === 'skipped')).toBe(true);
 
     postsSpy.mockRestore();
+    likeSpy.mockRestore();
   });
 
   describe('ensureCampaignAlarmWatchdog & auto kick-off', () => {

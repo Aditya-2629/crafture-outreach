@@ -1583,6 +1583,70 @@ describe('writes', () => {
       expect(res.reason).toBe('no_post_url');
     });
 
+    it('likePost falls back to recent-activity DOM when postUrl is missing and likes latest post', async () => {
+      net.push([]); // empty member posts from API
+
+      const origTabs = chrome.tabs;
+      const origScripting = chrome.scripting;
+
+      chrome.tabs = {
+        create: vi.fn().mockResolvedValue({ id: 108, status: 'complete' }),
+        remove: vi.fn().mockResolvedValue(true),
+        get: vi.fn().mockResolvedValue({ id: 108, status: 'complete' }),
+        onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+      };
+      chrome.scripting = {
+        executeScript: vi.fn().mockResolvedValue([
+          { result: { ok: true, success: true, method: 'dom', alreadyLiked: false } },
+        ]),
+      };
+
+      try {
+        const res = await v.likePost({ publicId: 'activityprospect' });
+        expect(res.ok).toBe(true);
+        expect(res.method).toBe('dom');
+        expect(chrome.tabs.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            url: 'https://www.linkedin.com/in/activityprospect/recent-activity/all/',
+          }),
+        );
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(108);
+      } finally {
+        chrome.tabs = origTabs;
+        chrome.scripting = origScripting;
+      }
+    });
+
+    it('likePost falls back to recent-activity DOM and returns skipped when prospect has no posts in DOM', async () => {
+      net.push([]);
+
+      const origTabs = chrome.tabs;
+      const origScripting = chrome.scripting;
+
+      chrome.tabs = {
+        create: vi.fn().mockResolvedValue({ id: 109, status: 'complete' }),
+        remove: vi.fn().mockResolvedValue(true),
+        get: vi.fn().mockResolvedValue({ id: 109, status: 'complete' }),
+        onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+      };
+      chrome.scripting = {
+        executeScript: vi.fn().mockResolvedValue([
+          { result: { ok: true, skipped: true, reason: 'no_recent_posts' } },
+        ]),
+      };
+
+      try {
+        const res = await v.likePost({ publicId: 'nopostsdom' });
+        expect(res.ok).toBe(true);
+        expect(res.status).toBe('skipped');
+        expect(res.reason).toBe('no_recent_posts');
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(109);
+      } finally {
+        chrome.tabs = origTabs;
+        chrome.scripting = origScripting;
+      }
+    });
+
     it('viewProfile falls back to DOM tab when API fails with 500 error', async () => {
       net.push(status(500, { message: 'Profile API 500' }));
 
@@ -1653,6 +1717,70 @@ describe('writes', () => {
       expect(res.ok).toBe(true);
       expect(res.status).toBe('skipped');
       expect(res.reason).toBe('no_post_url');
+    });
+
+    it('commentPost falls back to recent-activity DOM when postUrl is missing and comments on latest post', async () => {
+      net.push([]); // empty member posts from API
+
+      const origTabs = chrome.tabs;
+      const origScripting = chrome.scripting;
+
+      chrome.tabs = {
+        create: vi.fn().mockResolvedValue({ id: 110, status: 'complete' }),
+        remove: vi.fn().mockResolvedValue(true),
+        get: vi.fn().mockResolvedValue({ id: 110, status: 'complete' }),
+        onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+      };
+      chrome.scripting = {
+        executeScript: vi.fn().mockResolvedValue([
+          { result: { ok: true, success: true, method: 'dom' } },
+        ]),
+      };
+
+      try {
+        const res = await v.commentPost({ publicId: 'activityprospect', body: 'Insightful post!' });
+        expect(res.ok).toBe(true);
+        expect(res.method).toBe('dom');
+        expect(chrome.tabs.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            url: 'https://www.linkedin.com/in/activityprospect/recent-activity/all/',
+          }),
+        );
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(110);
+      } finally {
+        chrome.tabs = origTabs;
+        chrome.scripting = origScripting;
+      }
+    });
+
+    it('commentPost falls back to recent-activity DOM and returns skipped when prospect has no posts in DOM', async () => {
+      net.push([]);
+
+      const origTabs = chrome.tabs;
+      const origScripting = chrome.scripting;
+
+      chrome.tabs = {
+        create: vi.fn().mockResolvedValue({ id: 111, status: 'complete' }),
+        remove: vi.fn().mockResolvedValue(true),
+        get: vi.fn().mockResolvedValue({ id: 111, status: 'complete' }),
+        onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+      };
+      chrome.scripting = {
+        executeScript: vi.fn().mockResolvedValue([
+          { result: { ok: true, skipped: true, reason: 'no_recent_posts' } },
+        ]),
+      };
+
+      try {
+        const res = await v.commentPost({ publicId: 'nopostsdom', body: 'Insightful post!' });
+        expect(res.ok).toBe(true);
+        expect(res.status).toBe('skipped');
+        expect(res.reason).toBe('no_recent_posts');
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(111);
+      } finally {
+        chrome.tabs = origTabs;
+        chrome.scripting = origScripting;
+      }
     });
 
     it('endorseSkill falls back to DOM tab when API fails with 500 error', async () => {

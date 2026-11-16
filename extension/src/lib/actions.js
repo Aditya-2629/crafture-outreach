@@ -528,8 +528,8 @@ const PARAM_SPECS = {
     optional: { postUrl: 'string', publicId: 'string', dryRun: 'boolean' },
   },
   [ACTIONS.OUTREACH_COMMENT]: {
-    required: { postUrl: 'string', body: 'string' },
-    optional: { dryRun: 'boolean' },
+    required: { body: 'string' },
+    optional: { postUrl: 'string', publicId: 'string', dryRun: 'boolean' },
   },
   [ACTIONS.OUTREACH_EMAIL]: {
     required: { subject: 'string', body: 'string' },

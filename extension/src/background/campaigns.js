@@ -910,7 +910,7 @@ async function stepParams(campaign, step, enrollment, routed = null) {
   }
   if (step.type === 'like' || step.type === 'comment') {
     params.postUrl = step.postUrl || '';
-    if (step.type === 'like' && !params.postUrl) {
+    if ((step.type === 'like' || step.type === 'comment') && !params.postUrl) {
       try {
         let profileUrn = params.profileUrn;
         if (!profileUrn) {
@@ -927,12 +927,16 @@ async function stepParams(campaign, step, enrollment, routed = null) {
             count: 1,
           }).catch(() => []);
           const firstPost = Array.isArray(posts) ? posts[0] : null;
-          if (firstPost && (firstPost.url || firstPost.urn)) {
-            params.postUrl = firstPost.url || firstPost.urn;
+          const postUrl =
+            firstPost?.url ||
+            firstPost?.postUrl ||
+            (firstPost?.urn ? `https://www.linkedin.com/feed/update/${firstPost.urn}/` : '');
+          if (postUrl) {
+            params.postUrl = postUrl;
           }
         }
       } catch (err) {
-        logDebug('warn', 'Runner', `[Like Step] Failed to fetch latest post for ${enrollment.publicId}: ${err.message}`);
+        logDebug('warn', 'Runner', `[${step.type} Step] Failed to fetch latest post for ${enrollment.publicId}: ${err.message}`);
       }
     }
     if (step.type === 'comment') params.body = renderTemplate(variant || step.body, profile);

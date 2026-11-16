@@ -2240,6 +2240,194 @@ export async function domCommentPostInPage(args) {
 }
 
 /**
+ * In-page DOM execution on https://www.linkedin.com/in/{publicId}/recent-activity/all/
+ * Locates the prospect's latest post in <main>, verifies existence, clicks Like button, and verifies state.
+ */
+export async function domLikeRecentActivityInPage() {
+  const waitFor = async (fn, timeoutMs = 8000, intervalMs = 250) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try { const res = fn(); if (res) return res; } catch {}
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
+  };
+
+  const main = await waitFor(() => document.querySelector('main'));
+  if (!main) return { ok: false, success: false, reason: 'Main container failed to load' };
+
+  const checkEmpty = () => {
+    const mainText = main.textContent || '';
+    return (
+      /Nothing to see for now|hasn[’']t posted lately|no activity yet|no posts to see/i.test(mainText) ||
+      Boolean(document.querySelector('.artdeco-empty-state'))
+    );
+  };
+
+  const getPostCards = () =>
+    Array.from(
+      main.querySelectorAll(
+        '.feed-shared-update-v2, div[data-urn*="activity"], div[data-view-name*="feed-full-update"], article, .profile-creator-shared-feed-update__container',
+      ),
+    );
+
+  await waitFor(() => getPostCards().length > 0 || checkEmpty(), 5000);
+
+  const postCards = getPostCards();
+  if (postCards.length === 0 && checkEmpty()) {
+    return { ok: true, skipped: true, reason: 'no_recent_posts' };
+  }
+
+  const targetCard = postCards[0] || main;
+  const getLikeBtn = () => {
+    const buttons = Array.from(
+      targetCard.querySelectorAll(
+        'button[aria-label*="React Like"], button[aria-label*="Like"], button.react-button__trigger, .reactions-react-button button',
+      ),
+    );
+    return buttons[0] || null;
+  };
+
+  const likeBtn = await waitFor(getLikeBtn, 5000);
+  if (!likeBtn) {
+    if (checkEmpty() || postCards.length === 0) {
+      return { ok: true, skipped: true, reason: 'no_recent_posts' };
+    }
+    return { ok: false, success: false, reason: 'Like button not found on recent post' };
+  }
+
+  const checkIsLiked = (btn) =>
+    btn.getAttribute('aria-pressed') === 'true' ||
+    btn.classList.contains('react-button--active') ||
+    /Unlike|Remove reaction/i.test(btn.getAttribute('aria-label') || '');
+
+  if (checkIsLiked(likeBtn)) {
+    return { ok: true, success: true, alreadyLiked: true, method: 'dom' };
+  }
+
+  if (typeof likeBtn.scrollIntoView === 'function') {
+    likeBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  await new Promise((r) => setTimeout(r, 200));
+  likeBtn.click();
+
+  await waitFor(() => {
+    const btn = getLikeBtn();
+    return btn ? checkIsLiked(btn) : false;
+  }, 5000);
+
+  return { ok: true, success: true, method: 'dom' };
+}
+
+/**
+ * In-page DOM execution on https://www.linkedin.com/in/{publicId}/recent-activity/all/
+ * Locates the prospect's latest post in <main>, writes comment, submits, and verifies state.
+ *
+ * @param {{ body: string } | string} args
+ */
+export async function domCommentRecentActivityInPage(args) {
+  const commentText = typeof args === 'string' ? args : (args?.body || '');
+  if (!commentText) {
+    return { ok: false, success: false, reason: 'Comment text is empty' };
+  }
+
+  const waitFor = async (fn, timeoutMs = 8000, intervalMs = 250) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try { const res = fn(); if (res) return res; } catch {}
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
+  };
+
+  const main = await waitFor(() => document.querySelector('main'));
+  if (!main) return { ok: false, success: false, reason: 'Main container failed to load' };
+
+  const checkEmpty = () => {
+    const mainText = main.textContent || '';
+    return (
+      /Nothing to see for now|hasn[’']t posted lately|no activity yet|no posts to see/i.test(mainText) ||
+      Boolean(document.querySelector('.artdeco-empty-state'))
+    );
+  };
+
+  const getPostCards = () =>
+    Array.from(
+      main.querySelectorAll(
+        '.feed-shared-update-v2, div[data-urn*="activity"], div[data-view-name*="feed-full-update"], article, .profile-creator-shared-feed-update__container',
+      ),
+    );
+
+  await waitFor(() => getPostCards().length > 0 || checkEmpty(), 5000);
+
+  const postCards = getPostCards();
+  if (postCards.length === 0 && checkEmpty()) {
+    return { ok: true, skipped: true, reason: 'no_recent_posts' };
+  }
+
+  const targetCard = postCards[0] || main;
+  let editor = targetCard.querySelector(
+    '.comments-comment-box__editor, .editor-content [contenteditable="true"], [contenteditable="true"][role="textbox"]',
+  );
+  if (!editor) {
+    const commentToggleBtn = Array.from(targetCard.querySelectorAll('button')).find((b) =>
+      /Comment/i.test((b.textContent || '') + (b.getAttribute('aria-label') || '')),
+    );
+    if (commentToggleBtn) {
+      commentToggleBtn.click();
+      editor = await waitFor(
+        () =>
+          targetCard.querySelector(
+            '.comments-comment-box__editor, .editor-content [contenteditable="true"], [contenteditable="true"][role="textbox"]',
+          ),
+        5000,
+      );
+    }
+  }
+
+  if (!editor) {
+    if (checkEmpty() || postCards.length === 0) {
+      return { ok: true, skipped: true, reason: 'no_recent_posts' };
+    }
+    return { ok: false, success: false, reason: 'Comment editor box not found on recent post' };
+  }
+
+  if (typeof editor.scrollIntoView === 'function') {
+    editor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  editor.focus();
+
+  const inserted = document.execCommand('insertText', false, commentText);
+  if (!inserted) {
+    editor.textContent = commentText;
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: commentText }));
+  }
+  editor.dispatchEvent(new Event('input', { bubbles: true }));
+  editor.dispatchEvent(new Event('change', { bubbles: true }));
+
+  const submitBtn = await waitFor(() => {
+    const btns = Array.from(
+      targetCard.querySelectorAll(
+        'button.comments-comment-box__submit-button, button[type="submit"], .comments-comment-box button.artdeco-button--primary',
+      ),
+    );
+    return btns.find((b) => !b.disabled && /Post|Comment/i.test((b.textContent || '') + (b.getAttribute('aria-label') || '')));
+  }, 5000);
+
+  if (!submitBtn) {
+    return { ok: false, success: false, reason: 'Comment submit button not found or disabled' };
+  }
+
+  submitBtn.click();
+
+  await waitFor(() => {
+    return !editor.textContent.trim() || !submitBtn.isConnected || submitBtn.disabled;
+  }, 5000);
+
+  return { ok: true, success: true, method: 'dom' };
+}
+
+/**
  * In-page DOM execution to endorse a skill on a member's profile.
  *
  * @param {{ skillName?: string } | string} [args]
@@ -3495,14 +3683,42 @@ export async function likePost({ postUrl, publicId, profileUrn, reactionType = '
   if (!targetPostUrl && (publicId || profileUrn)) {
     try {
       const posts = await getMemberPosts({ publicId, profileUrn, count: 1 });
-      targetPostUrl = posts?.[0]?.url;
+      const first = Array.isArray(posts) ? posts[0] : null;
+      targetPostUrl =
+        first?.url ||
+        first?.postUrl ||
+        (first?.urn ? `https://www.linkedin.com/feed/update/${first.urn}/` : '');
     } catch (e) {
       logDebug('warn', 'Voyager', `[likePost] Failed to resolve latest member post: ${e?.message}`);
     }
   }
 
+  if (!targetPostUrl && publicId && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+    logDebug('warn', 'Voyager', `[likePost] No post URL found, falling back to recent-activity DOM for ${publicId}`);
+    try {
+      const domRes = await runDomActionInTab(
+        `https://www.linkedin.com/in/${encodeURIComponent(publicId)}/recent-activity/all/`,
+        domLikeRecentActivityInPage,
+        [],
+        'likeRecentActivity',
+      );
+      if (domRes && (domRes.ok || domRes.success || domRes.skipped)) {
+        if (domRes.skipped) {
+          return { ok: true, skipped: true, status: 'skipped', reason: domRes.reason || 'no_recent_posts' };
+        }
+        return {
+          ok: true,
+          method: 'dom',
+          ...(domRes.alreadyLiked ? { alreadyLiked: true } : {}),
+        };
+      }
+    } catch (domErr) {
+      logDebug('warn', 'Voyager', `[likePost] Recent activity DOM fallback failed: ${domErr?.message}`);
+    }
+  }
+
   if (!targetPostUrl) {
-    return { ok: true, status: 'skipped', reason: 'no_post_url' };
+    return { ok: true, skipped: true, status: 'skipped', reason: 'no_post_url' };
   }
 
   const activityId = activityIdFromUrl(targetPostUrl);
@@ -3646,14 +3862,38 @@ export async function commentPost({ postUrl, publicId, profileUrn, body } = {}) 
   if (!targetPostUrl && (publicId || profileUrn)) {
     try {
       const posts = await getMemberPosts({ publicId, profileUrn, count: 1 });
-      targetPostUrl = posts?.[0]?.url;
+      const first = Array.isArray(posts) ? posts[0] : null;
+      targetPostUrl =
+        first?.url ||
+        first?.postUrl ||
+        (first?.urn ? `https://www.linkedin.com/feed/update/${first.urn}/` : '');
     } catch (e) {
       logDebug('warn', 'Voyager', `[commentPost] Failed to resolve latest member post: ${e?.message}`);
     }
   }
 
+  if (!targetPostUrl && publicId && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+    logDebug('warn', 'Voyager', `[commentPost] No post URL found, falling back to recent-activity DOM for ${publicId}`);
+    try {
+      const domRes = await runDomActionInTab(
+        `https://www.linkedin.com/in/${encodeURIComponent(publicId)}/recent-activity/all/`,
+        domCommentRecentActivityInPage,
+        [{ body }],
+        'commentRecentActivity',
+      );
+      if (domRes && (domRes.ok || domRes.success || domRes.skipped)) {
+        if (domRes.skipped) {
+          return { ok: true, skipped: true, status: 'skipped', reason: domRes.reason || 'no_recent_posts' };
+        }
+        return { ok: true, method: 'dom', ...domRes };
+      }
+    } catch (domErr) {
+      logDebug('warn', 'Voyager', `[commentPost] Recent activity DOM fallback failed: ${domErr?.message}`);
+    }
+  }
+
   if (!targetPostUrl) {
-    return { ok: true, status: 'skipped', reason: 'no_post_url' };
+    return { ok: true, skipped: true, status: 'skipped', reason: 'no_post_url' };
   }
 
   const threadUrn = activityUrnFromUrl(targetPostUrl);

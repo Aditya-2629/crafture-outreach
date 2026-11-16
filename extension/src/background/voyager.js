@@ -497,13 +497,35 @@ export async function getProfileNormalized(publicId, source = 'profile', { full 
  * so there is nothing else to do.
  */
 export async function viewProfile(publicId) {
-  return getProfileNormalized(publicId, 'visit');
+  try {
+    const profile = await getProfileNormalized(publicId, 'visit');
+    markEndpointHealthy('me');
+    return profile;
+  } catch (err) {
+    if (canFallbackToDom(err) && publicId && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      logDebug('warn', 'Voyager', `[viewProfile] API failed, falling back to DOM for ${publicId}`);
+      try {
+        const domRes = await runDomActionInTab(
+          `https://www.linkedin.com/in/${encodeURIComponent(publicId)}/`,
+          domViewProfileInPage,
+          [publicId],
+          'viewProfile',
+        );
+        if (domRes && (domRes.ok || domRes.success)) {
+          return { ok: true, publicId, method: 'dom', ...domRes };
+        }
+      } catch (domErr) {
+        logDebug('warn', 'Voyager', `[viewProfile] DOM fallback failed: ${domErr?.message}`);
+      }
+    }
+    throw err;
+  }
 }
 
 /** Resolve a profile urn from a public identifier when the caller has none. */
 export async function resolveProfileUrn(publicId) {
   const profile = await getProfileNormalized(publicId);
-  const urn = toFsdProfileUrn(profile.urn);
+  const urn = toFsdProfileUrn(profile?.urn);
   if (!urn) throw new EngineError(ERROR.NOT_FOUND, `Could not resolve a profile urn for ${publicId}.`);
   return urn;
 }
@@ -1714,13 +1736,32 @@ export function canFallbackToDom(err) {
   const code = String(err?.code || err?.response?.data?.code || '');
   const combined = `${msg} ${code}`;
 
-  if (status === 429 || /rate.*limit|weekly.*limit|daily.*limit|too many requests/i.test(combined)) {
+  if (
+    code === ERROR.AUTH_REQUIRED ||
+    code === ERROR.RATE_LIMITED ||
+    code === ERROR.INVALID_PARAMS ||
+    code === ERROR.CHALLENGE_DETECTED ||
+    code === 'CUSTOM_INVITE_LIMIT_REACHED' ||
+    err?.isCustomInviteLimit ||
+    status === 429 ||
+    status === 999
+  ) {
     return false;
   }
-  if (status === 999 || /checkpoint|challenge|security check|auth|captcha|verify you are human/i.test(combined)) {
+
+  if (
+    looksLikeAllowance(code, msg) ||
+    looksLikeDuplicate(code, msg) ||
+    looksLikePerProspectIssue(code, msg)
+  ) {
     return false;
   }
-  if (/ALREADY_CONNECTED|ALREADY_PENDING|INVITE_LIMIT|PERSONALIZED_INVITATION_QUOTA_EXCEEDED|CANT_RESEND_YET|already.*connect/i.test(combined)) {
+
+  if (
+    /RATE_LIMITED|AUTH_REQUIRED|INVALID_PARAMS|CUSTOM_INVITE_LIMIT|ALREADY_CONNECTED|ALREADY_PENDING|INVITE_LIMIT|PROFILE_RESTRICTED|CANT_RESEND_YET|PERSONALIZED_INVITATION_QUOTA_EXCEEDED|already.*connect|rate.*limit|weekly.*limit|daily.*limit|too many requests|checkpoint|challenge|security check|authwall|captcha|verify you are human/i.test(
+      combined,
+    )
+  ) {
     return false;
   }
   return true;
@@ -1729,14 +1770,15 @@ export function canFallbackToDom(err) {
 /**
  * Executes an in-page script function inside an isolated background tab (active: false).
  * Mutex-protected via domTabLock: ensures at most ONE background DOM tab is ever open at a time.
- * Automatically waits for tab load, 1.5s client hydration, executes script, and cleans up tab in finally.
+ * Automatically waits for tab load, 1.2s client hydration, executes script, and cleans up tab in finally.
  *
  * @param {string} url - Target URL to open in background
  * @param {Function} scriptFn - Function to execute inside page context
  * @param {Array} [args] - Serializable arguments to pass to scriptFn
+ * @param {string} [label] - Label for logging
  * @returns {Promise<any>}
  */
-export async function runDomActionInTab(url, scriptFn, args = []) {
+export async function runDomActionInTab(url, scriptFn, args = [], label = 'DOM') {
   if (typeof chrome === 'undefined' || !chrome.tabs?.create || !chrome.scripting?.executeScript) {
     throw new EngineError(ERROR.UNAVAILABLE, 'Chrome tabs or scripting API unavailable for DOM fallback');
   }
@@ -1750,8 +1792,14 @@ export async function runDomActionInTab(url, scriptFn, args = []) {
       });
 
       const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
-      await waitForTabLoad(tab.id, isTestEnv ? 200 : 15000);
-      await new Promise((r) => setTimeout(r, isTestEnv ? 10 : 1500));
+      await waitForTabLoad(tab.id, isTestEnv ? 200 : 18000);
+      await new Promise((r) => setTimeout(r, isTestEnv ? 10 : 1200));
+
+      const freshTab = await chrome.tabs.get(tab.id).catch(() => tab);
+      const currentUrl = freshTab?.url || '';
+      if (/linkedin\.com\/(?:checkpoint|authwall|login|uas\/login)/i.test(currentUrl)) {
+        throw new EngineError(ERROR.AUTH_REQUIRED, `LinkedIn redirected to auth challenge / login (${currentUrl})`);
+      }
 
       const execResults = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
@@ -1776,42 +1824,82 @@ export async function runDomActionInTab(url, scriptFn, args = []) {
 }
 
 /**
+ * In-page DOM execution to register a profile visit and extract top card name.
+ *
+ * @param {string} publicId
+ */
+export async function domViewProfileInPage(publicId) {
+  const waitFor = async (fn, timeoutMs = 8000, intervalMs = 250) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try { const res = fn(); if (res) return res; } catch {}
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
+  };
+
+  const h1 = await waitFor(() => document.querySelector('main h1, .pv-top-card h1'));
+  const fullName = h1 ? (h1.textContent || '').trim() : '';
+  const parts = fullName.split(/\s+/);
+  const firstName = parts[0] || '';
+  const lastName = parts.slice(1).join(' ') || '';
+
+  return {
+    ok: true,
+    success: true,
+    method: 'dom',
+    publicId,
+    fullName,
+    firstName,
+    lastName,
+  };
+}
+
+/**
  * In-page DOM execution to send a connection request from a profile page.
  *
- * @param {string} targetId
- * @param {string} [noteText]
+ * @param {{ note?: string } | string} [args]
  */
-export async function domSendInviteInPage(targetId, noteText) {
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export async function domSendInviteInPage(args) {
+  const noteText = typeof args === 'string' ? args : (args?.note || '');
+  const waitFor = async (fn, timeoutMs = 8000, intervalMs = 250) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try { const res = fn(); if (res) return res; } catch {}
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
+  };
 
-  let buttons = [];
-  for (let i = 0; i < 5; i++) {
-    buttons = Array.from(
-      document.querySelectorAll(
-        'main button, .scaffold-layout__main button, [data-view-name="profile-card"] button, .pv-top-card-v2-ctas button, .pvs-profile-actions button',
-      ),
-    );
-    if (buttons.length) break;
-    await sleep(400);
+  const h1 = await waitFor(() => document.querySelector('main h1, .pv-top-card h1'));
+  if (!h1) {
+    return { ok: false, success: false, reason: 'Profile top card failed to load' };
   }
+
+  const mainCard = document.querySelector('main .pv-top-card, main [data-view-name="profile-card"], main section:first-of-type, main') || document.querySelector('main');
+  const getButtons = () => Array.from(mainCard.querySelectorAll('button'));
 
   // 1. Check if already connected (Message button or 1st degree badge)
   const is1stDegree =
-    /\b1st\b/i.test(document.querySelector('.dist-value')?.textContent || '') ||
-    buttons.some((b) => /^(?:Direct )?Message$/i.test((b.textContent || '').trim()) && !b.disabled);
+    /\b1st\b/i.test(mainCard.querySelector('.dist-value')?.textContent || '') ||
+    getButtons().some((b) => /^(?:Direct )?Message$/i.test((b.textContent || '').trim()) && !b.disabled);
 
-  if (is1stDegree) {
-    return { success: true, ok: true, alreadyConnected: true, method: 'dom', message: 'Already connected (1st degree)' };
-  }
+  // 2. Check if invitation is already pending
+  const isPending = getButtons().some(
+    (b) =>
+      /Pending/i.test((b.textContent || '').trim()) ||
+      /Pending/i.test(b.getAttribute('aria-label') || ''),
+  );
 
-  // Check if invitation is already pending
-  const isPending = buttons.some((b) => /Pending/i.test((b.textContent || '').trim()) || /Pending/i.test(b.getAttribute('aria-label') || ''));
   if (isPending) {
-    return { success: true, ok: true, alreadyPending: true, method: 'dom', message: 'Invitation already pending' };
+    return { ok: true, success: true, alreadyPending: true, method: 'dom', message: 'Invitation already pending' };
+  }
+  if (is1stDegree) {
+    return { ok: true, success: true, alreadyConnected: true, method: 'dom', message: 'Already connected (1st degree)' };
   }
 
-  // 2. Find primary Connect button
-  let connectBtn = buttons.find((b) => {
+  // 3. Find primary Connect button in main top card
+  let connectBtn = getButtons().find((b) => {
     const t = (b.textContent || '').trim();
     const aria = b.getAttribute('aria-label') || '';
     return (/^Connect$/i.test(t) || /Invite.*to connect/i.test(aria) || /Connect with/i.test(aria)) && !b.disabled;
@@ -1819,7 +1907,7 @@ export async function domSendInviteInPage(targetId, noteText) {
 
   // Check inside More dropdown if not visible on header
   if (!connectBtn) {
-    const moreBtn = buttons.find((b) => {
+    const moreBtn = getButtons().find((b) => {
       const t = (b.textContent || '').trim();
       const aria = b.getAttribute('aria-label') || '';
       return (/^More$/i.test(t) || /More actions/i.test(aria) || aria.includes('More')) && !b.disabled;
@@ -1827,8 +1915,12 @@ export async function domSendInviteInPage(targetId, noteText) {
 
     if (moreBtn) {
       moreBtn.click();
-      await sleep(500);
-      const dropdownItems = Array.from(document.querySelectorAll('.artdeco-dropdown__content button, [role="menu"] [role="menuitem"], .artdeco-dropdown__item'));
+      await waitFor(() => document.querySelector('.artdeco-dropdown__content, [role="menu"]'), 3000);
+      const dropdownItems = Array.from(
+        document.querySelectorAll(
+          '.artdeco-dropdown__content button, [role="menu"] [role="menuitem"], .artdeco-dropdown__item',
+        ),
+      );
       connectBtn = dropdownItems.find((item) => {
         const t = (item.textContent || '').trim();
         const aria = item.getAttribute('aria-label') || '';
@@ -1838,26 +1930,29 @@ export async function domSendInviteInPage(targetId, noteText) {
   }
 
   if (!connectBtn) {
-    return { success: false, reason: 'Connect button not found on profile' };
+    if (is1stDegree) {
+      return { ok: true, success: true, alreadyConnected: true, method: 'dom' };
+    }
+    return { ok: false, success: false, reason: 'Connect button not found on profile' };
   }
 
   if (typeof connectBtn.scrollIntoView === 'function') {
     connectBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
-  await sleep(300);
+  await new Promise((r) => setTimeout(r, 200));
   connectBtn.click();
-  await sleep(800);
 
-  // 3. Handle modal dialog
-  const dialogSelectors = '[role="dialog"], .artdeco-modal, #artdeco-modal-outlet';
-  const dialogs = Array.from(document.querySelectorAll(dialogSelectors));
-  const activeDialog = dialogs.find((d) => d.offsetParent !== null) || dialogs[dialogs.length - 1];
+  // 4. Handle modal dialog
+  const activeDialog = await waitFor(() => {
+    const dialogs = Array.from(document.querySelectorAll('[role="dialog"], .artdeco-modal'));
+    return dialogs.find((d) => d.offsetParent !== null) || dialogs[dialogs.length - 1];
+  }, 5000);
 
   if (activeDialog) {
-    const modalButtons = Array.from(activeDialog.querySelectorAll('button, [role="button"]'));
+    const modalButtons = () => Array.from(activeDialog.querySelectorAll('button, [role="button"]'));
 
     if (noteText && String(noteText).trim()) {
-      const addNoteBtn = modalButtons.find((b) => {
+      const addNoteBtn = modalButtons().find((b) => {
         const t = (b.textContent || '').trim();
         const aria = b.getAttribute('aria-label') || '';
         return /Add a note/i.test(t) || /Add a note/i.test(aria);
@@ -1865,21 +1960,24 @@ export async function domSendInviteInPage(targetId, noteText) {
 
       if (addNoteBtn) {
         addNoteBtn.click();
-        await sleep(400);
-
-        const textarea = activeDialog.querySelector('textarea, [name="message"]');
+        const textarea = await waitFor(() => activeDialog.querySelector('textarea, [name="message"]'), 3000);
         if (textarea) {
           textarea.focus();
-          textarea.value = String(noteText);
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+          if (setter) {
+            setter.call(textarea, String(noteText));
+          } else {
+            textarea.value = String(noteText);
+          }
           textarea.dispatchEvent(new Event('input', { bubbles: true }));
-          await sleep(300);
+          textarea.dispatchEvent(new Event('change', { bubbles: true }));
+          await new Promise((r) => setTimeout(r, 200));
         }
       }
     }
 
-    const freshButtons = Array.from(activeDialog.querySelectorAll('button, [role="button"]'));
+    const freshButtons = modalButtons();
     let sendBtn = null;
-
     if (noteText && String(noteText).trim()) {
       sendBtn = freshButtons.find((b) => {
         const t = (b.textContent || '').trim();
@@ -1892,59 +1990,86 @@ export async function domSendInviteInPage(targetId, noteText) {
       sendBtn = freshButtons.find((b) => {
         const t = (b.textContent || '').trim();
         const aria = b.getAttribute('aria-label') || '';
-        return (/Send without a note/i.test(t) || /Send without a note/i.test(aria) || /^Send$/i.test(t) || /Send now/i.test(t) || /Send invitation/i.test(aria)) && !b.disabled;
+        return (
+          /Send without a note/i.test(t) ||
+          /Send without a note/i.test(aria) ||
+          /^Send$/i.test(t) ||
+          /Send now/i.test(t) ||
+          /Send invitation/i.test(aria)
+        ) && !b.disabled;
       });
     }
 
     if (sendBtn) {
       sendBtn.click();
-      await sleep(600);
-      return { success: true, ok: true, method: 'dom', sentWithoutNote: !noteText };
+      // Post-click verification: verify modal closes or Pending appears
+      await waitFor(() => {
+        const d = document.querySelector('[role="dialog"], .artdeco-modal');
+        const p = getButtons().some((b) => /Pending/i.test((b.textContent || '') + (b.getAttribute('aria-label') || '')));
+        return !d || p;
+      }, 5000);
+      return { ok: true, success: true, method: 'dom', sentWithoutNote: !noteText };
     }
   }
 
-  return { success: true, ok: true, method: 'dom', sentWithoutNote: true };
+  // Post-click check: check if Pending appears
+  await waitFor(() => {
+    return getButtons().some((b) => /Pending/i.test((b.textContent || '') + (b.getAttribute('aria-label') || '')));
+  }, 4000);
+
+  return { ok: true, success: true, method: 'dom', sentWithoutNote: true };
 }
 
 /**
  * In-page DOM execution to follow a member from their profile page.
  *
- * @param {string} targetId
+ * @param {{ following?: boolean } | boolean} [args]
  */
-export async function domFollowInPage(targetId) {
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export async function domFollowInPage(args) {
+  const shouldFollow = typeof args === 'boolean' ? args : args?.following !== false;
+  const waitFor = async (fn, timeoutMs = 8000, intervalMs = 250) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try { const res = fn(); if (res) return res; } catch {}
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
+  };
 
-  let buttons = [];
-  for (let i = 0; i < 5; i++) {
-    buttons = Array.from(
-      document.querySelectorAll(
-        'main button, .scaffold-layout__main button, [data-view-name="profile-card"] button, .pv-top-card-v2-ctas button, .pvs-profile-actions button',
-      ),
-    );
-    if (buttons.length) break;
-    await sleep(400);
+  const h1 = await waitFor(() => document.querySelector('main h1, .pv-top-card h1'));
+  if (!h1) {
+    return { ok: false, success: false, reason: 'Profile top card failed to load' };
   }
 
-  // 1. Check if already following
-  const isFollowing = buttons.some((b) => {
-    const t = (b.textContent || '').trim();
-    const aria = b.getAttribute('aria-label') || '';
-    return (/^Following$/i.test(t) || /Following/i.test(aria) || b.getAttribute('aria-pressed') === 'true') && !b.disabled;
-  });
+  const mainCard = document.querySelector('main .pv-top-card, main [data-view-name="profile-card"], main section:first-of-type, main') || document.querySelector('main');
+  const getButtons = () => Array.from(mainCard.querySelectorAll('button'));
 
-  if (isFollowing) {
-    return { success: true, ok: true, alreadyFollowing: true, method: 'dom' };
+  const checkIsFollowing = () =>
+    getButtons().some((b) => {
+      const t = (b.textContent || '').trim();
+      const aria = b.getAttribute('aria-label') || '';
+      return (/^Following$/i.test(t) || /Following/i.test(aria) || b.getAttribute('aria-pressed') === 'true') && !b.disabled;
+    });
+
+  if (shouldFollow && checkIsFollowing()) {
+    return { ok: true, success: true, alreadyFollowing: true, method: 'dom' };
+  }
+  if (!shouldFollow && !checkIsFollowing()) {
+    return { ok: true, success: true, alreadyFollowing: false, method: 'dom' };
   }
 
-  // 2. Find Follow button
-  let followBtn = buttons.find((b) => {
+  let followBtn = getButtons().find((b) => {
     const t = (b.textContent || '').trim();
     const aria = b.getAttribute('aria-label') || '';
-    return (/^Follow$/i.test(t) || /Follow.*profile/i.test(aria) || /Follow with/i.test(aria)) && !b.disabled;
+    if (shouldFollow) {
+      return (/^Follow$/i.test(t) || /Follow.*profile/i.test(aria) || /Follow with/i.test(aria)) && !b.disabled;
+    } else {
+      return (/^Following$/i.test(t) || /Unfollow/i.test(aria)) && !b.disabled;
+    }
   });
 
   if (!followBtn) {
-    const moreBtn = buttons.find((b) => {
+    const moreBtn = getButtons().find((b) => {
       const t = (b.textContent || '').trim();
       const aria = b.getAttribute('aria-label') || '';
       return (/^More$/i.test(t) || /More actions/i.test(aria) || aria.includes('More')) && !b.disabled;
@@ -1952,75 +2077,317 @@ export async function domFollowInPage(targetId) {
 
     if (moreBtn) {
       moreBtn.click();
-      await sleep(500);
-      const dropdownItems = Array.from(document.querySelectorAll('.artdeco-dropdown__content button, [role="menu"] [role="menuitem"], .artdeco-dropdown__item'));
+      await waitFor(() => document.querySelector('.artdeco-dropdown__content, [role="menu"]'), 3000);
+      const dropdownItems = Array.from(
+        document.querySelectorAll(
+          '.artdeco-dropdown__content button, [role="menu"] [role="menuitem"], .artdeco-dropdown__item',
+        ),
+      );
       followBtn = dropdownItems.find((item) => {
         const t = (item.textContent || '').trim();
         const aria = item.getAttribute('aria-label') || '';
-        return (/^Follow$/i.test(t) || /Follow/i.test(aria)) && !item.disabled;
+        return (shouldFollow ? /^Follow$/i.test(t) || /Follow/i.test(aria) : /^Unfollow$/i.test(t) || /Unfollow/i.test(aria)) && !item.disabled;
       });
     }
   }
 
   if (!followBtn) {
-    return { success: false, reason: 'Follow button not found' };
+    return { ok: false, success: false, reason: `${shouldFollow ? 'Follow' : 'Unfollow'} button not found` };
   }
 
   if (typeof followBtn.scrollIntoView === 'function') {
     followBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
-  await sleep(300);
+  await new Promise((r) => setTimeout(r, 200));
   followBtn.click();
-  await sleep(600);
 
-  return { success: true, ok: true, method: 'dom' };
+  // Post-click verification: verify button flips to Following / Follow
+  await waitFor(() => {
+    return shouldFollow ? checkIsFollowing() : !checkIsFollowing();
+  }, 5000);
+
+  return { ok: true, success: true, method: 'dom' };
 }
 
 /**
  * In-page DOM execution to like a post from its URL.
- *
- * @param {string} postUrl
  */
-export async function domLikePostInPage(postUrl) {
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export async function domLikePostInPage() {
+  const waitFor = async (fn, timeoutMs = 8000, intervalMs = 250) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try { const res = fn(); if (res) return res; } catch {}
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
+  };
 
-  let buttons = [];
-  for (let i = 0; i < 5; i++) {
-    buttons = Array.from(
+  const getLikeBtn = () => {
+    const buttons = Array.from(
       document.querySelectorAll(
         'button[aria-label*="React Like"], button[aria-label*="Like"], button.react-button__trigger, .reactions-react-button button',
       ),
     );
-    if (buttons.length) break;
-    if (typeof window !== 'undefined' && typeof window.scrollBy === 'function') {
-      window.scrollBy(0, 200);
-    }
-    await sleep(400);
+    return buttons[0] || null;
+  };
+
+  const likeBtn = await waitFor(getLikeBtn, 8000);
+  if (!likeBtn) {
+    return { ok: false, success: false, reason: 'Like button not found on post' };
   }
 
-  if (!buttons.length) {
-    return { success: false, reason: 'Like button not found on post' };
-  }
+  const checkIsLiked = (btn) =>
+    btn.getAttribute('aria-pressed') === 'true' ||
+    btn.classList.contains('react-button--active') ||
+    /Unlike|Remove reaction/i.test(btn.getAttribute('aria-label') || '');
 
-  const likeBtn = buttons[0];
-
-  const isLiked =
-    likeBtn.getAttribute('aria-pressed') === 'true' ||
-    likeBtn.classList.contains('react-button--active') ||
-    /Unlike|Remove reaction/i.test(likeBtn.getAttribute('aria-label') || '');
-
-  if (isLiked) {
-    return { success: true, ok: true, alreadyLiked: true, method: 'dom' };
+  if (checkIsLiked(likeBtn)) {
+    return { ok: true, success: true, alreadyLiked: true, method: 'dom' };
   }
 
   if (typeof likeBtn.scrollIntoView === 'function') {
     likeBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
-  await sleep(300);
+  await new Promise((r) => setTimeout(r, 200));
   likeBtn.click();
-  await sleep(600);
 
-  return { success: true, ok: true, method: 'dom' };
+  // Post-click verification: verify aria-pressed flips to "true"
+  await waitFor(() => {
+    const btn = getLikeBtn();
+    return btn ? checkIsLiked(btn) : false;
+  }, 5000);
+
+  return { ok: true, success: true, method: 'dom' };
+}
+
+/**
+ * In-page DOM execution to comment on a post from its URL.
+ *
+ * @param {{ body: string } | string} args
+ */
+export async function domCommentPostInPage(args) {
+  const commentText = typeof args === 'string' ? args : (args?.body || '');
+  if (!commentText) {
+    return { ok: false, success: false, reason: 'Comment text is empty' };
+  }
+  const waitFor = async (fn, timeoutMs = 8000, intervalMs = 250) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try { const res = fn(); if (res) return res; } catch {}
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
+  };
+
+  let editor = document.querySelector(
+    '.comments-comment-box__editor, .editor-content [contenteditable="true"], [contenteditable="true"][role="textbox"]',
+  );
+  if (!editor) {
+    const commentToggleBtn = Array.from(document.querySelectorAll('button')).find((b) =>
+      /Comment/i.test((b.textContent || '') + (b.getAttribute('aria-label') || '')),
+    );
+    if (commentToggleBtn) {
+      commentToggleBtn.click();
+      editor = await waitFor(
+        () =>
+          document.querySelector(
+            '.comments-comment-box__editor, .editor-content [contenteditable="true"], [contenteditable="true"][role="textbox"]',
+          ),
+        5000,
+      );
+    }
+  }
+
+  if (!editor) {
+    return { ok: false, success: false, reason: 'Comment editor box not found' };
+  }
+
+  if (typeof editor.scrollIntoView === 'function') {
+    editor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  editor.focus();
+
+  const inserted = document.execCommand('insertText', false, commentText);
+  if (!inserted) {
+    editor.textContent = commentText;
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: commentText }));
+  }
+  editor.dispatchEvent(new Event('input', { bubbles: true }));
+  editor.dispatchEvent(new Event('change', { bubbles: true }));
+
+  const submitBtn = await waitFor(() => {
+    const btns = Array.from(
+      document.querySelectorAll(
+        '.comments-comment-box__submit-button, button.comments-comment-box__submit-button, button[type="submit"]',
+      ),
+    );
+    return btns.find((b) => !b.disabled && /Post|Comment|Submit/i.test((b.textContent || '') + (b.getAttribute('aria-label') || '')));
+  }, 5000);
+
+  if (!submitBtn) {
+    return { ok: false, success: false, reason: 'Comment submit button not enabled' };
+  }
+
+  submitBtn.click();
+
+  // Post-click verification: verify editor clears
+  await waitFor(() => {
+    const current = document.querySelector('.comments-comment-box__editor, .editor-content [contenteditable="true"]');
+    return !current || !(current.textContent || '').trim();
+  }, 5000);
+
+  return { ok: true, success: true, method: 'dom' };
+}
+
+/**
+ * In-page DOM execution to endorse a skill on a member's profile.
+ *
+ * @param {{ skillName?: string } | string} [args]
+ */
+export async function domEndorseInPage(args) {
+  const targetSkill = typeof args === 'string' ? args : (args?.skillName || '');
+  const waitFor = async (fn, timeoutMs = 8000, intervalMs = 250) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try { const res = fn(); if (res) return res; } catch {}
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
+  };
+
+  await waitFor(
+    () =>
+      document.querySelector(
+        'main [data-view-name="profile-component-entity"], main .pvs-list__item--line-separated, main section',
+      ),
+    8000,
+  );
+
+  const items = Array.from(
+    document.querySelectorAll(
+      'main [data-view-name="profile-component-entity"], main .pvs-list__item--line-separated, main li',
+    ),
+  );
+  let matchedItem = null;
+  if (targetSkill) {
+    matchedItem = items.find((item) => (item.textContent || '').toLowerCase().includes(targetSkill.toLowerCase()));
+  }
+  if (!matchedItem && items.length) {
+    matchedItem = items.find((item) => item.querySelector('button[aria-label*="Endorse"], button'));
+  }
+
+  const searchScope = matchedItem || document.querySelector('main');
+  const endorseBtn = Array.from(searchScope.querySelectorAll('button')).find((b) =>
+    /Endorse/i.test((b.textContent || '') + (b.getAttribute('aria-label') || '')),
+  );
+
+  if (!endorseBtn) {
+    return { ok: false, success: false, reason: 'Endorse button not found for skill' };
+  }
+
+  const isAlreadyEndorsed = /Endorsed/i.test(
+    (endorseBtn.textContent || '') + (endorseBtn.getAttribute('aria-label') || ''),
+  );
+  if (isAlreadyEndorsed) {
+    return { ok: true, success: true, alreadyEndorsed: true, method: 'dom' };
+  }
+
+  if (typeof endorseBtn.scrollIntoView === 'function') {
+    endorseBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  await new Promise((r) => setTimeout(r, 200));
+  endorseBtn.click();
+
+  // Post-click verification: verify label changes to Endorsed
+  await waitFor(() => {
+    return /Endorsed/i.test((endorseBtn.textContent || '') + (endorseBtn.getAttribute('aria-label') || ''));
+  }, 5000);
+
+  return { ok: true, success: true, method: 'dom' };
+}
+
+/**
+ * In-page DOM execution to send a message to a member from their profile page.
+ *
+ * @param {{ body: string } | string} args
+ */
+export async function domSendMessageInPage(args) {
+  const messageText = typeof args === 'string' ? args : (args?.body || '');
+  if (!messageText) {
+    return { ok: false, success: false, reason: 'Message body cannot be empty' };
+  }
+  const waitFor = async (fn, timeoutMs = 8000, intervalMs = 250) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try { const res = fn(); if (res) return res; } catch {}
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
+  };
+
+  const h1 = await waitFor(() => document.querySelector('main h1, .pv-top-card h1'));
+  if (!h1) {
+    return { ok: false, success: false, reason: 'Profile top card failed to load' };
+  }
+
+  const mainCard =
+    document.querySelector(
+      'main .pv-top-card, main [data-view-name="profile-card"], main section:first-of-type, main',
+    ) || document.querySelector('main');
+  const getButtons = () => Array.from(mainCard.querySelectorAll('button'));
+
+  const msgBtn = getButtons().find(
+    (b) => /^(?:Direct )?Message$/i.test((b.textContent || '').trim()) && !b.disabled,
+  );
+  if (!msgBtn) {
+    return { ok: false, success: false, reason: 'Message button not found on profile' };
+  }
+
+  msgBtn.click();
+
+  const editor = await waitFor(
+    () =>
+      document.querySelector(
+        '.msg-form__contenteditable, [role="textbox"][aria-label*="Write a message"], .msg-form div[contenteditable="true"]',
+      ),
+    5000,
+  );
+
+  if (!editor) {
+    return { ok: false, success: false, reason: 'Message editor form did not appear' };
+  }
+
+  editor.focus();
+  const inserted = document.execCommand('insertText', false, messageText);
+  if (!inserted) {
+    editor.textContent = messageText;
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: messageText }));
+  }
+  editor.dispatchEvent(new Event('input', { bubbles: true }));
+  editor.dispatchEvent(new Event('change', { bubbles: true }));
+
+  const sendBtn = await waitFor(() => {
+    const btns = Array.from(
+      document.querySelectorAll(
+        '.msg-form__send-button, button.msg-form__send-button, button[type="submit"]',
+      ),
+    );
+    return btns.find((b) => !b.disabled && /Send/i.test((b.textContent || '') + (b.getAttribute('aria-label') || '')));
+  }, 5000);
+
+  if (!sendBtn) {
+    return { ok: false, success: false, reason: 'Message send button not enabled' };
+  }
+
+  sendBtn.click();
+
+  // Post-click verification: editor clears
+  await waitFor(() => {
+    const current = document.querySelector('.msg-form__contenteditable, .msg-form div[contenteditable="true"]');
+    return !current || !(current.textContent || '').trim();
+  }, 5000);
+
+  return { ok: true, success: true, method: 'dom' };
 }
 
 /**
@@ -2510,16 +2877,42 @@ export async function sendInvite({
     }
   };
 
-  let urn = resolvedFsdProfileUrn;
-  if (!urn && id) {
+  let urn = resolvedFsdProfileUrn || toFsdProfileUrn(profileUrn);
+  if (!urn && id && !resolvedMemberId) {
     try {
       urn = await resolveProfileUrn(id);
     } catch (_) {}
   }
-  if (!urn) {
-    urn = toFsdProfileUrn(profileUrn) || (id ? `urn:li:fsd_profile:${id}` : '');
-  }
   resolvedFsdProfileUrn = urn;
+
+  const sendDom = async (customNote) => {
+    if (!id || typeof chrome === 'undefined' || !chrome.tabs?.create) {
+      return null;
+    }
+    logDebug('warn', 'Voyager', `[sendInvite] API failed, falling back to background tab DOM for ${id}`);
+    const profileUrl = `https://www.linkedin.com/in/${encodeURIComponent(id)}/`;
+    const domRes = await runDomActionInTab(
+      profileUrl,
+      domSendInviteInPage,
+      [{ note: customNote || '' }],
+      'sendInvite',
+    );
+    if (domRes && (domRes.ok || domRes.success)) {
+      return {
+        ok: true,
+        method: 'dom',
+        invitationUrn: `urn:li:fsd_invitation:${resolvedMemberId || id}`,
+        inviteeUrn: resolvedFsdProfileUrn || `urn:li:fsd_profile:${resolvedMemberId || id}`,
+        ...(domRes.sentWithoutNote || (!customNote && message) ? { sentWithoutNote: true } : {}),
+        ...(domRes.alreadyConnected ? { alreadyConnected: true } : {}),
+        ...(domRes.alreadyPending ? { alreadyPending: true } : {}),
+      };
+    }
+    if (domRes?.reason) {
+      throw new EngineError(ERROR.LINKEDIN_ERROR, `DOM fallback failed: ${domRes.reason}`);
+    }
+    return null;
+  };
 
   const sendSdui = async () => {
     await ensureSduiProfile();
@@ -2550,116 +2943,51 @@ export async function sendInvite({
     });
   };
 
-  const sendDom = async (customMsg) => {
-    if (!id || typeof chrome === 'undefined' || !chrome.tabs?.create) {
-      return null;
-    }
-    logDebug('warn', 'Outreach', `[sendInvite] Falling back to background DOM tab for ${id}`);
-    const domRes = await runDomActionInTab(
-      `https://www.linkedin.com/in/${id}/`,
-      domSendInviteInPage,
-      [id, customMsg],
-    );
-    if (domRes && (domRes.ok || domRes.success)) {
-      return {
-        ok: true,
-        invitationUrn: `urn:li:fsd_invitation:${resolvedMemberId || id}`,
-        inviteeUrn: urn || resolvedFsdProfileUrn || `urn:li:fsd_profile:${id}`,
-        method: 'dom',
-        sentWithoutNote: Boolean(domRes.sentWithoutNote),
-        ...(domRes.alreadyConnected ? { alreadyConnected: true } : {}),
-        ...(domRes.alreadyPending ? { alreadyPending: true } : {}),
-      };
-    }
-    if (domRes && domRes.reason) {
-      throw new EngineError(ERROR.LINKEDIN_ERROR, domRes.reason);
-    }
-    return null;
-  };
-
-  // Case A: Blank invitation (no custom message) OR endpoint explicitly configured as SDUI server-request
-  if (!message || isServerRequestEndpoint) {
-    if (!message) sentWithoutNote = true;
-    let sduiErr = null;
-
-    if (resolvedMemberId || id) {
+  // If endpoint points to server-request or if sending blank invite with available memberId/id:
+  if (isServerRequestEndpoint || (!message && (resolvedMemberId || id))) {
+    try {
+      return await sendSdui();
+    } catch (sduiErr) {
+      logDebug('warn', 'Voyager', `[sendInvite] SDUI failed (${sduiErr?.message}). Falling back to legacy / DOM...`);
+      if (!canFallbackToDom(sduiErr)) {
+        throw sduiErr;
+      }
+      // Try Layer 2: Legacy Voyager blank post
       try {
-        const sduiRes = await sendSdui();
-        return sduiRes;
-      } catch (err) {
-        sduiErr = err;
-        logDebug('warn', 'Outreach', `[sendInvite] SDUI layer failed: ${err?.message}`);
-        if (!canFallbackToDom(err)) {
-          throw err;
+        if (!urn && id) {
+          try { urn = await resolveProfileUrn(id); } catch (_) {}
+        }
+        if (urn) {
+          raw = await sendLegacyPost('');
+          const val = (raw && raw.data && raw.data.value) || {};
+          const blankUrn = val['*invitation'] || val.invitationUrn || '';
+          if (blankUrn) {
+            return {
+              ok: true,
+              invitationUrn: blankUrn,
+              inviteeUrn: val.inviteeUrn || val['*invitee'] || urn,
+              sentWithoutNote: true,
+            };
+          }
+        }
+      } catch (legacyErr) {
+        logDebug('warn', 'Voyager', `[sendInvite] Legacy fallback failed: ${legacyErr?.message}`);
+        if (!canFallbackToDom(legacyErr)) {
+          throw legacyErr;
         }
       }
-    }
-
-    // Layer 2: Fallback to Legacy Voyager endpoint
-    try {
-      const raw = await sendLegacyPost('');
-      const val = (raw && raw.data && raw.data.value) || {};
-      const blankUrn = val['*invitation'] || val.invitationUrn || '';
-      if (blankUrn) {
-        markEndpointHealthy('sendInvite');
-        return {
-          invitationUrn: blankUrn,
-          inviteeUrn: val.inviteeUrn || val['*invitee'] || urn,
-          sentWithoutNote: true,
-        };
-      }
-      throw inviteFailure(raw, 'LinkedIn answered with no invitation urn.');
-    } catch (voyagerErr) {
-      logDebug('warn', 'Outreach', `[sendInvite] Legacy Voyager blank failed: ${voyagerErr?.message}`);
-      const payload = voyagerErr && voyagerErr.response;
-      const msg = (voyagerErr && voyagerErr.message) || 'LinkedIn refused the invitation.';
-      const data = (payload && payload.data) || payload || {};
-      const errCode = String(data.code || data.status || voyagerErr?.code || '');
-      const errMsg = String(data.message || msg);
-
-      if (looksLikePerProspectIssue(errCode, errMsg)) {
-        throw new EngineError(
-          ERROR.INVALID_PARAMS,
-          errCode ? `LinkedIn refused the invitation (${errCode}): ${errMsg}` : `LinkedIn refused the invitation: ${errMsg}`,
-          { howToFix: INVITE_DUPLICATE_FIX },
-        );
-      }
-
-      if (!canFallbackToDom(voyagerErr)) {
-        if (voyagerErr instanceof EngineError && voyagerErr.code !== ERROR.LINKEDIN_ERROR) throw voyagerErr;
-        throw inviteFailure(voyagerErr?.response, errMsg);
-      }
-
-      // Layer 3: Fallback to single background DOM tab
-      try {
-        const domResult = await sendDom('');
-        if (domResult) return domResult;
-      } catch (domErr) {
-        logDebug('warn', 'Outreach', `[sendInvite] DOM layer failed: ${domErr?.message}`);
-        throw domErr;
-      }
-
-      throw inviteFailure(voyagerErr?.response || sduiErr?.response, errMsg);
+      // Try Layer 3: DOM Fallback
+      const domRes = await sendDom('');
+      if (domRes) return domRes;
+      throw sduiErr;
     }
   }
 
-  // Case B: Personalized invitation with custom message
   let raw;
   const attemptedNote = Boolean(message);
 
   try {
     raw = await sendLegacyPost(message);
-    const val = (raw && raw.data && raw.data.value) || {};
-    const invUrn = val['*invitation'] || val.invitationUrn || '';
-    if (invUrn) {
-      markEndpointHealthy('sendInvite');
-      return {
-        invitationUrn: invUrn,
-        inviteeUrn: val.inviteeUrn || val['*invitee'] || urn,
-        ...(sentWithoutNote ? { sentWithoutNote: true } : {}),
-      };
-    }
-    throw inviteFailure(raw, 'LinkedIn answered with no invitation urn.');
   } catch (e) {
     const isCustomInviteLimit =
       e?.code === 'CUSTOM_INVITE_LIMIT_REACHED' ||
@@ -2690,7 +3018,7 @@ export async function sendInvite({
     const status = e?.status || e?.response?.status || 0;
     const isAllowanceLimit = looksLikeAllowance(errCode, errMsg);
 
-    // If verifyQuotaAndCreateV2 returns HTTP 400 (non-limit), fallback to SDUI addaAddConnection
+    // If verifyQuotaAndCreateV2 returns HTTP 400 (non-limit), fallback to SDUI addaAddConnection!
     if (status === 400 && !isAllowanceLimit && !isCustomInviteLimit && (resolvedMemberId || id)) {
       logDebug(
         'warn',
@@ -2700,38 +3028,18 @@ export async function sendInvite({
       try {
         return await sendSdui();
       } catch (sduiErr) {
-        logDebug('warn', 'Outreach', `[Outreach] SDUI fallback failed: ${sduiErr?.message}`);
-        if (!canFallbackToDom(sduiErr)) {
-          throw sduiErr;
-        }
+        logDebug('warn', 'Outreach', `[Outreach] SDUI fallback also failed: ${sduiErr?.message}`);
+        throw sduiErr;
       }
     }
 
-    // Fallback blank retry (SDUI blank -> legacy blank -> DOM)
+    // Fallback legacy blank retry for when no memberId/id was resolvable
     if (attemptedNote || isCustomInviteLimit) {
       logDebug(
         'warn',
         'Outreach',
         `[Outreach] Note rejected (status=${status}, code=${errCode}). Retrying blank connection request...`,
       );
-
-      // Try SDUI blank first if memberId/id available
-      if (resolvedMemberId || id) {
-        try {
-          const sduiRes = await sendSdui();
-          return {
-            ...sduiRes,
-            sentWithoutNote: true,
-          };
-        } catch (sduiErr) {
-          logDebug('warn', 'Outreach', `[Outreach] SDUI blank retry failed: ${sduiErr?.message}`);
-          if (!canFallbackToDom(sduiErr)) {
-            throw sduiErr;
-          }
-        }
-      }
-
-      // Try Voyager legacy blank retry
       try {
         raw = await sendLegacyPost('');
         const val = (raw && raw.data && raw.data.value) || {};
@@ -2739,14 +3047,9 @@ export async function sendInvite({
         if (blankUrn) {
           sentWithoutNote = true;
           await setNoteLimitActive(24 * 60 * 60 * 1000);
-          markEndpointHealthy('sendInvite');
-          return {
-            invitationUrn: blankUrn,
-            inviteeUrn: val.inviteeUrn || val['*invitee'] || urn,
-            sentWithoutNote: true,
-          };
+        } else {
+          throw inviteFailure(e?.response || raw, e?.message || 'LinkedIn answered with no invitation urn.');
         }
-        throw inviteFailure(e?.response || raw, e?.message || 'LinkedIn answered with no invitation urn.');
       } catch (blankErr) {
         logDebug(
           'warn',
@@ -2785,18 +3088,10 @@ export async function sendInvite({
         if (bStatus === 400 || bStatus === 404 || bStatus === 410 || bStatus === 422) {
           reportBrokenEndpoint('sendInvite', bStatus, basePath, blankErr).catch(() => {});
         }
-
-        // Try Layer 3: DOM Fallback
-        if (canFallbackToDom(blankErr)) {
-          try {
-            const domResult = await sendDom(isCustomInviteLimit ? '' : message);
-            if (domResult) return domResult;
-          } catch (domErr) {
-            logDebug('warn', 'Outreach', `[sendInvite] DOM layer failed: ${domErr?.message}`);
-            throw domErr;
-          }
+        if (canFallbackToDom(blankErr) && id && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+          const domRes = await sendDom('');
+          if (domRes) return domRes;
         }
-
         if (blankErr instanceof EngineError && blankErr.code !== ERROR.LINKEDIN_ERROR) throw blankErr;
         throw inviteFailure(
           blankPayload,
@@ -2815,18 +3110,10 @@ export async function sendInvite({
       if (eStatus === 400 || eStatus === 404 || eStatus === 410 || eStatus === 422) {
         reportBrokenEndpoint('sendInvite', eStatus, basePath, e).catch(() => {});
       }
-
-      // Try Layer 3: DOM Fallback
-      if (canFallbackToDom(e)) {
-        try {
-          const domResult = await sendDom(message);
-          if (domResult) return domResult;
-        } catch (domErr) {
-          logDebug('warn', 'Outreach', `[sendInvite] DOM layer failed: ${domErr?.message}`);
-          throw domErr;
-        }
+      if (canFallbackToDom(e) && id && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+        const domRes = await sendDom(message);
+        if (domRes) return domRes;
       }
-
       if (e instanceof EngineError && e.code !== ERROR.LINKEDIN_ERROR) throw e;
       throw inviteFailure(e && e.response, (e && e.message) || 'LinkedIn refused the invitation.');
     }
@@ -2838,11 +3125,7 @@ export async function sendInvite({
   // If answered without invitation urn on a note attempt, retry
   if (!invitationUrn && attemptedNote && !sentWithoutNote) {
     if (resolvedMemberId || id) {
-      try {
-        return await sendSdui();
-      } catch (sduiErr) {
-        logDebug('warn', 'Outreach', `[sendInvite] SDUI blank retry failed: ${sduiErr?.message}`);
-      }
+      return sendSdui();
     }
     logDebug(
       'warn',
@@ -2856,7 +3139,6 @@ export async function sendInvite({
       if (blankUrn) {
         sentWithoutNote = true;
         await setNoteLimitActive();
-        markEndpointHealthy('sendInvite');
         value = val;
         invitationUrn = blankUrn;
       } else {
@@ -2877,15 +3159,6 @@ export async function sendInvite({
         );
       }
 
-      if (canFallbackToDom(blankErr)) {
-        try {
-          const domResult = await sendDom('');
-          if (domResult) return domResult;
-        } catch (domErr) {
-          logDebug('warn', 'Outreach', `[sendInvite] DOM layer failed: ${domErr?.message}`);
-        }
-      }
-
       if (blankErr instanceof EngineError && blankErr.code !== ERROR.LINKEDIN_ERROR) throw blankErr;
       throw inviteFailure(blankPayload, blankMsg);
     }
@@ -2896,7 +3169,6 @@ export async function sendInvite({
   }
 
   return {
-    ok: true,
     invitationUrn,
     inviteeUrn: value.inviteeUrn || value['*invitee'] || urn,
     ...(sentWithoutNote ? { sentWithoutNote: true } : {}),
@@ -2928,53 +3200,107 @@ export async function sendMessage({
   // 1. Resolve to valid fsd_profile URN
   let targetUrn = toFsdProfileUrn(recipientUrn);
   if (!targetUrn && publicId) {
-    targetUrn = await resolveProfileUrn(publicId);
-  }
-  if (!targetUrn) {
-    throw new EngineError(ERROR.NOT_FOUND, `Could not resolve recipient profile URN for ${publicId || recipientUrn}`);
+    try {
+      targetUrn = await resolveProfileUrn(publicId);
+    } catch (e) {
+      logDebug('warn', 'Voyager', `[sendMessage] Failed to resolve target profile URN: ${e?.message}`);
+    }
   }
 
   // 2. Mailbox URN is our own profile URN
-  const mailboxUrn = await selfProfileUrn();
+  let mailboxUrn = null;
+  try {
+    mailboxUrn = await selfProfileUrn();
+  } catch (_) {}
 
-  // 3. 16-character raw tracking ID (matches LinkedIn Web)
-  const rawBytes = new Uint8Array(16);
-  crypto.getRandomValues(rawBytes);
-  const trackingId = Array.from(rawBytes, (b) => String.fromCharCode(b)).join('');
+  const endpointPath = getEndpoint('sendMessage') || `${ENDPOINTS.unverified.createMessage}?action=createMessage`;
 
-  // 4. Exact payload from live LinkedIn Web request
-  const payload = {
-    message: {
-      body: {
-        attributes: [],
-        text: body,
+  if (targetUrn && mailboxUrn) {
+    // 3. 16-character raw tracking ID (matches LinkedIn Web)
+    const rawBytes = new Uint8Array(16);
+    crypto.getRandomValues(rawBytes);
+    const trackingId = Array.from(rawBytes, (b) => String.fromCharCode(b)).join('');
+
+    // 4. Exact payload from live LinkedIn Web request
+    const payload = {
+      message: {
+        body: {
+          attributes: [],
+          text: body,
+        },
+        originToken: crypto.randomUUID(),
+        renderContentUnions: [],
       },
-      originToken: crypto.randomUUID(),
-      renderContentUnions: [],
-    },
-    mailboxUrn,
-    trackingId,
-    dedupeByClientGeneratedToken: false,
-    hostRecipientUrns: [targetUrn],
-  };
+      mailboxUrn,
+      trackingId,
+      dedupeByClientGeneratedToken: false,
+      hostRecipientUrns: [targetUrn],
+    };
 
-  if (subtype === 'INMAIL') {
-    payload.messageSubtype = 'INMAIL';
-    if (inmailSubject) payload.message.subject = inmailSubject;
+    if (subtype === 'INMAIL') {
+      payload.messageSubtype = 'INMAIL';
+      if (inmailSubject) payload.message.subject = inmailSubject;
+    }
+
+    try {
+      // 5. Send with exact LinkedIn web headers (text/plain;charset=UTF-8)
+      const res = await voyagerFetch(endpointPath, {
+        method: 'POST',
+        body: payload,
+        headers: {
+          accept: 'application/json',
+          'content-type': 'text/plain;charset=UTF-8',
+          'x-restli-protocol-version': '2.0.0',
+        },
+      });
+
+      markEndpointHealthy('sendMessage');
+      return { ok: true, method: 'voyager_api', data: res };
+    } catch (err) {
+      const status = err?.status || err?.response?.status || 0;
+      reportBrokenEndpoint('sendMessage', status, endpointPath, err).catch(() => {});
+
+      if (subtype !== 'INMAIL' && canFallbackToDom(err) && publicId && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+        logDebug('warn', 'Voyager', `[sendMessage] API failed, falling back to background tab DOM for ${publicId}`);
+        try {
+          const domRes = await runDomActionInTab(
+            `https://www.linkedin.com/in/${encodeURIComponent(publicId)}/`,
+            domSendMessageInPage,
+            [{ body }],
+            'sendMessage',
+          );
+          if (domRes && (domRes.ok || domRes.success)) {
+            return { ok: true, method: 'dom', ...domRes };
+          }
+        } catch (domErr) {
+          logDebug('warn', 'Voyager', `[sendMessage] DOM fallback failed: ${domErr?.message}`);
+        }
+      }
+
+      if (err instanceof EngineError) throw err;
+      throw new EngineError(ERROR.LINKEDIN_ERROR, `Send message failed: ${err?.message || err}`);
+    }
   }
 
-  // 5. Send with exact LinkedIn web headers (text/plain;charset=UTF-8)
-  return unverified('createMessage', () =>
-    voyagerFetch(`${ENDPOINTS.unverified.createMessage}?action=createMessage`, {
-      method: 'POST',
-      body: payload,
-      headers: {
-        accept: 'application/json',
-        'content-type': 'text/plain;charset=UTF-8',
-        'x-restli-protocol-version': '2.0.0',
-      },
-    }),
-  );
+  // If no targetUrn/mailboxUrn but publicId is present for regular message, attempt DOM fallback
+  if (subtype !== 'INMAIL' && publicId && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+    logDebug('warn', 'Voyager', `[sendMessage] Missing URNs, attempting background tab DOM for ${publicId}`);
+    try {
+      const domRes = await runDomActionInTab(
+        `https://www.linkedin.com/in/${encodeURIComponent(publicId)}/`,
+        domSendMessageInPage,
+        [{ body }],
+        'sendMessage',
+      );
+      if (domRes && (domRes.ok || domRes.success)) {
+        return { ok: true, method: 'dom', ...domRes };
+      }
+    } catch (domErr) {
+      logDebug('warn', 'Voyager', `[sendMessage] DOM fallback failed: ${domErr?.message}`);
+    }
+  }
+
+  throw new EngineError(ERROR.NOT_FOUND, `Could not resolve recipient profile URN for ${publicId || recipientUrn}`);
 }
 
 /** Send an InMail. */
@@ -3023,26 +3349,6 @@ export async function follow({ publicId, profileUrn, memberId, following = true 
   }
 
   if (!resolvedMemberId) {
-    if (id && typeof chrome !== 'undefined' && chrome.tabs?.create) {
-      logDebug('warn', 'Voyager', `[Follow] No memberId resolvable, attempting DOM fallback for ${id}`);
-      try {
-        const domRes = await runDomActionInTab(
-          `https://www.linkedin.com/in/${id}/`,
-          domFollowInPage,
-          [id],
-        );
-        if (domRes && (domRes.ok || domRes.success)) {
-          return {
-            ok: true,
-            method: 'dom',
-            memberId: id,
-            ...(domRes.alreadyFollowing ? { alreadyFollowing: true } : {}),
-          };
-        }
-      } catch (domErr) {
-        logDebug('warn', 'Voyager', `[Follow] DOM fallback failed: ${domErr?.message}`);
-      }
-    }
     throw new EngineError(
       ERROR.NOT_FOUND,
       `Could not resolve a numeric memberId to follow ${publicId || profileUrn || 'prospect'}.`,
@@ -3148,27 +3454,28 @@ export async function follow({ publicId, profileUrn, memberId, following = true 
         }
       } catch (_) {}
       reportBrokenEndpoint('follow', status, followPath, err).catch(() => {});
+    }
 
-      if (canFallbackToDom(err) && (publicId || id) && typeof chrome !== 'undefined' && chrome.tabs?.create) {
-        const targetId = publicId || id;
-        logDebug('warn', 'Voyager', `[Follow] SDUI failed, falling back to background tab DOM for ${targetId}`);
-        try {
-          const domRes = await runDomActionInTab(
-            `https://www.linkedin.com/in/${targetId}/`,
-            domFollowInPage,
-            [targetId],
-          );
-          if (domRes && (domRes.ok || domRes.success)) {
-            return {
-              ok: true,
-              method: 'dom',
-              memberId: resolvedMemberId || targetId,
-              ...(domRes.alreadyFollowing ? { alreadyFollowing: true } : {}),
-            };
-          }
-        } catch (domErr) {
-          logDebug('warn', 'Voyager', `[Follow] DOM fallback failed: ${domErr?.message}`);
+    if (canFallbackToDom(err) && (publicId || id) && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      const targetId = publicId || id;
+      logDebug('warn', 'Voyager', `[Follow] SDUI failed, falling back to background tab DOM for ${targetId}`);
+      try {
+        const domRes = await runDomActionInTab(
+          `https://www.linkedin.com/in/${encodeURIComponent(targetId)}/`,
+          domFollowInPage,
+          [{ following }],
+          'follow',
+        );
+        if (domRes && (domRes.ok || domRes.success)) {
+          return {
+            ok: true,
+            method: 'dom',
+            memberId: resolvedMemberId || targetId,
+            ...(domRes.alreadyFollowing ? { alreadyFollowing: true } : {}),
+          };
         }
+      } catch (domErr) {
+        logDebug('warn', 'Voyager', `[Follow] DOM fallback failed: ${domErr?.message}`);
       }
     }
 
@@ -3181,7 +3488,7 @@ export async function follow({ publicId, profileUrn, memberId, following = true 
  * Like a post via Flagship SDUI endpoint (com.linkedin.sdui.reactions.create).
  *
  * @param {{ postUrl?: string, publicId?: string, profileUrn?: string, reactionType?: string }} params
- * @returns {Promise<{ ok: boolean, method: string, data?: any, activityId?: string, status?: string, reason?: string }>}
+ * @returns {Promise<{ ok: boolean, method: string, data?: any, activityId?: string, status?: string, reason?: string, alreadyLiked?: boolean }>}
  */
 export async function likePost({ postUrl, publicId, profileUrn, reactionType = 'LIKE' } = {}) {
   let targetPostUrl = postUrl;
@@ -3307,22 +3614,22 @@ export async function likePost({ postUrl, publicId, profileUrn, reactionType = '
       } catch (_) {}
       reportBrokenEndpoint('likePost', status, likePath, err).catch(() => {});
       reportBrokenEndpoint('like', status, likePath, err).catch(() => {});
+    }
 
-      if (canFallbackToDom(err) && targetPostUrl && typeof chrome !== 'undefined' && chrome.tabs?.create) {
-        logDebug('warn', 'Voyager', `[likePost] SDUI failed, falling back to background tab DOM for ${targetPostUrl}`);
-        try {
-          const domRes = await runDomActionInTab(targetPostUrl, domLikePostInPage, [targetPostUrl]);
-          if (domRes && (domRes.ok || domRes.success)) {
-            return {
-              ok: true,
-              method: 'dom',
-              activityId,
-              ...(domRes.alreadyLiked ? { alreadyLiked: true } : {}),
-            };
-          }
-        } catch (domErr) {
-          logDebug('warn', 'Voyager', `[likePost] DOM fallback failed: ${domErr?.message}`);
+    if (canFallbackToDom(err) && targetPostUrl && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      logDebug('warn', 'Voyager', `[likePost] SDUI failed, falling back to background tab DOM for ${targetPostUrl}`);
+      try {
+        const domRes = await runDomActionInTab(targetPostUrl, domLikePostInPage, [targetPostUrl], 'likePost');
+        if (domRes && (domRes.ok || domRes.success)) {
+          return {
+            ok: true,
+            method: 'dom',
+            activityId,
+            ...(domRes.alreadyLiked ? { alreadyLiked: true } : {}),
+          };
         }
+      } catch (domErr) {
+        logDebug('warn', 'Voyager', `[likePost] DOM fallback failed: ${domErr?.message}`);
       }
     }
 
@@ -3331,43 +3638,110 @@ export async function likePost({ postUrl, publicId, profileUrn, reactionType = '
   }
 }
 
-/** Comment on a post. Unverified. */
-export async function commentPost({ postUrl, body }) {
-  const threadUrn = activityUrnFromUrl(postUrl);
+/** Comment on a post via Voyager endpoint with DOM fallback. */
+export async function commentPost({ postUrl, publicId, profileUrn, body } = {}) {
   if (!body) throw new EngineError(ERROR.INVALID_PARAMS, 'Comment body cannot be empty.');
-  return unverified('createComment', () =>
-    voyagerFetch(`${ENDPOINTS.unverified.createComment}?${qs({ threadUrn })}`, {
+
+  let targetPostUrl = postUrl;
+  if (!targetPostUrl && (publicId || profileUrn)) {
+    try {
+      const posts = await getMemberPosts({ publicId, profileUrn, count: 1 });
+      targetPostUrl = posts?.[0]?.url;
+    } catch (e) {
+      logDebug('warn', 'Voyager', `[commentPost] Failed to resolve latest member post: ${e?.message}`);
+    }
+  }
+
+  if (!targetPostUrl) {
+    return { ok: true, status: 'skipped', reason: 'no_post_url' };
+  }
+
+  const threadUrn = activityUrnFromUrl(targetPostUrl);
+  const commentPath = `${ENDPOINTS.unverified.createComment}?${qs({ threadUrn })}`;
+
+  try {
+    const res = await voyagerFetch(commentPath, {
       method: 'POST',
       body: {
         threadUrn,
         commentary: { text: body, attributes: [] },
         trackingId: generateTrackingId(),
       },
-    }),
-  );
+    });
+    markEndpointHealthy('comment');
+    return { ok: true, method: 'voyager_api', data: res };
+  } catch (err) {
+    const status = err?.status || err?.response?.status || 0;
+    reportBrokenEndpoint('comment', status, commentPath, err).catch(() => {});
+
+    if (canFallbackToDom(err) && targetPostUrl && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      logDebug('warn', 'Voyager', `[commentPost] API failed, falling back to background tab DOM for ${targetPostUrl}`);
+      try {
+        const domRes = await runDomActionInTab(
+          targetPostUrl,
+          domCommentPostInPage,
+          [{ body }],
+          'commentPost',
+        );
+        if (domRes && (domRes.ok || domRes.success)) {
+          return { ok: true, method: 'dom', ...domRes };
+        }
+      } catch (domErr) {
+        logDebug('warn', 'Voyager', `[commentPost] DOM fallback failed: ${domErr?.message}`);
+      }
+    }
+
+    if (err instanceof EngineError) throw err;
+    throw new EngineError(ERROR.LINKEDIN_ERROR, `Comment post failed: ${err?.message || err}`);
+  }
 }
 
-/** Endorse a skill on a member profile. Unverified. */
-export async function endorseSkill({ publicId, skillUrn }) {
+/** Endorse a skill on a member profile with DOM fallback. */
+export async function endorseSkill({ publicId, skillUrn, skillName } = {}) {
   if (!publicId) throw new EngineError(ERROR.INVALID_PARAMS, 'publicId is required for endorse.');
   let urn = skillUrn;
-  if (!urn) {
+  let targetSkillName = skillName;
+  if (!urn && !targetSkillName) {
     try {
       const p = await getProfileNormalized(publicId);
       if (p?.skills?.length) {
         urn = p.skills[0].urn || p.skills[0].id || p.skills[0].name;
+        targetSkillName = p.skills[0].name || p.skills[0].skillName || urn;
       }
     } catch {}
   }
 
+  const endorsePath = `/voyager/api/identity/profiles/${encodeURIComponent(publicId)}/endorsements`;
   try {
-    return await voyagerFetch(`/voyager/api/identity/profiles/${encodeURIComponent(publicId)}/endorsements`, {
+    const res = await voyagerFetch(endorsePath, {
       method: 'POST',
       body: { skillUrn: urn || 'urn:li:fs_skill:1' },
     });
+    markEndpointHealthy('endorseSkill');
+    return { ok: true, method: 'voyager_api', publicId, skillUrn: urn, data: res };
   } catch (err) {
-    console.warn('[voyager.endorseSkill] fallback', err.message);
-    return { ok: true, endorsed: true, publicId, skillUrn: urn };
+    const status = err?.status || err?.response?.status || 0;
+    reportBrokenEndpoint('endorseSkill', status, endorsePath, err).catch(() => {});
+
+    if (canFallbackToDom(err) && publicId && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      logDebug('warn', 'Voyager', `[endorseSkill] API failed, falling back to background tab DOM for ${publicId}`);
+      try {
+        const domRes = await runDomActionInTab(
+          `https://www.linkedin.com/in/${encodeURIComponent(publicId)}/details/skills/`,
+          domEndorseInPage,
+          [{ skillName: targetSkillName || urn }],
+          'endorseSkill',
+        );
+        if (domRes && (domRes.ok || domRes.success)) {
+          return { ok: true, method: 'dom', publicId, skillUrn: urn, ...domRes };
+        }
+      } catch (domErr) {
+        logDebug('warn', 'Voyager', `[endorseSkill] DOM fallback failed: ${domErr?.message}`);
+      }
+    }
+
+    if (err instanceof EngineError) throw err;
+    throw new EngineError(ERROR.LINKEDIN_ERROR, `Endorse skill failed: ${err?.message || err}`);
   }
 }
 

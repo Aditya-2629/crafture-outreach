@@ -1574,6 +1574,155 @@ describe('writes', () => {
         chrome.scripting = origScripting;
       }
     });
+
+    it('likePost skips cleanly when prospect has no posts', async () => {
+      net.push([]); // empty member posts
+      const res = await v.likePost({ publicId: 'noposts' });
+      expect(res.ok).toBe(true);
+      expect(res.status).toBe('skipped');
+      expect(res.reason).toBe('no_post_url');
+    });
+
+    it('viewProfile falls back to DOM tab when API fails with 500 error', async () => {
+      net.push(status(500, { message: 'Profile API 500' }));
+
+      const origTabs = chrome.tabs;
+      const origScripting = chrome.scripting;
+
+      chrome.tabs = {
+        create: vi.fn().mockResolvedValue({ id: 104, status: 'complete' }),
+        remove: vi.fn().mockResolvedValue(true),
+        get: vi.fn().mockResolvedValue({ id: 104, status: 'complete' }),
+        onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+      };
+      chrome.scripting = {
+        executeScript: vi.fn().mockResolvedValue([
+          { result: { ok: true, success: true, method: 'dom', publicId: 'testdom', fullName: 'Dom Prospect' } },
+        ]),
+      };
+
+      try {
+        const res = await v.viewProfile('testdom');
+        expect(res.ok).toBe(true);
+        expect(res.method).toBe('dom');
+        expect(res.fullName).toBe('Dom Prospect');
+        expect(chrome.tabs.create).toHaveBeenCalled();
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(104);
+      } finally {
+        chrome.tabs = origTabs;
+        chrome.scripting = origScripting;
+      }
+    });
+
+    it('commentPost falls back to DOM tab when API fails with 500 error', async () => {
+      net.push(status(500, { message: 'Comment API 500' }));
+
+      const origTabs = chrome.tabs;
+      const origScripting = chrome.scripting;
+
+      chrome.tabs = {
+        create: vi.fn().mockResolvedValue({ id: 105, status: 'complete' }),
+        remove: vi.fn().mockResolvedValue(true),
+        get: vi.fn().mockResolvedValue({ id: 105, status: 'complete' }),
+        onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+      };
+      chrome.scripting = {
+        executeScript: vi.fn().mockResolvedValue([
+          { result: { ok: true, success: true, method: 'dom' } },
+        ]),
+      };
+
+      try {
+        const res = await v.commentPost({
+          postUrl: POST_URL,
+          body: 'Insightful thoughts!',
+        });
+        expect(res.ok).toBe(true);
+        expect(res.method).toBe('dom');
+        expect(chrome.tabs.create).toHaveBeenCalled();
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(105);
+      } finally {
+        chrome.tabs = origTabs;
+        chrome.scripting = origScripting;
+      }
+    });
+
+    it('commentPost skips cleanly when prospect has no posts', async () => {
+      net.push([]);
+      const res = await v.commentPost({ publicId: 'noposts', body: 'Great!' });
+      expect(res.ok).toBe(true);
+      expect(res.status).toBe('skipped');
+      expect(res.reason).toBe('no_post_url');
+    });
+
+    it('endorseSkill falls back to DOM tab when API fails with 500 error', async () => {
+      net.push(status(500, { message: 'Endorse API 500' }));
+
+      const origTabs = chrome.tabs;
+      const origScripting = chrome.scripting;
+
+      chrome.tabs = {
+        create: vi.fn().mockResolvedValue({ id: 106, status: 'complete' }),
+        remove: vi.fn().mockResolvedValue(true),
+        get: vi.fn().mockResolvedValue({ id: 106, status: 'complete' }),
+        onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+      };
+      chrome.scripting = {
+        executeScript: vi.fn().mockResolvedValue([
+          { result: { ok: true, success: true, method: 'dom', endorsedSkill: 'JavaScript' } },
+        ]),
+      };
+
+      try {
+        const res = await v.endorseSkill({
+          publicId: 'testdom',
+          skillName: 'JavaScript',
+        });
+        expect(res.ok).toBe(true);
+        expect(res.method).toBe('dom');
+        expect(chrome.tabs.create).toHaveBeenCalled();
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(106);
+      } finally {
+        chrome.tabs = origTabs;
+        chrome.scripting = origScripting;
+      }
+    });
+
+    it('sendMessage falls back to DOM tab when API fails with 500 error', async () => {
+      // First call for resolveProfileUrn (profile components)
+      net.push(profileView);
+      // Next call for sendMessage API fails with 500
+      net.push(status(500, { message: 'Message API 500' }));
+
+      const origTabs = chrome.tabs;
+      const origScripting = chrome.scripting;
+
+      chrome.tabs = {
+        create: vi.fn().mockResolvedValue({ id: 107, status: 'complete' }),
+        remove: vi.fn().mockResolvedValue(true),
+        get: vi.fn().mockResolvedValue({ id: 107, status: 'complete' }),
+        onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+      };
+      chrome.scripting = {
+        executeScript: vi.fn().mockResolvedValue([
+          { result: { ok: true, success: true, method: 'dom' } },
+        ]),
+      };
+
+      try {
+        const res = await v.sendMessage({
+          publicId: 'testdom',
+          body: 'Hello from fallback!',
+        });
+        expect(res.ok).toBe(true);
+        expect(res.method).toBe('dom');
+        expect(chrome.tabs.create).toHaveBeenCalled();
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(107);
+      } finally {
+        chrome.tabs = origTabs;
+        chrome.scripting = origScripting;
+      }
+    });
   });
 });
 

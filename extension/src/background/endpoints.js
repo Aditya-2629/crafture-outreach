@@ -33,6 +33,10 @@ export const DEFAULT_ENDPOINTS = Object.freeze({
     '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.reactions.create',
   follow:
     '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaUpdateFollowState',
+  comment:
+    '/voyager/api/feed/socialActions/comments',
+  sendMessage:
+    '/voyagerMessagingDashMessengerMessages?action=createMessage',
 });
 
 const STORAGE_ENDPOINTS_KEY = 'outfox_remote_endpoints';
@@ -173,6 +177,7 @@ export async function syncEndpointsFromVault(force = false) {
   }
 }
 
+export const CONSECUTIVE_FAILURE_THRESHOLD = 3;
 const consecutiveFailures = new Map();
 
 /**
@@ -206,22 +211,23 @@ export function getConsecutiveFailures(key) {
  * @param {number|string} status
  * @param {string} url
  * @param {any} error
- * @param {{ prospectId?: string }} [opts]
+ * @param {{ prospectId?: string, perProspect?: boolean, immediate?: boolean }} [options]
  * @returns {Promise<{ ok: boolean, skipped?: boolean, reason?: string }>}
  */
-export async function reportBrokenEndpoint(key, status, url, error, { prospectId } = {}) {
+export async function reportBrokenEndpoint(key, status, url, error, options = {}) {
   if (!key) return { ok: false, reason: 'No key provided' };
 
   const errMsg = String(error?.message || error || '');
   const errCode = String(error?.code || error?.response?.data?.code || '');
   const combined = `${errMsg} ${errCode}`;
 
-  // Ignore per-prospect user errors so they never trigger broken-endpoint alerts
-  const isPerProspect =
-    /ALREADY_CONNECTED|ALREADY_PENDING|INVITE_LIMIT|PROFILE_RESTRICTED|CANT_RESEND_YET|PERSONALIZED_INVITATION_QUOTA_EXCEEDED|already.*connect/i.test(
+  // Skip immediately if options?.perProspect is true or error matches non-broken endpoint guards
+  if (
+    options?.perProspect ||
+    /ALREADY_CONNECTED|ALREADY_PENDING|INVITE_LIMIT|CUSTOM_INVITE_LIMIT|PROFILE_RESTRICTED|AUTH_REQUIRED|RATE_LIMITED|CANT_RESEND_YET|PERSONALIZED_INVITATION_QUOTA_EXCEEDED|already.*connect/i.test(
       combined,
-    );
-  if (isPerProspect) {
+    )
+  ) {
     return { ok: true, skipped: true, reason: 'per_prospect_error' };
   }
 
@@ -231,13 +237,14 @@ export async function reportBrokenEndpoint(key, status, url, error, { prospectId
 
   const numStatus = Number(status) || 0;
   const isImmediate =
+    options?.immediate === true ||
     numStatus === 404 ||
     numStatus === 410 ||
     status === 'ENDPOINT_UNVERIFIED' ||
     combined.includes('ENDPOINT_UNVERIFIED');
 
-  // Only report to Vault when count >= 3 (or immediate status 404/410/ENDPOINT_UNVERIFIED)
-  if (!isImmediate && currentCount < 3) {
+  // Only report to Vault when count >= CONSECUTIVE_FAILURE_THRESHOLD (or immediate status 404/410/immediate)
+  if (!isImmediate && currentCount < CONSECUTIVE_FAILURE_THRESHOLD) {
     return { ok: true, skipped: true, reason: `failures_below_threshold_${currentCount}` };
   }
 
@@ -260,6 +267,7 @@ export async function reportBrokenEndpoint(key, status, url, error, { prospectId
     }
 
     const reportUrl = `${VAULT_API_URL}/report`;
+    const prospectId = options?.prospectId;
     const body = {
       key,
       status: Number(status) || status || 0,

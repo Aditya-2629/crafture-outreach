@@ -129,7 +129,7 @@ function buildChrome() {
 
     tabs: {
       create: vi.fn((props, callback) => {
-        const tab = { id: mock.nextTabId++, active: true, ...props };
+        const tab = { id: mock.nextTabId++, active: true, status: 'complete', ...props };
         mock.tabs.set(tab.id, tab);
         return settle(tab, callback);
       }),

@@ -23,8 +23,12 @@ export const DEFAULT_ENDPOINTS = Object.freeze({
     '/voyagerMessagingGraphQL/graphql?queryId=messengerConversations.9501074288a12f3ae9e3c7ea243bccbf',
   profileViewsCount: '/voyager/api/identity/wvmpCards',
   sendInvite: '/voyagerRelationshipsDashMemberRelationships',
+  sendInviteSdui:
+    '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaAddConnection',
   withdrawInvitation:
     '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation',
+  like:
+    '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.reactions.create',
   likePost:
     '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.reactions.create',
   follow:
@@ -169,17 +173,73 @@ export async function syncEndpointsFromVault(force = false) {
   }
 }
 
+const consecutiveFailures = new Map();
+
+/**
+ * Mark an endpoint healthy when a 200 OK API response is received.
+ * Resets the consecutive failure counter to 0.
+ *
+ * @param {string} key
+ */
+export function markEndpointHealthy(key) {
+  if (key) {
+    consecutiveFailures.set(key, 0);
+  }
+}
+
+/**
+ * Get current consecutive failure count for a given endpoint key.
+ *
+ * @param {string} key
+ * @returns {number}
+ */
+export function getConsecutiveFailures(key) {
+  return consecutiveFailures.get(key) || 0;
+}
+
 /**
  * Report a broken LinkedIn endpoint to Vault with a 12h cooldown per key to avoid log spam.
+ * Only sends the report when consecutive failures >= 3 (or status === 404 / 410 / ENDPOINT_UNVERIFIED).
+ * Ignores per-prospect user errors (ALREADY_CONNECTED, ALREADY_PENDING, INVITE_LIMIT, PROFILE_RESTRICTED).
  *
  * @param {string} key
  * @param {number|string} status
  * @param {string} url
  * @param {any} error
+ * @param {{ prospectId?: string }} [opts]
  * @returns {Promise<{ ok: boolean, skipped?: boolean, reason?: string }>}
  */
-export async function reportBrokenEndpoint(key, status, url, error) {
+export async function reportBrokenEndpoint(key, status, url, error, { prospectId } = {}) {
   if (!key) return { ok: false, reason: 'No key provided' };
+
+  const errMsg = String(error?.message || error || '');
+  const errCode = String(error?.code || error?.response?.data?.code || '');
+  const combined = `${errMsg} ${errCode}`;
+
+  // Ignore per-prospect user errors so they never trigger broken-endpoint alerts
+  const isPerProspect =
+    /ALREADY_CONNECTED|ALREADY_PENDING|INVITE_LIMIT|PROFILE_RESTRICTED|CANT_RESEND_YET|PERSONALIZED_INVITATION_QUOTA_EXCEEDED|already.*connect/i.test(
+      combined,
+    );
+  if (isPerProspect) {
+    return { ok: true, skipped: true, reason: 'per_prospect_error' };
+  }
+
+  // Increment in-memory consecutive failure counter
+  const currentCount = (consecutiveFailures.get(key) || 0) + 1;
+  consecutiveFailures.set(key, currentCount);
+
+  const numStatus = Number(status) || 0;
+  const isImmediate =
+    numStatus === 404 ||
+    numStatus === 410 ||
+    status === 'ENDPOINT_UNVERIFIED' ||
+    combined.includes('ENDPOINT_UNVERIFIED');
+
+  // Only report to Vault when count >= 3 (or immediate status 404/410/ENDPOINT_UNVERIFIED)
+  if (!isImmediate && currentCount < 3) {
+    return { ok: true, skipped: true, reason: `failures_below_threshold_${currentCount}` };
+  }
 
   try {
     let reports = {};
@@ -204,9 +264,10 @@ export async function reportBrokenEndpoint(key, status, url, error) {
       key,
       status: Number(status) || status || 0,
       url: url || getEndpoint(key),
-      error: String(error?.message || error || 'Unknown endpoint error'),
+      error: errMsg || 'Unknown endpoint error',
       reportedAt: now,
       version: '1.0.0',
+      ...(prospectId ? { prospectId } : {}),
     };
 
     fetch(reportUrl, {
@@ -218,7 +279,11 @@ export async function reportBrokenEndpoint(key, status, url, error) {
       body: JSON.stringify(body),
     }).catch(() => {});
 
-    logDebug('warn', 'Endpoints', `[Endpoints Report] Reported broken endpoint ${key} (status=${status})`);
+    logDebug(
+      'warn',
+      'Endpoints',
+      `[Endpoints Report] Reported broken endpoint ${key} (status=${status}, count=${currentCount})`,
+    );
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };

@@ -18,7 +18,12 @@ import { ERROR, EngineError, INVITE_NOTE_FIX, INVITE_NOTE_MAX } from '../lib/act
 import { isNoteLimitActive, setNoteLimitActive, logDebug, getStoredProfile } from '../lib/storage.js';
 import { noteBucketBackoff } from './quota.js';
 import { collection } from './normalized.js';
-import { getEndpoint, syncEndpointsFromVault, reportBrokenEndpoint } from './endpoints.js';
+import {
+  getEndpoint,
+  syncEndpointsFromVault,
+  reportBrokenEndpoint,
+  markEndpointHealthy,
+} from './endpoints.js';
 import {
   LINKEDIN_BASE,
   generateTrackingId,
@@ -1689,6 +1694,335 @@ export async function withdrawViaDomFallback(invitesBatch, options = {}) {
   }
 }
 
+/* ================================================================== */
+/*  Shared DOM Fallback Runner (Mutex-Protected Single Tab)           */
+/* ================================================================== */
+
+let domTabLock = Promise.resolve();
+
+/**
+ * Determine whether an error can safely fall back to background DOM execution.
+ * Returns false on rate-limits (429), auth challenges (999/checkpoint), or per-prospect limits.
+ *
+ * @param {any} err
+ * @returns {boolean}
+ */
+export function canFallbackToDom(err) {
+  if (!err) return true;
+  const status = Number(err?.status || err?.response?.status || err?.code) || 0;
+  const msg = String(err?.message || err || '');
+  const code = String(err?.code || err?.response?.data?.code || '');
+  const combined = `${msg} ${code}`;
+
+  if (status === 429 || /rate.*limit|weekly.*limit|daily.*limit|too many requests/i.test(combined)) {
+    return false;
+  }
+  if (status === 999 || /checkpoint|challenge|security check|auth|captcha|verify you are human/i.test(combined)) {
+    return false;
+  }
+  if (/ALREADY_CONNECTED|ALREADY_PENDING|INVITE_LIMIT|PERSONALIZED_INVITATION_QUOTA_EXCEEDED|CANT_RESEND_YET|already.*connect/i.test(combined)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Executes an in-page script function inside an isolated background tab (active: false).
+ * Mutex-protected via domTabLock: ensures at most ONE background DOM tab is ever open at a time.
+ * Automatically waits for tab load, 1.5s client hydration, executes script, and cleans up tab in finally.
+ *
+ * @param {string} url - Target URL to open in background
+ * @param {Function} scriptFn - Function to execute inside page context
+ * @param {Array} [args] - Serializable arguments to pass to scriptFn
+ * @returns {Promise<any>}
+ */
+export async function runDomActionInTab(url, scriptFn, args = []) {
+  if (typeof chrome === 'undefined' || !chrome.tabs?.create || !chrome.scripting?.executeScript) {
+    throw new EngineError(ERROR.UNAVAILABLE, 'Chrome tabs or scripting API unavailable for DOM fallback');
+  }
+
+  const execute = async () => {
+    let tab = null;
+    try {
+      tab = await chrome.tabs.create({
+        url,
+        active: false,
+      });
+
+      const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+      await waitForTabLoad(tab.id, isTestEnv ? 200 : 15000);
+      await new Promise((r) => setTimeout(r, isTestEnv ? 10 : 1500));
+
+      const execResults = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        args,
+        func: scriptFn,
+      });
+
+      return execResults?.[0]?.result;
+    } finally {
+      if (tab?.id) {
+        try {
+          await chrome.tabs.remove(tab.id);
+        } catch {}
+      }
+    }
+  };
+
+  const nextPromise = domTabLock.then(execute, execute);
+  domTabLock = nextPromise.catch(() => {});
+  return nextPromise;
+}
+
+/**
+ * In-page DOM execution to send a connection request from a profile page.
+ *
+ * @param {string} targetId
+ * @param {string} [noteText]
+ */
+export async function domSendInviteInPage(targetId, noteText) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  let buttons = [];
+  for (let i = 0; i < 5; i++) {
+    buttons = Array.from(
+      document.querySelectorAll(
+        'main button, .scaffold-layout__main button, [data-view-name="profile-card"] button, .pv-top-card-v2-ctas button, .pvs-profile-actions button',
+      ),
+    );
+    if (buttons.length) break;
+    await sleep(400);
+  }
+
+  // 1. Check if already connected (Message button or 1st degree badge)
+  const is1stDegree =
+    /\b1st\b/i.test(document.querySelector('.dist-value')?.textContent || '') ||
+    buttons.some((b) => /^(?:Direct )?Message$/i.test((b.textContent || '').trim()) && !b.disabled);
+
+  if (is1stDegree) {
+    return { success: true, ok: true, alreadyConnected: true, method: 'dom', message: 'Already connected (1st degree)' };
+  }
+
+  // Check if invitation is already pending
+  const isPending = buttons.some((b) => /Pending/i.test((b.textContent || '').trim()) || /Pending/i.test(b.getAttribute('aria-label') || ''));
+  if (isPending) {
+    return { success: true, ok: true, alreadyPending: true, method: 'dom', message: 'Invitation already pending' };
+  }
+
+  // 2. Find primary Connect button
+  let connectBtn = buttons.find((b) => {
+    const t = (b.textContent || '').trim();
+    const aria = b.getAttribute('aria-label') || '';
+    return (/^Connect$/i.test(t) || /Invite.*to connect/i.test(aria) || /Connect with/i.test(aria)) && !b.disabled;
+  });
+
+  // Check inside More dropdown if not visible on header
+  if (!connectBtn) {
+    const moreBtn = buttons.find((b) => {
+      const t = (b.textContent || '').trim();
+      const aria = b.getAttribute('aria-label') || '';
+      return (/^More$/i.test(t) || /More actions/i.test(aria) || aria.includes('More')) && !b.disabled;
+    });
+
+    if (moreBtn) {
+      moreBtn.click();
+      await sleep(500);
+      const dropdownItems = Array.from(document.querySelectorAll('.artdeco-dropdown__content button, [role="menu"] [role="menuitem"], .artdeco-dropdown__item'));
+      connectBtn = dropdownItems.find((item) => {
+        const t = (item.textContent || '').trim();
+        const aria = item.getAttribute('aria-label') || '';
+        return (/^Connect$/i.test(t) || /Connect/i.test(aria)) && !item.disabled;
+      });
+    }
+  }
+
+  if (!connectBtn) {
+    return { success: false, reason: 'Connect button not found on profile' };
+  }
+
+  if (typeof connectBtn.scrollIntoView === 'function') {
+    connectBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  await sleep(300);
+  connectBtn.click();
+  await sleep(800);
+
+  // 3. Handle modal dialog
+  const dialogSelectors = '[role="dialog"], .artdeco-modal, #artdeco-modal-outlet';
+  const dialogs = Array.from(document.querySelectorAll(dialogSelectors));
+  const activeDialog = dialogs.find((d) => d.offsetParent !== null) || dialogs[dialogs.length - 1];
+
+  if (activeDialog) {
+    const modalButtons = Array.from(activeDialog.querySelectorAll('button, [role="button"]'));
+
+    if (noteText && String(noteText).trim()) {
+      const addNoteBtn = modalButtons.find((b) => {
+        const t = (b.textContent || '').trim();
+        const aria = b.getAttribute('aria-label') || '';
+        return /Add a note/i.test(t) || /Add a note/i.test(aria);
+      });
+
+      if (addNoteBtn) {
+        addNoteBtn.click();
+        await sleep(400);
+
+        const textarea = activeDialog.querySelector('textarea, [name="message"]');
+        if (textarea) {
+          textarea.focus();
+          textarea.value = String(noteText);
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          await sleep(300);
+        }
+      }
+    }
+
+    const freshButtons = Array.from(activeDialog.querySelectorAll('button, [role="button"]'));
+    let sendBtn = null;
+
+    if (noteText && String(noteText).trim()) {
+      sendBtn = freshButtons.find((b) => {
+        const t = (b.textContent || '').trim();
+        const aria = b.getAttribute('aria-label') || '';
+        return (/^Send$/i.test(t) || /Send now/i.test(t) || /Send invitation/i.test(aria)) && !b.disabled;
+      });
+    }
+
+    if (!sendBtn) {
+      sendBtn = freshButtons.find((b) => {
+        const t = (b.textContent || '').trim();
+        const aria = b.getAttribute('aria-label') || '';
+        return (/Send without a note/i.test(t) || /Send without a note/i.test(aria) || /^Send$/i.test(t) || /Send now/i.test(t) || /Send invitation/i.test(aria)) && !b.disabled;
+      });
+    }
+
+    if (sendBtn) {
+      sendBtn.click();
+      await sleep(600);
+      return { success: true, ok: true, method: 'dom', sentWithoutNote: !noteText };
+    }
+  }
+
+  return { success: true, ok: true, method: 'dom', sentWithoutNote: true };
+}
+
+/**
+ * In-page DOM execution to follow a member from their profile page.
+ *
+ * @param {string} targetId
+ */
+export async function domFollowInPage(targetId) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  let buttons = [];
+  for (let i = 0; i < 5; i++) {
+    buttons = Array.from(
+      document.querySelectorAll(
+        'main button, .scaffold-layout__main button, [data-view-name="profile-card"] button, .pv-top-card-v2-ctas button, .pvs-profile-actions button',
+      ),
+    );
+    if (buttons.length) break;
+    await sleep(400);
+  }
+
+  // 1. Check if already following
+  const isFollowing = buttons.some((b) => {
+    const t = (b.textContent || '').trim();
+    const aria = b.getAttribute('aria-label') || '';
+    return (/^Following$/i.test(t) || /Following/i.test(aria) || b.getAttribute('aria-pressed') === 'true') && !b.disabled;
+  });
+
+  if (isFollowing) {
+    return { success: true, ok: true, alreadyFollowing: true, method: 'dom' };
+  }
+
+  // 2. Find Follow button
+  let followBtn = buttons.find((b) => {
+    const t = (b.textContent || '').trim();
+    const aria = b.getAttribute('aria-label') || '';
+    return (/^Follow$/i.test(t) || /Follow.*profile/i.test(aria) || /Follow with/i.test(aria)) && !b.disabled;
+  });
+
+  if (!followBtn) {
+    const moreBtn = buttons.find((b) => {
+      const t = (b.textContent || '').trim();
+      const aria = b.getAttribute('aria-label') || '';
+      return (/^More$/i.test(t) || /More actions/i.test(aria) || aria.includes('More')) && !b.disabled;
+    });
+
+    if (moreBtn) {
+      moreBtn.click();
+      await sleep(500);
+      const dropdownItems = Array.from(document.querySelectorAll('.artdeco-dropdown__content button, [role="menu"] [role="menuitem"], .artdeco-dropdown__item'));
+      followBtn = dropdownItems.find((item) => {
+        const t = (item.textContent || '').trim();
+        const aria = item.getAttribute('aria-label') || '';
+        return (/^Follow$/i.test(t) || /Follow/i.test(aria)) && !item.disabled;
+      });
+    }
+  }
+
+  if (!followBtn) {
+    return { success: false, reason: 'Follow button not found' };
+  }
+
+  if (typeof followBtn.scrollIntoView === 'function') {
+    followBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  await sleep(300);
+  followBtn.click();
+  await sleep(600);
+
+  return { success: true, ok: true, method: 'dom' };
+}
+
+/**
+ * In-page DOM execution to like a post from its URL.
+ *
+ * @param {string} postUrl
+ */
+export async function domLikePostInPage(postUrl) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  let buttons = [];
+  for (let i = 0; i < 5; i++) {
+    buttons = Array.from(
+      document.querySelectorAll(
+        'button[aria-label*="React Like"], button[aria-label*="Like"], button.react-button__trigger, .reactions-react-button button',
+      ),
+    );
+    if (buttons.length) break;
+    if (typeof window !== 'undefined' && typeof window.scrollBy === 'function') {
+      window.scrollBy(0, 200);
+    }
+    await sleep(400);
+  }
+
+  if (!buttons.length) {
+    return { success: false, reason: 'Like button not found on post' };
+  }
+
+  const likeBtn = buttons[0];
+
+  const isLiked =
+    likeBtn.getAttribute('aria-pressed') === 'true' ||
+    likeBtn.classList.contains('react-button--active') ||
+    /Unlike|Remove reaction/i.test(likeBtn.getAttribute('aria-label') || '');
+
+  if (isLiked) {
+    return { success: true, ok: true, alreadyLiked: true, method: 'dom' };
+  }
+
+  if (typeof likeBtn.scrollIntoView === 'function') {
+    likeBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  await sleep(300);
+  likeBtn.click();
+  await sleep(600);
+
+  return { success: true, ok: true, method: 'dom' };
+}
+
 /**
  * Withdraw a pending sent invitation using LinkedIn's current SDUI endpoint,
  * with automatic single-invite DOM fallback if SDUI returns 400/404/422.
@@ -1789,6 +2123,7 @@ export async function withdrawInvitation(invitationId, meta = {}) {
     if (hasExplicitError) {
       throw new EngineError(ERROR.LINKEDIN_ERROR, `SDUI action error: ${resText.slice(0, 300)}`);
     }
+    markEndpointHealthy('withdrawInvitation');
     return { ok: true, status: res?.status || 200, method: 'sdui_api', data: res };
   } catch (err) {
     const status = err?.status || err?.response?.status || err?.code || 0;
@@ -2028,6 +2363,8 @@ export async function sendSduiConnectionRequest({
       throw new EngineError(ERROR.LINKEDIN_ERROR, `SDUI action error: ${resText.slice(0, 300)}`);
     }
 
+    markEndpointHealthy('sendInvite');
+    markEndpointHealthy('sendInviteSdui');
     return {
       ok: true,
       invitationUrn: `urn:li:fsd_invitation:${cleanMemberId}`,
@@ -2173,7 +2510,15 @@ export async function sendInvite({
     }
   };
 
-  const urn = resolvedFsdProfileUrn || (id ? await resolveProfileUrn(id) : toFsdProfileUrn(profileUrn));
+  let urn = resolvedFsdProfileUrn;
+  if (!urn && id) {
+    try {
+      urn = await resolveProfileUrn(id);
+    } catch (_) {}
+  }
+  if (!urn) {
+    urn = toFsdProfileUrn(profileUrn) || (id ? `urn:li:fsd_profile:${id}` : '');
+  }
   resolvedFsdProfileUrn = urn;
 
   const sendSdui = async () => {
@@ -2205,19 +2550,116 @@ export async function sendInvite({
     });
   };
 
-  // If endpoint points to server-request or if sending blank invite with available memberId/id:
-  if (isServerRequestEndpoint && (resolvedMemberId || id)) {
-    return sendSdui();
-  }
-  if (!message && (resolvedMemberId || id)) {
-    return sendSdui();
+  const sendDom = async (customMsg) => {
+    if (!id || typeof chrome === 'undefined' || !chrome.tabs?.create) {
+      return null;
+    }
+    logDebug('warn', 'Outreach', `[sendInvite] Falling back to background DOM tab for ${id}`);
+    const domRes = await runDomActionInTab(
+      `https://www.linkedin.com/in/${id}/`,
+      domSendInviteInPage,
+      [id, customMsg],
+    );
+    if (domRes && (domRes.ok || domRes.success)) {
+      return {
+        ok: true,
+        invitationUrn: `urn:li:fsd_invitation:${resolvedMemberId || id}`,
+        inviteeUrn: urn || resolvedFsdProfileUrn || `urn:li:fsd_profile:${id}`,
+        method: 'dom',
+        sentWithoutNote: Boolean(domRes.sentWithoutNote),
+        ...(domRes.alreadyConnected ? { alreadyConnected: true } : {}),
+        ...(domRes.alreadyPending ? { alreadyPending: true } : {}),
+      };
+    }
+    if (domRes && domRes.reason) {
+      throw new EngineError(ERROR.LINKEDIN_ERROR, domRes.reason);
+    }
+    return null;
+  };
+
+  // Case A: Blank invitation (no custom message) OR endpoint explicitly configured as SDUI server-request
+  if (!message || isServerRequestEndpoint) {
+    if (!message) sentWithoutNote = true;
+    let sduiErr = null;
+
+    if (resolvedMemberId || id) {
+      try {
+        const sduiRes = await sendSdui();
+        return sduiRes;
+      } catch (err) {
+        sduiErr = err;
+        logDebug('warn', 'Outreach', `[sendInvite] SDUI layer failed: ${err?.message}`);
+        if (!canFallbackToDom(err)) {
+          throw err;
+        }
+      }
+    }
+
+    // Layer 2: Fallback to Legacy Voyager endpoint
+    try {
+      const raw = await sendLegacyPost('');
+      const val = (raw && raw.data && raw.data.value) || {};
+      const blankUrn = val['*invitation'] || val.invitationUrn || '';
+      if (blankUrn) {
+        markEndpointHealthy('sendInvite');
+        return {
+          invitationUrn: blankUrn,
+          inviteeUrn: val.inviteeUrn || val['*invitee'] || urn,
+          sentWithoutNote: true,
+        };
+      }
+      throw inviteFailure(raw, 'LinkedIn answered with no invitation urn.');
+    } catch (voyagerErr) {
+      logDebug('warn', 'Outreach', `[sendInvite] Legacy Voyager blank failed: ${voyagerErr?.message}`);
+      const payload = voyagerErr && voyagerErr.response;
+      const msg = (voyagerErr && voyagerErr.message) || 'LinkedIn refused the invitation.';
+      const data = (payload && payload.data) || payload || {};
+      const errCode = String(data.code || data.status || voyagerErr?.code || '');
+      const errMsg = String(data.message || msg);
+
+      if (looksLikePerProspectIssue(errCode, errMsg)) {
+        throw new EngineError(
+          ERROR.INVALID_PARAMS,
+          errCode ? `LinkedIn refused the invitation (${errCode}): ${errMsg}` : `LinkedIn refused the invitation: ${errMsg}`,
+          { howToFix: INVITE_DUPLICATE_FIX },
+        );
+      }
+
+      if (!canFallbackToDom(voyagerErr)) {
+        if (voyagerErr instanceof EngineError && voyagerErr.code !== ERROR.LINKEDIN_ERROR) throw voyagerErr;
+        throw inviteFailure(voyagerErr?.response, errMsg);
+      }
+
+      // Layer 3: Fallback to single background DOM tab
+      try {
+        const domResult = await sendDom('');
+        if (domResult) return domResult;
+      } catch (domErr) {
+        logDebug('warn', 'Outreach', `[sendInvite] DOM layer failed: ${domErr?.message}`);
+        throw domErr;
+      }
+
+      throw inviteFailure(voyagerErr?.response || sduiErr?.response, errMsg);
+    }
   }
 
+  // Case B: Personalized invitation with custom message
   let raw;
   const attemptedNote = Boolean(message);
 
   try {
     raw = await sendLegacyPost(message);
+    const val = (raw && raw.data && raw.data.value) || {};
+    const invUrn = val['*invitation'] || val.invitationUrn || '';
+    if (invUrn) {
+      markEndpointHealthy('sendInvite');
+      return {
+        invitationUrn: invUrn,
+        inviteeUrn: val.inviteeUrn || val['*invitee'] || urn,
+        ...(sentWithoutNote ? { sentWithoutNote: true } : {}),
+      };
+    }
+    throw inviteFailure(raw, 'LinkedIn answered with no invitation urn.');
   } catch (e) {
     const isCustomInviteLimit =
       e?.code === 'CUSTOM_INVITE_LIMIT_REACHED' ||
@@ -2248,7 +2690,7 @@ export async function sendInvite({
     const status = e?.status || e?.response?.status || 0;
     const isAllowanceLimit = looksLikeAllowance(errCode, errMsg);
 
-    // If verifyQuotaAndCreateV2 returns HTTP 400 (non-limit), fallback to SDUI addaAddConnection!
+    // If verifyQuotaAndCreateV2 returns HTTP 400 (non-limit), fallback to SDUI addaAddConnection
     if (status === 400 && !isAllowanceLimit && !isCustomInviteLimit && (resolvedMemberId || id)) {
       logDebug(
         'warn',
@@ -2258,18 +2700,38 @@ export async function sendInvite({
       try {
         return await sendSdui();
       } catch (sduiErr) {
-        logDebug('warn', 'Outreach', `[Outreach] SDUI fallback also failed: ${sduiErr?.message}`);
-        throw sduiErr;
+        logDebug('warn', 'Outreach', `[Outreach] SDUI fallback failed: ${sduiErr?.message}`);
+        if (!canFallbackToDom(sduiErr)) {
+          throw sduiErr;
+        }
       }
     }
 
-    // Fallback legacy blank retry for when no memberId/id was resolvable
+    // Fallback blank retry (SDUI blank -> legacy blank -> DOM)
     if (attemptedNote || isCustomInviteLimit) {
       logDebug(
         'warn',
         'Outreach',
         `[Outreach] Note rejected (status=${status}, code=${errCode}). Retrying blank connection request...`,
       );
+
+      // Try SDUI blank first if memberId/id available
+      if (resolvedMemberId || id) {
+        try {
+          const sduiRes = await sendSdui();
+          return {
+            ...sduiRes,
+            sentWithoutNote: true,
+          };
+        } catch (sduiErr) {
+          logDebug('warn', 'Outreach', `[Outreach] SDUI blank retry failed: ${sduiErr?.message}`);
+          if (!canFallbackToDom(sduiErr)) {
+            throw sduiErr;
+          }
+        }
+      }
+
+      // Try Voyager legacy blank retry
       try {
         raw = await sendLegacyPost('');
         const val = (raw && raw.data && raw.data.value) || {};
@@ -2277,9 +2739,14 @@ export async function sendInvite({
         if (blankUrn) {
           sentWithoutNote = true;
           await setNoteLimitActive(24 * 60 * 60 * 1000);
-        } else {
-          throw inviteFailure(e?.response || raw, e?.message || 'LinkedIn answered with no invitation urn.');
+          markEndpointHealthy('sendInvite');
+          return {
+            invitationUrn: blankUrn,
+            inviteeUrn: val.inviteeUrn || val['*invitee'] || urn,
+            sentWithoutNote: true,
+          };
         }
+        throw inviteFailure(e?.response || raw, e?.message || 'LinkedIn answered with no invitation urn.');
       } catch (blankErr) {
         logDebug(
           'warn',
@@ -2318,6 +2785,18 @@ export async function sendInvite({
         if (bStatus === 400 || bStatus === 404 || bStatus === 410 || bStatus === 422) {
           reportBrokenEndpoint('sendInvite', bStatus, basePath, blankErr).catch(() => {});
         }
+
+        // Try Layer 3: DOM Fallback
+        if (canFallbackToDom(blankErr)) {
+          try {
+            const domResult = await sendDom(isCustomInviteLimit ? '' : message);
+            if (domResult) return domResult;
+          } catch (domErr) {
+            logDebug('warn', 'Outreach', `[sendInvite] DOM layer failed: ${domErr?.message}`);
+            throw domErr;
+          }
+        }
+
         if (blankErr instanceof EngineError && blankErr.code !== ERROR.LINKEDIN_ERROR) throw blankErr;
         throw inviteFailure(
           blankPayload,
@@ -2336,6 +2815,18 @@ export async function sendInvite({
       if (eStatus === 400 || eStatus === 404 || eStatus === 410 || eStatus === 422) {
         reportBrokenEndpoint('sendInvite', eStatus, basePath, e).catch(() => {});
       }
+
+      // Try Layer 3: DOM Fallback
+      if (canFallbackToDom(e)) {
+        try {
+          const domResult = await sendDom(message);
+          if (domResult) return domResult;
+        } catch (domErr) {
+          logDebug('warn', 'Outreach', `[sendInvite] DOM layer failed: ${domErr?.message}`);
+          throw domErr;
+        }
+      }
+
       if (e instanceof EngineError && e.code !== ERROR.LINKEDIN_ERROR) throw e;
       throw inviteFailure(e && e.response, (e && e.message) || 'LinkedIn refused the invitation.');
     }
@@ -2347,7 +2838,11 @@ export async function sendInvite({
   // If answered without invitation urn on a note attempt, retry
   if (!invitationUrn && attemptedNote && !sentWithoutNote) {
     if (resolvedMemberId || id) {
-      return sendSdui();
+      try {
+        return await sendSdui();
+      } catch (sduiErr) {
+        logDebug('warn', 'Outreach', `[sendInvite] SDUI blank retry failed: ${sduiErr?.message}`);
+      }
     }
     logDebug(
       'warn',
@@ -2361,6 +2856,7 @@ export async function sendInvite({
       if (blankUrn) {
         sentWithoutNote = true;
         await setNoteLimitActive();
+        markEndpointHealthy('sendInvite');
         value = val;
         invitationUrn = blankUrn;
       } else {
@@ -2381,6 +2877,15 @@ export async function sendInvite({
         );
       }
 
+      if (canFallbackToDom(blankErr)) {
+        try {
+          const domResult = await sendDom('');
+          if (domResult) return domResult;
+        } catch (domErr) {
+          logDebug('warn', 'Outreach', `[sendInvite] DOM layer failed: ${domErr?.message}`);
+        }
+      }
+
       if (blankErr instanceof EngineError && blankErr.code !== ERROR.LINKEDIN_ERROR) throw blankErr;
       throw inviteFailure(blankPayload, blankMsg);
     }
@@ -2391,6 +2896,7 @@ export async function sendInvite({
   }
 
   return {
+    ok: true,
     invitationUrn,
     inviteeUrn: value.inviteeUrn || value['*invitee'] || urn,
     ...(sentWithoutNote ? { sentWithoutNote: true } : {}),
@@ -2517,6 +3023,26 @@ export async function follow({ publicId, profileUrn, memberId, following = true 
   }
 
   if (!resolvedMemberId) {
+    if (id && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      logDebug('warn', 'Voyager', `[Follow] No memberId resolvable, attempting DOM fallback for ${id}`);
+      try {
+        const domRes = await runDomActionInTab(
+          `https://www.linkedin.com/in/${id}/`,
+          domFollowInPage,
+          [id],
+        );
+        if (domRes && (domRes.ok || domRes.success)) {
+          return {
+            ok: true,
+            method: 'dom',
+            memberId: id,
+            ...(domRes.alreadyFollowing ? { alreadyFollowing: true } : {}),
+          };
+        }
+      } catch (domErr) {
+        logDebug('warn', 'Voyager', `[Follow] DOM fallback failed: ${domErr?.message}`);
+      }
+    }
     throw new EngineError(
       ERROR.NOT_FOUND,
       `Could not resolve a numeric memberId to follow ${publicId || profileUrn || 'prospect'}.`,
@@ -2583,6 +3109,7 @@ export async function follow({ publicId, profileUrn, memberId, following = true 
       throw new EngineError(ERROR.LINKEDIN_ERROR, `SDUI action error: ${resText.slice(0, 300)}`);
     }
 
+    markEndpointHealthy('follow');
     return { ok: true, method: 'sdui_api', data: res, memberId: resolvedMemberId };
   } catch (err) {
     const status = err?.status || err?.response?.status || 0;
@@ -2615,11 +3142,34 @@ export async function follow({ publicId, profileUrn, memberId, following = true 
             /^(?:\d+:)?E:|"actionStatus"\s*:\s*"FAILED"|"errorCode"\s*:/i.test(retryText) ||
             /"errorMessage"\s*:\s*"[^"]+"/i.test(retryText);
           if (!retryHasError) {
+            markEndpointHealthy('follow');
             return { ok: true, method: 'sdui_api_hotswap', data: retryRes, memberId: resolvedMemberId };
           }
         }
       } catch (_) {}
       reportBrokenEndpoint('follow', status, followPath, err).catch(() => {});
+
+      if (canFallbackToDom(err) && (publicId || id) && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+        const targetId = publicId || id;
+        logDebug('warn', 'Voyager', `[Follow] SDUI failed, falling back to background tab DOM for ${targetId}`);
+        try {
+          const domRes = await runDomActionInTab(
+            `https://www.linkedin.com/in/${targetId}/`,
+            domFollowInPage,
+            [targetId],
+          );
+          if (domRes && (domRes.ok || domRes.success)) {
+            return {
+              ok: true,
+              method: 'dom',
+              memberId: resolvedMemberId || targetId,
+              ...(domRes.alreadyFollowing ? { alreadyFollowing: true } : {}),
+            };
+          }
+        } catch (domErr) {
+          logDebug('warn', 'Voyager', `[Follow] DOM fallback failed: ${domErr?.message}`);
+        }
+      }
     }
 
     if (err instanceof EngineError) throw err;
@@ -2630,11 +3180,25 @@ export async function follow({ publicId, profileUrn, memberId, following = true 
 /**
  * Like a post via Flagship SDUI endpoint (com.linkedin.sdui.reactions.create).
  *
- * @param {{ postUrl: string, reactionType?: string }} params
- * @returns {Promise<{ ok: boolean, method: string, data: any, activityId: string }>}
+ * @param {{ postUrl?: string, publicId?: string, profileUrn?: string, reactionType?: string }} params
+ * @returns {Promise<{ ok: boolean, method: string, data?: any, activityId?: string, status?: string, reason?: string }>}
  */
-export async function likePost({ postUrl, reactionType = 'LIKE' }) {
-  const activityId = activityIdFromUrl(postUrl);
+export async function likePost({ postUrl, publicId, profileUrn, reactionType = 'LIKE' } = {}) {
+  let targetPostUrl = postUrl;
+  if (!targetPostUrl && (publicId || profileUrn)) {
+    try {
+      const posts = await getMemberPosts({ publicId, profileUrn, count: 1 });
+      targetPostUrl = posts?.[0]?.url;
+    } catch (e) {
+      logDebug('warn', 'Voyager', `[likePost] Failed to resolve latest member post: ${e?.message}`);
+    }
+  }
+
+  if (!targetPostUrl) {
+    return { ok: true, status: 'skipped', reason: 'no_post_url' };
+  }
+
+  const activityId = activityIdFromUrl(targetPostUrl);
   const sduiId = 'com.linkedin.sdui.reactions.create';
 
   const normReactionType =
@@ -2679,6 +3243,7 @@ export async function likePost({ postUrl, reactionType = 'LIKE' }) {
 
   const likePath =
     getEndpoint('likePost') ||
+    getEndpoint('like') ||
     `/flagship-web/rsc-action/actions/server-request?sduiid=${sduiId}`;
 
   try {
@@ -2700,6 +3265,8 @@ export async function likePost({ postUrl, reactionType = 'LIKE' }) {
       throw new EngineError(ERROR.LINKEDIN_ERROR, `SDUI action error: ${resText.slice(0, 300)}`);
     }
 
+    markEndpointHealthy('like');
+    markEndpointHealthy('likePost');
     return { ok: true, method: 'sdui_api', data: res, activityId };
   } catch (err) {
     const status = err?.status || err?.response?.status || 0;
@@ -2717,7 +3284,7 @@ export async function likePost({ postUrl, reactionType = 'LIKE' }) {
       try {
         const syncRes = await syncEndpointsFromVault(true);
         if (syncRes?.changed) {
-          const freshPath = getEndpoint('likePost');
+          const freshPath = getEndpoint('likePost') || getEndpoint('like');
           const retryRes = await voyagerFetch(freshPath, {
             method: 'POST',
             headers: {
@@ -2732,11 +3299,31 @@ export async function likePost({ postUrl, reactionType = 'LIKE' }) {
             /^(?:\d+:)?E:|"actionStatus"\s*:\s*"FAILED"|"errorCode"\s*:/i.test(retryText) ||
             /"errorMessage"\s*:\s*"[^"]+"/i.test(retryText);
           if (!retryHasError) {
+            markEndpointHealthy('like');
+            markEndpointHealthy('likePost');
             return { ok: true, method: 'sdui_api_hotswap', data: retryRes, activityId };
           }
         }
       } catch (_) {}
       reportBrokenEndpoint('likePost', status, likePath, err).catch(() => {});
+      reportBrokenEndpoint('like', status, likePath, err).catch(() => {});
+
+      if (canFallbackToDom(err) && targetPostUrl && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+        logDebug('warn', 'Voyager', `[likePost] SDUI failed, falling back to background tab DOM for ${targetPostUrl}`);
+        try {
+          const domRes = await runDomActionInTab(targetPostUrl, domLikePostInPage, [targetPostUrl]);
+          if (domRes && (domRes.ok || domRes.success)) {
+            return {
+              ok: true,
+              method: 'dom',
+              activityId,
+              ...(domRes.alreadyLiked ? { alreadyLiked: true } : {}),
+            };
+          }
+        } catch (domErr) {
+          logDebug('warn', 'Voyager', `[likePost] DOM fallback failed: ${domErr?.message}`);
+        }
+      }
     }
 
     if (err instanceof EngineError) throw err;

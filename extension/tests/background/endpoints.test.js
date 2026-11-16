@@ -7,6 +7,8 @@ import {
   syncEndpointsFromVault,
   reportBrokenEndpoint,
   runReadOnlyEndpointAudit,
+  markEndpointHealthy,
+  getConsecutiveFailures,
 } from '../../src/background/endpoints.js';
 
 describe('endpoints', () => {
@@ -211,5 +213,71 @@ describe('endpoints', () => {
     const brokenReport = reportCalls.find((c) => c.body.key === 'connectionsSummary');
     expect(brokenReport).toBeDefined();
     expect(brokenReport.body.status).toBe(404);
+  });
+
+  it('exposes follow, like, sendInviteSdui in DEFAULT_ENDPOINTS', () => {
+    expect(DEFAULT_ENDPOINTS.follow).toContain('addaUpdateFollowState');
+    expect(DEFAULT_ENDPOINTS.like).toContain('com.linkedin.sdui.reactions.create');
+    expect(DEFAULT_ENDPOINTS.sendInviteSdui).toContain('addaAddConnection');
+  });
+
+  it('tracks consecutive failures and markEndpointHealthy resets them', async () => {
+    const key = 'testEndpointReset';
+    expect(getConsecutiveFailures(key)).toBe(0);
+
+    // Call reportBrokenEndpoint twice with a 500 error
+    await reportBrokenEndpoint(key, 500, '/test', 'Internal Error');
+    expect(getConsecutiveFailures(key)).toBe(1);
+
+    await reportBrokenEndpoint(key, 500, '/test', 'Internal Error');
+    expect(getConsecutiveFailures(key)).toBe(2);
+
+    // Healthy 200 response resets counter to 0
+    markEndpointHealthy(key);
+    expect(getConsecutiveFailures(key)).toBe(0);
+  });
+
+  it('requires 3 consecutive failures before reporting to Vault on non-404 status', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchSpy;
+
+    const key = 'testConsecutiveThresh';
+    markEndpointHealthy(key);
+
+    // 1st failure: skipped
+    const res1 = await reportBrokenEndpoint(key, 500, '/test', 'Server error');
+    expect(res1.skipped).toBe(true);
+    expect(res1.reason).toContain('failures_below_threshold');
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    // 2nd failure: skipped
+    const res2 = await reportBrokenEndpoint(key, 500, '/test', 'Server error');
+    expect(res2.skipped).toBe(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    // 3rd failure: reported!
+    const res3 = await reportBrokenEndpoint(key, 500, '/test', 'Server error');
+    expect(res3.ok).toBe(true);
+    expect(res3.skipped).toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalled();
+  });
+
+  it('ignores per-prospect user errors without alerting Vault', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchSpy;
+
+    const key = 'testPerProspectErrors';
+    markEndpointHealthy(key);
+
+    const duplicateRes = await reportBrokenEndpoint(key, 400, '/test', { message: 'ALREADY_CONNECTED' });
+    expect(duplicateRes.skipped).toBe(true);
+    expect(duplicateRes.reason).toBe('per_prospect_error');
+
+    const limitRes = await reportBrokenEndpoint(key, 400, '/test', { code: 'INVITE_LIMIT' });
+    expect(limitRes.skipped).toBe(true);
+    expect(limitRes.reason).toBe('per_prospect_error');
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(getConsecutiveFailures(key)).toBe(0);
   });
 });

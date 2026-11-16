@@ -1459,6 +1459,122 @@ describe('writes', () => {
     expect(v.activityIdFromUrl('7467566204094943232')).toBe('7467566204094943232');
     expect(() => v.activityIdFromUrl('https://example.com/invalid')).toThrow();
   });
+
+  describe('zero-downtime 3-layer execution pipeline (SDUI -> Voyager -> DOM)', () => {
+    it('canFallbackToDom guards against rate-limits, auth challenges, and per-prospect errors', () => {
+      expect(v.canFallbackToDom({ status: 429, message: 'Too many requests' })).toBe(false);
+      expect(v.canFallbackToDom({ status: 999, message: 'Security checkpoint' })).toBe(false);
+      expect(v.canFallbackToDom({ message: 'ALREADY_CONNECTED' })).toBe(false);
+      expect(v.canFallbackToDom({ message: 'INVITE_LIMIT reached' })).toBe(false);
+
+      expect(v.canFallbackToDom({ status: 500, message: 'Internal Server Error' })).toBe(true);
+      expect(v.canFallbackToDom({ status: 404, message: 'Not Found' })).toBe(true);
+      expect(v.canFallbackToDom(new Error('Network error'))).toBe(true);
+    });
+
+    it('sendInvite falls back to DOM tab when SDUI and Voyager API fail with 500 error', async () => {
+      // First call (SDUI) fails with 500
+      net.push(status(500, { message: 'SDUI error' }));
+      // Second call (Voyager legacy blank) fails with 500
+      net.push(status(500, { message: 'Voyager error' }));
+
+      const origTabs = chrome.tabs;
+      const origScripting = chrome.scripting;
+
+      chrome.tabs = {
+        create: vi.fn().mockResolvedValue({ id: 101, status: 'complete' }),
+        remove: vi.fn().mockResolvedValue(true),
+        get: vi.fn().mockResolvedValue({ id: 101, status: 'complete' }),
+        onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+      };
+      chrome.scripting = {
+        executeScript: vi.fn().mockResolvedValue([
+          { result: { ok: true, success: true, method: 'dom', sentWithoutNote: true } },
+        ]),
+      };
+
+      try {
+        const res = await v.sendInvite({
+          publicId: 'testprospect',
+          memberId: '12345678',
+        });
+        expect(res.ok).toBe(true);
+        expect(res.method).toBe('dom');
+        expect(res.sentWithoutNote).toBe(true);
+        expect(chrome.tabs.create).toHaveBeenCalled();
+        expect(chrome.scripting.executeScript).toHaveBeenCalled();
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(101);
+      } finally {
+        chrome.tabs = origTabs;
+        chrome.scripting = origScripting;
+      }
+    });
+
+    it('follow falls back to DOM tab when SDUI fails with 500 error', async () => {
+      net.push(status(500, { message: 'Follow SDUI 500' }));
+
+      const origTabs = chrome.tabs;
+      const origScripting = chrome.scripting;
+
+      chrome.tabs = {
+        create: vi.fn().mockResolvedValue({ id: 102, status: 'complete' }),
+        remove: vi.fn().mockResolvedValue(true),
+        get: vi.fn().mockResolvedValue({ id: 102, status: 'complete' }),
+        onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+      };
+      chrome.scripting = {
+        executeScript: vi.fn().mockResolvedValue([
+          { result: { ok: true, success: true, method: 'dom', alreadyFollowing: false } },
+        ]),
+      };
+
+      try {
+        const res = await v.follow({
+          publicId: 'followprospect',
+          memberId: '87654321',
+        });
+        expect(res.ok).toBe(true);
+        expect(res.method).toBe('dom');
+        expect(chrome.tabs.create).toHaveBeenCalled();
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(102);
+      } finally {
+        chrome.tabs = origTabs;
+        chrome.scripting = origScripting;
+      }
+    });
+
+    it('likePost falls back to DOM tab when SDUI fails with 500 error', async () => {
+      net.push(status(500, { message: 'Like SDUI 500' }));
+
+      const origTabs = chrome.tabs;
+      const origScripting = chrome.scripting;
+
+      chrome.tabs = {
+        create: vi.fn().mockResolvedValue({ id: 103, status: 'complete' }),
+        remove: vi.fn().mockResolvedValue(true),
+        get: vi.fn().mockResolvedValue({ id: 103, status: 'complete' }),
+        onUpdated: { addListener: vi.fn(), removeListener: vi.fn() },
+      };
+      chrome.scripting = {
+        executeScript: vi.fn().mockResolvedValue([
+          { result: { ok: true, success: true, method: 'dom', alreadyLiked: true } },
+        ]),
+      };
+
+      try {
+        const res = await v.likePost({
+          postUrl: POST_URL,
+        });
+        expect(res.ok).toBe(true);
+        expect(res.method).toBe('dom');
+        expect(chrome.tabs.create).toHaveBeenCalled();
+        expect(chrome.tabs.remove).toHaveBeenCalledWith(103);
+      } finally {
+        chrome.tabs = origTabs;
+        chrome.scripting = origScripting;
+      }
+    });
+  });
 });
 
 /* ================================================================== */

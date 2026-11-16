@@ -1345,6 +1345,47 @@ describe('writes', () => {
     expect(call.json.messageSubtype).toBe('INMAIL');
   });
 
+  it('sendSduiConnectionRequest sends exact SDUI structure with top-level requestId, requestedArguments, and valid nonIterableProfileId', async () => {
+    net.push(landed({ status: 200, text: '1:{"ok":true}' }));
+    const res = await v.sendSduiConnectionRequest({
+      publicId: 'adalovelace',
+      fsdProfileUrn: 'urn:li:fsd_profile:ACoAAA0106FIXTURE',
+      memberId: '900100',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+    });
+    expect(res.ok).toBe(true);
+    expect(res.method).toBe('sdui_api');
+    expect(res.invitationUrn).toBe('urn:li:fsd_invitation:900100');
+    expect(res.inviteeUrn).toBe('urn:li:fsd_profile:ACoAAA0106FIXTURE');
+
+    const call = net.calls[0];
+    expect(call.method).toBe('POST');
+    expect(call.url).toContain(
+      '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaAddConnection',
+    );
+    expect(call.json.requestId).toBe('com.linkedin.sdui.requests.mynetwork.addaAddConnection');
+    expect(call.json.requestedArguments).toBeDefined();
+    expect(call.json.serverRequest.requestId).toBe('com.linkedin.sdui.requests.mynetwork.addaAddConnection');
+    expect(call.json.serverRequest.requestedArguments).toEqual(call.json.requestedArguments);
+    expect(call.json.requestedArguments.payload.nonIterableProfileId).toBe(
+      'urn:li:fsd_profile:ACoAAA0106FIXTURE',
+    );
+    expect(call.json.requestedArguments.payload.inviteeUrn).toEqual({ memberId: '900100' });
+  });
+
+  it('sendSduiConnectionRequest ensures nonIterableProfileId is always a valid fsd_profile urn even when fsdProfileUrn is missing', async () => {
+    net.push(landed({ status: 200, text: '1:{"ok":true}' }));
+    await v.sendSduiConnectionRequest({
+      publicId: 'adalovelace',
+      memberId: '900100',
+    });
+    const call = net.calls[0];
+    expect(call.json.requestedArguments.payload.nonIterableProfileId).toBe(
+      'urn:li:fsd_profile:adalovelace',
+    );
+  });
+
   it('follow sends SDUI addaUpdateFollowState request when memberId is provided', async () => {
     net.push(landed({ status: 200, text: '1:{"ok":true}' }));
     const res = await v.follow({ memberId: '900100' });

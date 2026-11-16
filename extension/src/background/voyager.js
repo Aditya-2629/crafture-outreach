@@ -1943,10 +1943,20 @@ export async function sendSduiConnectionRequest({
 }) {
   const cleanMemberId = String(memberId || '').replace(/^urn:li:member:/, '').replace(/\D+/g, '') || String(memberId || '');
   const cleanPublicId = String(publicId || '').trim();
-  const cleanFsdProfileUrn = toFsdProfileUrn(fsdProfileUrn) || (fsdProfileUrn ? String(fsdProfileUrn) : '');
+  let cleanFsdProfileUrn = toFsdProfileUrn(fsdProfileUrn) || (fsdProfileUrn ? String(fsdProfileUrn) : '');
 
   if (!cleanMemberId) {
     throw new EngineError(ERROR.INVALID_PARAMS, 'Valid numeric memberId is required for SDUI connect');
+  }
+
+  if (!cleanFsdProfileUrn || !cleanFsdProfileUrn.startsWith('urn:li:fsd_profile:')) {
+    const cleanProfileId =
+      (fsdProfileUrn && String(fsdProfileUrn).replace(/^urn:li:(?:fsd_profile|fs_miniProfile|fs_profile|member):/, '')) ||
+      cleanPublicId ||
+      cleanMemberId;
+    if (cleanProfileId) {
+      cleanFsdProfileUrn = `urn:li:fsd_profile:${cleanProfileId}`;
+    }
   }
 
   const requestedArguments = {
@@ -1987,6 +1997,8 @@ export async function sendSduiConnectionRequest({
   };
 
   const sduiPayload = {
+    requestId: 'com.linkedin.sdui.requests.mynetwork.addaAddConnection',
+    requestedArguments,
     serverRequest,
     states: [],
   };

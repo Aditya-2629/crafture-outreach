@@ -52,8 +52,8 @@ const SENDERS = {
     await putProfile({ ...profile, profileViewedAt: Date.now() });
     return profile;
   },
-  [ACTIONS.OUTREACH_FOLLOW]: async ({ publicId, profileUrn }) =>
-    voyager.follow({ publicId, profileUrn: profileUrn || (await meteredProfileUrn(publicId)) }),
+  [ACTIONS.OUTREACH_FOLLOW]: async ({ publicId, profileUrn, memberId }) =>
+    voyager.follow({ publicId, profileUrn: profileUrn || (await meteredProfileUrn(publicId)), memberId }),
   [ACTIONS.OUTREACH_INVITE]: async ({ publicId, note, profileUrn, memberId, firstName, lastName }) =>
     voyager.sendInvite({
       publicId,

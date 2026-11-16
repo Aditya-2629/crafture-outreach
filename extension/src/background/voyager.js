@@ -15,7 +15,7 @@
  */
 
 import { ERROR, EngineError, INVITE_NOTE_FIX, INVITE_NOTE_MAX } from '../lib/actions.js';
-import { isNoteLimitActive, setNoteLimitActive, logDebug } from '../lib/storage.js';
+import { isNoteLimitActive, setNoteLimitActive, logDebug, getStoredProfile } from '../lib/storage.js';
 import { noteBucketBackoff } from './quota.js';
 import { collection } from './normalized.js';
 import { getEndpoint, syncEndpointsFromVault, reportBrokenEndpoint } from './endpoints.js';
@@ -279,18 +279,25 @@ function requireCollection(name, raw) {
 /*  URL parsing                                                       */
 /* ================================================================== */
 
-/** `https://www.linkedin.com/feed/update/urn:li:activity:123/` → the urn. */
-export function activityUrnFromUrl(postUrl) {
-  const str = String(postUrl || '');
+/** Extract numeric activityId from post URL or URN. */
+export function activityIdFromUrl(postUrl) {
+  const str = String(postUrl || '').trim();
   const direct = str.match(/urn:li:(?:activity|ugcPost|share):(\d+)/);
-  if (direct) return `urn:li:activity:${direct[1]}`;
-  const legacy = str.match(/activity[-:](\d{10,})/);
-  if (legacy) return `urn:li:activity:${legacy[1]}`;
+  if (direct) return direct[1];
+  const legacy = str.match(/activity[-:](\d+)/);
+  if (legacy) return legacy[1];
+  const digits = str.match(/(\d{10,})/);
+  if (digits) return digits[1];
   throw new EngineError(
     ERROR.INVALID_PARAMS,
-    'Could not read an activity urn from that post URL.',
+    'Could not read an activity ID from that post URL or URN.',
     { howToFix: 'Use the post permalink, e.g. .../feed/update/urn:li:activity:1234567890/' },
   );
+}
+
+/** `https://www.linkedin.com/feed/update/urn:li:activity:123/` → the urn. */
+export function activityUrnFromUrl(postUrl) {
+  return `urn:li:activity:${activityIdFromUrl(postUrl)}`;
 }
 
 export function groupUrnFromUrl(groupUrl) {
@@ -2457,27 +2464,272 @@ export async function sendInMail({ recipientUrn, publicId, subject, body }) {
   return sendMessage({ recipientUrn, publicId, body, subtype: 'INMAIL', inmailSubject: subject });
 }
 
-/** Follow (or unfollow) a member without connecting. Unverified. */
-export async function follow({ publicId, profileUrn, following = true }) {
-  const urn = toFsdProfileUrn(profileUrn) || (await resolveProfileUrn(publicId));
-  const stateUrn = encodeURIComponent(`urn:li:fsd_followingState:${urn}`);
-  return unverified('followingStates', () =>
-    voyagerFetch(`${ENDPOINTS.unverified.followingStates}/${stateUrn}?action=toggleFollow`, {
+/**
+ * Follow (or unfollow) a member using LinkedIn Flagship SDUI endpoint (addaUpdateFollowState).
+ *
+ * @param {{ publicId?: string, profileUrn?: string, memberId?: string|number, following?: boolean }} params
+ * @returns {Promise<{ ok: boolean, method: string, data: any, memberId: string }>}
+ */
+export async function follow({ publicId, profileUrn, memberId, following = true }) {
+  let resolvedMemberId = memberId
+    ? String(memberId).replace(/^urn:li:member:/, '').replace(/\D+/g, '')
+    : '';
+
+  if (!resolvedMemberId && profileUrn) {
+    const match = String(profileUrn).match(/(?:urn:li:member:|fsd_profile:)(\d+)/);
+    if (match) resolvedMemberId = match[1];
+  }
+
+  const id = publicId || (profileUrn && !String(profileUrn).match(/^\d+$/) ? String(profileUrn).replace(/^urn:li:(?:fsd_profile|member):/, '') : '');
+
+  if (!resolvedMemberId && id) {
+    try {
+      const stored = await getStoredProfile(id);
+      if (stored?.memberId) {
+        resolvedMemberId = String(stored.memberId).replace(/\D+/g, '');
+      } else if (stored?.objectUrn) {
+        resolvedMemberId = String(stored.objectUrn).replace(/^urn:li:member:/, '').replace(/\D+/g, '');
+      }
+    } catch (_) {}
+  }
+
+  if (!resolvedMemberId && id) {
+    try {
+      const p = await getProfileNormalized(id);
+      if (p) {
+        resolvedMemberId = p.memberId || (p.objectUrn ? String(p.objectUrn).replace(/^urn:li:member:/, '').replace(/\D+/g, '') : '');
+      }
+    } catch (e) {
+      logDebug('warn', 'Voyager', `[Follow] Could not fetch profile for memberId resolution: ${e?.message}`);
+    }
+  }
+
+  if (!resolvedMemberId) {
+    throw new EngineError(
+      ERROR.NOT_FOUND,
+      `Could not resolve a numeric memberId to follow ${publicId || profileUrn || 'prospect'}.`,
+    );
+  }
+
+  const sduiId = 'com.linkedin.sdui.requests.mynetwork.addaUpdateFollowState';
+  const followStateType = following ? 'FollowStateType_FOLLOW_ACTIVE' : 'FollowStateType_UNFOLLOW';
+
+  const requestedArguments = {
+    $type: 'proto.sdui.actions.requests.RequestedArguments',
+    knownTemplateIds: [],
+    payload: {
+      followStateBinding: {
+        key: `urn:li:fsd_followingState:urn:li:member:${resolvedMemberId}`,
+        namespace: null,
+      },
+      followStateType,
+      memberUrn: {
+        memberId: String(resolvedMemberId),
+      },
+    },
+    requestMetadata: {
+      $type: 'proto.sdui.common.RequestMetadata',
+    },
+    requestedStateKeys: [],
+    screenId: '',
+    states: [],
+  };
+
+  const sduiPayload = {
+    requestId: sduiId,
+    requestedArguments,
+    serverRequest: {
+      isApfcEnabled: false,
+      isStreaming: false,
+      requestId: sduiId,
+      requestedArguments,
+      rumPageKey: '',
+    },
+    states: [],
+  };
+
+  const followPath =
+    getEndpoint('follow') ||
+    `/flagship-web/rsc-action/actions/server-request?sduiid=${sduiId}`;
+
+  try {
+    const res = await voyagerFetch(followPath, {
       method: 'POST',
-      body: { patch: { $set: { following: !!following } } },
-    }),
-  );
+      headers: {
+        accept: 'application/json, text/plain, */*',
+        'content-type': 'application/json; charset=UTF-8',
+      },
+      body: sduiPayload,
+      rawText: true,
+    });
+
+    const resText = typeof res === 'string' ? res : (res?.text || '');
+    const hasExplicitError =
+      /^(?:\d+:)?E:|"actionStatus"\s*:\s*"FAILED"|"errorCode"\s*:/i.test(resText) ||
+      /"errorMessage"\s*:\s*"[^"]+"/i.test(resText);
+    if (hasExplicitError) {
+      throw new EngineError(ERROR.LINKEDIN_ERROR, `SDUI action error: ${resText.slice(0, 300)}`);
+    }
+
+    return { ok: true, method: 'sdui_api', data: res, memberId: resolvedMemberId };
+  } catch (err) {
+    const status = err?.status || err?.response?.status || 0;
+    const isNetworkError = !status && /fetch|network|timeout|connection|offline/i.test(String(err?.message || ''));
+    const isSduiRejection =
+      status === 400 ||
+      status === 404 ||
+      status === 410 ||
+      status === 422 ||
+      status >= 500 ||
+      isNetworkError ||
+      /400|404|410|422|500|502|503|SDUI action error/i.test(String(err?.message));
+
+    if (isSduiRejection) {
+      try {
+        const syncRes = await syncEndpointsFromVault(true);
+        if (syncRes?.changed) {
+          const freshPath = getEndpoint('follow');
+          const retryRes = await voyagerFetch(freshPath, {
+            method: 'POST',
+            headers: {
+              accept: 'application/json, text/plain, */*',
+              'content-type': 'application/json; charset=UTF-8',
+            },
+            body: sduiPayload,
+            rawText: true,
+          });
+          const retryText = typeof retryRes === 'string' ? retryRes : (retryRes?.text || '');
+          const retryHasError =
+            /^(?:\d+:)?E:|"actionStatus"\s*:\s*"FAILED"|"errorCode"\s*:/i.test(retryText) ||
+            /"errorMessage"\s*:\s*"[^"]+"/i.test(retryText);
+          if (!retryHasError) {
+            return { ok: true, method: 'sdui_api_hotswap', data: retryRes, memberId: resolvedMemberId };
+          }
+        }
+      } catch (_) {}
+      reportBrokenEndpoint('follow', status, followPath, err).catch(() => {});
+    }
+
+    if (err instanceof EngineError) throw err;
+    throw new EngineError(ERROR.LINKEDIN_ERROR, `Follow failed: ${err?.message || err}`);
+  }
 }
 
-/** Like a post. Unverified. */
+/**
+ * Like a post via Flagship SDUI endpoint (com.linkedin.sdui.reactions.create).
+ *
+ * @param {{ postUrl: string, reactionType?: string }} params
+ * @returns {Promise<{ ok: boolean, method: string, data: any, activityId: string }>}
+ */
 export async function likePost({ postUrl, reactionType = 'LIKE' }) {
-  const threadUrn = activityUrnFromUrl(postUrl);
-  return unverified('createReaction', () =>
-    voyagerFetch(`${ENDPOINTS.unverified.createReaction}?${qs({ threadUrn })}`, {
+  const activityId = activityIdFromUrl(postUrl);
+  const sduiId = 'com.linkedin.sdui.reactions.create';
+
+  const normReactionType =
+    reactionType && String(reactionType).startsWith('ReactionType_')
+      ? reactionType
+      : `ReactionType_${String(reactionType || 'LIKE').toUpperCase()}`;
+
+  const requestedArguments = {
+    $type: 'proto.sdui.actions.requests.RequestedArguments',
+    knownTemplateIds: [],
+    payload: {
+      reactionSource: 'Update',
+      reactionType: normReactionType,
+      threadUrn: {
+        threadUrnActivityThreadUrn: {
+          activityUrn: {
+            activityId: String(activityId),
+          },
+        },
+      },
+    },
+    requestMetadata: {
+      $type: 'proto.sdui.common.RequestMetadata',
+    },
+    requestedStateKeys: [],
+    screenId: 'com.linkedin.sdui.flagshipnav.profile.Profile',
+    states: [],
+  };
+
+  const sduiPayload = {
+    requestId: sduiId,
+    requestedArguments,
+    serverRequest: {
+      isApfcEnabled: false,
+      isStreaming: false,
+      requestId: sduiId,
+      requestedArguments,
+      rumPageKey: '',
+    },
+    states: [],
+  };
+
+  const likePath =
+    getEndpoint('likePost') ||
+    `/flagship-web/rsc-action/actions/server-request?sduiid=${sduiId}`;
+
+  try {
+    const res = await voyagerFetch(likePath, {
       method: 'POST',
-      body: { reactionType, threadUrn },
-    }),
-  );
+      headers: {
+        accept: 'application/json, text/plain, */*',
+        'content-type': 'application/json; charset=UTF-8',
+      },
+      body: sduiPayload,
+      rawText: true,
+    });
+
+    const resText = typeof res === 'string' ? res : (res?.text || '');
+    const hasExplicitError =
+      /^(?:\d+:)?E:|"actionStatus"\s*:\s*"FAILED"|"errorCode"\s*:/i.test(resText) ||
+      /"errorMessage"\s*:\s*"[^"]+"/i.test(resText);
+    if (hasExplicitError) {
+      throw new EngineError(ERROR.LINKEDIN_ERROR, `SDUI action error: ${resText.slice(0, 300)}`);
+    }
+
+    return { ok: true, method: 'sdui_api', data: res, activityId };
+  } catch (err) {
+    const status = err?.status || err?.response?.status || 0;
+    const isNetworkError = !status && /fetch|network|timeout|connection|offline/i.test(String(err?.message || ''));
+    const isSduiRejection =
+      status === 400 ||
+      status === 404 ||
+      status === 410 ||
+      status === 422 ||
+      status >= 500 ||
+      isNetworkError ||
+      /400|404|410|422|500|502|503|SDUI action error/i.test(String(err?.message));
+
+    if (isSduiRejection) {
+      try {
+        const syncRes = await syncEndpointsFromVault(true);
+        if (syncRes?.changed) {
+          const freshPath = getEndpoint('likePost');
+          const retryRes = await voyagerFetch(freshPath, {
+            method: 'POST',
+            headers: {
+              accept: 'application/json, text/plain, */*',
+              'content-type': 'application/json; charset=UTF-8',
+            },
+            body: sduiPayload,
+            rawText: true,
+          });
+          const retryText = typeof retryRes === 'string' ? retryRes : (retryRes?.text || '');
+          const retryHasError =
+            /^(?:\d+:)?E:|"actionStatus"\s*:\s*"FAILED"|"errorCode"\s*:/i.test(retryText) ||
+            /"errorMessage"\s*:\s*"[^"]+"/i.test(retryText);
+          if (!retryHasError) {
+            return { ok: true, method: 'sdui_api_hotswap', data: retryRes, activityId };
+          }
+        }
+      } catch (_) {}
+      reportBrokenEndpoint('likePost', status, likePath, err).catch(() => {});
+    }
+
+    if (err instanceof EngineError) throw err;
+    throw new EngineError(ERROR.LINKEDIN_ERROR, `Like post failed: ${err?.message || err}`);
+  }
 }
 
 /** Comment on a post. Unverified. */

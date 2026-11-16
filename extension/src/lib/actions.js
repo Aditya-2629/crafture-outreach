@@ -504,7 +504,10 @@ const PARAM_SPECS = {
   [ACTIONS.NETWORK_WITHDRAW_AUTO_STATUS]: {},
 
   [ACTIONS.OUTREACH_VIEW]: { required: { publicId: 'string' } },
-  [ACTIONS.OUTREACH_FOLLOW]: { required: { publicId: 'string' } },
+  [ACTIONS.OUTREACH_FOLLOW]: {
+    required: { publicId: 'string' },
+    optional: { profileUrn: 'string', memberId: 'string', dryRun: 'boolean' },
+  },
   [ACTIONS.OUTREACH_INVITE]: {
     required: { publicId: 'string' },
     optional: { note: 'string', dryRun: 'boolean' },

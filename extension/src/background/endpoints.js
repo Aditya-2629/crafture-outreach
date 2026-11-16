@@ -25,6 +25,10 @@ export const DEFAULT_ENDPOINTS = Object.freeze({
   sendInvite: '/voyagerRelationshipsDashMemberRelationships',
   withdrawInvitation:
     '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation',
+  likePost:
+    '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.reactions.create',
+  follow:
+    '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaUpdateFollowState',
 });
 
 const STORAGE_ENDPOINTS_KEY = 'outfox_remote_endpoints';

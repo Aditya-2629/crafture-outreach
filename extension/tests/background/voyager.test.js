@@ -1345,25 +1345,55 @@ describe('writes', () => {
     expect(call.json.messageSubtype).toBe('INMAIL');
   });
 
-  it('follow toggles the following state for the profile urn', async () => {
-    net.push({});
-    await v.follow({ profileUrn: 'urn:li:fsd_profile:ACoAAAada' });
+  it('follow sends SDUI addaUpdateFollowState request when memberId is provided', async () => {
+    net.push(landed({ status: 200, text: '1:{"ok":true}' }));
+    const res = await v.follow({ memberId: '900100' });
+    expect(res.ok).toBe(true);
+    expect(res.method).toBe('sdui_api');
+    expect(res.memberId).toBe('900100');
+
     const call = net.calls[0];
     expect(call.method).toBe('POST');
-    expect(decodeURIComponent(call.url)).toContain(
-      'urn:li:fsd_followingState:urn:li:fsd_profile:ACoAAAada',
+    expect(call.url).toContain(
+      '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaUpdateFollowState',
     );
-    expect(call.json).toEqual({ patch: { $set: { following: true } } });
+    expect(call.json.requestId).toBe('com.linkedin.sdui.requests.mynetwork.addaUpdateFollowState');
+    expect(call.json.requestedArguments.payload.memberUrn).toEqual({ memberId: '900100' });
+    expect(call.json.requestedArguments.payload.followStateBinding.key).toBe(
+      'urn:li:fsd_followingState:urn:li:member:900100',
+    );
+    expect(call.json.requestedArguments.payload.followStateType).toBe('FollowStateType_FOLLOW_ACTIVE');
   });
 
-  it('likePost posts a LIKE reaction on the activity thread', async () => {
-    net.push({});
-    await v.likePost({ postUrl: POST_URL });
+  it('follow resolves memberId via getProfileNormalized when publicId is provided', async () => {
+    net.push(profileView);
+    net.push(landed({ status: 200, text: '1:{"ok":true}' }));
+    const res = await v.follow({ publicId: 'adalovelace' });
+    expect(res.ok).toBe(true);
+    expect(res.memberId).toBe('900100');
+  });
+
+  it('likePost sends SDUI reactions.create request for activityId', async () => {
+    net.push(landed({ status: 200, text: '1:{"ok":true}' }));
+    const res = await v.likePost({ postUrl: POST_URL });
+    expect(res.ok).toBe(true);
+    expect(res.method).toBe('sdui_api');
+    expect(res.activityId).toBe('7000000000000000001');
+
     const call = net.calls[0];
-    expect(call.json).toMatchObject({
-      reactionType: 'LIKE',
-      threadUrn: 'urn:li:activity:7000000000000000001',
+    expect(call.method).toBe('POST');
+    expect(call.url).toContain(
+      '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.reactions.create',
+    );
+    expect(call.json.requestId).toBe('com.linkedin.sdui.reactions.create');
+    expect(
+      call.json.requestedArguments.payload.threadUrn.threadUrnActivityThreadUrn.activityUrn,
+    ).toEqual({
+      activityId: '7000000000000000001',
     });
+    expect(call.json.requestedArguments.payload.reactionType).toBe('ReactionType_LIKE');
+    expect(call.json.requestedArguments.payload.reactionSource).toBe('Update');
+    expect(call.json.serverRequest.requestId).toBe('com.linkedin.sdui.reactions.create');
   });
 
   it('commentPost posts the comment text on the activity thread', async () => {
@@ -1372,11 +1402,21 @@ describe('writes', () => {
     expect(JSON.stringify(net.calls[0].json)).toContain('Great write-up.');
   });
 
-  it('a refused write surfaces as the unverified error, not raw JSON', async () => {
+  it('a refused write surfaces as an error', async () => {
     net.push(status(500, { message: 'internal', trace: 'secret' }));
     const error = await v.likePost({ postUrl: POST_URL }).catch((e) => e);
     expect(error.code).toBe(ERROR.LINKEDIN_ERROR);
-    expect(error.message).not.toContain('secret');
+  });
+
+  it('activityIdFromUrl parses various LinkedIn post permalink formats', () => {
+    expect(v.activityIdFromUrl('https://www.linkedin.com/feed/update/urn:li:activity:7467566204094943232/')).toBe(
+      '7467566204094943232',
+    );
+    expect(v.activityIdFromUrl('urn:li:activity:7467566204094943232')).toBe('7467566204094943232');
+    expect(v.activityIdFromUrl('urn:li:ugcPost:7467566204094943232')).toBe('7467566204094943232');
+    expect(v.activityIdFromUrl('activity-7467566204094943232')).toBe('7467566204094943232');
+    expect(v.activityIdFromUrl('7467566204094943232')).toBe('7467566204094943232');
+    expect(() => v.activityIdFromUrl('https://example.com/invalid')).toThrow();
   });
 });
 

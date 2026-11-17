@@ -392,9 +392,13 @@ export async function renderHomeView(container, ctx = {}) {
   const displayGreeting = firstName.toLowerCase();
   const initials = rawName.split(/[\s-_]+/).map((n) => n[0]).slice(0, 2).join('').toUpperCase() || 'AC';
 
-  let activeChartAction = 'invitations';
+  const savedHomeState = ctx?.getSavedState?.() || {};
+  if (savedHomeState.selectedDays) selectedDays = savedHomeState.selectedDays;
+  if (savedHomeState.selectedCampaignId) selectedCampaignId = savedHomeState.selectedCampaignId;
+  let activeChartAction = savedHomeState.activeChartAction || 'invitations';
 
   function paint() {
+    const scrollPos = ctx?.getScrollPosition?.(container);
     const campaigns = Array.isArray(storage.campaigns) ? storage.campaigns : [];
 
     // Ensure selectedCampaignId is valid
@@ -802,6 +806,7 @@ export async function renderHomeView(container, ctx = {}) {
 
     container.querySelector('#home-filter-range')?.addEventListener('change', async (e) => {
       selectedDays = e.target.value;
+      ctx?.saveState?.({ selectedDays, selectedCampaignId, activeChartAction });
       const latestStorage = await new Promise((r) => chrome.storage.local.get(null, r)).catch(() => null);
       if (latestStorage && typeof latestStorage === 'object') storage = latestStorage;
       paint();
@@ -809,6 +814,7 @@ export async function renderHomeView(container, ctx = {}) {
 
     container.querySelector('#home-filter-campaign')?.addEventListener('change', async (e) => {
       selectedCampaignId = e.target.value;
+      ctx?.saveState?.({ selectedDays, selectedCampaignId, activeChartAction });
       const latestStorage = await new Promise((r) => chrome.storage.local.get(null, r)).catch(() => null);
       if (latestStorage && typeof latestStorage === 'object') storage = latestStorage;
       paint();
@@ -817,6 +823,7 @@ export async function renderHomeView(container, ctx = {}) {
     container.querySelectorAll('.action-type-pill').forEach((pill) => {
       pill.addEventListener('click', () => {
         activeChartAction = pill.dataset.action;
+        ctx?.saveState?.({ selectedDays, selectedCampaignId, activeChartAction });
         paint();
       });
     });
@@ -879,6 +886,30 @@ export async function renderHomeView(container, ctx = {}) {
         });
       });
     }
+
+    ctx?.restoreScrollPosition?.(container, scrollPos);
+  }
+
+  let storageDebounceTimer = null;
+  const storageListener = (changes, area) => {
+    if (area !== 'local') return;
+    clearTimeout(storageDebounceTimer);
+    storageDebounceTimer = setTimeout(async () => {
+      if (!ctx.isActiveView || ctx.isActiveView()) {
+        const latestStorage = await new Promise((r) => chrome.storage.local.get(null, r)).catch(() => null);
+        if (latestStorage) {
+          storage = latestStorage;
+          paint();
+        }
+      }
+    }, 150);
+  };
+  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.addListener(storageListener);
+    ctx.registerCleanup?.(() => {
+      clearTimeout(storageDebounceTimer);
+      chrome.storage.onChanged.removeListener(storageListener);
+    });
   }
 
   paint();

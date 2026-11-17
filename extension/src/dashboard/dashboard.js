@@ -50,12 +50,150 @@ export function showToast(message, type = 'info') {
   }, 3200);
 }
 
+const UI_STATE_KEY = 'outfox_ui_state';
+
+/**
+ * Read global UI state from sessionStorage
+ */
+export function getSavedUiState() {
+  try {
+    if (typeof sessionStorage === 'undefined') return {};
+    const raw = sessionStorage.getItem(UI_STATE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Save partial top-level UI state to sessionStorage
+ */
+export function saveUiState(partial) {
+  try {
+    if (typeof sessionStorage === 'undefined') return {};
+    const current = getSavedUiState();
+    const updated = { ...current, ...partial };
+    sessionStorage.setItem(UI_STATE_KEY, JSON.stringify(updated));
+    return updated;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Read per-view UI state
+ */
+export function getViewUiState(viewId) {
+  const state = getSavedUiState();
+  return (state.views && state.views[viewId]) || {};
+}
+
+/**
+ * Save per-view UI state
+ */
+export function saveViewUiState(viewId, partial) {
+  try {
+    if (typeof sessionStorage === 'undefined') return {};
+    const current = getSavedUiState();
+    const views = current.views || {};
+    views[viewId] = { ...(views[viewId] || {}), ...partial };
+    current.views = views;
+    sessionStorage.setItem(UI_STATE_KEY, JSON.stringify(current));
+    return views[viewId];
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Safely sync window location hash (e.g. #campaigns:completed) without jarring refresh
+ */
+export function updateHash(viewId, subState = null) {
+  try {
+    if (typeof window === 'undefined' || !window.location) return;
+    const targetHash = subState ? `${viewId}:${subState}` : viewId;
+    if (window.location.hash.replace('#', '') !== targetHash) {
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', `#${targetHash}`);
+      } else {
+        window.location.hash = targetHash;
+      }
+    }
+  } catch {}
+}
+
+/**
+ * Capture current scroll positions of the active view and main canvas
+ */
+export function getScrollPosition(element) {
+  const mainCanvas = typeof document !== 'undefined' ? document.querySelector('.main-canvas') : null;
+  const innerScroll = element?.querySelector?.(
+    '.crm-table-container, .inbox-threads-list, .queue-table-container, .queue-table-scroll, .OutFox-settings-layout, .campaigns-view-shell, .templates-view-shell'
+  );
+  return {
+    windowTop: typeof window !== 'undefined' ? (window.scrollY || document.documentElement?.scrollTop || 0) : 0,
+    mainCanvasTop: mainCanvas ? mainCanvas.scrollTop : 0,
+    innerTop: innerScroll ? innerScroll.scrollTop : (element ? element.scrollTop : 0),
+  };
+}
+
+/**
+ * Smoothly restore captured scroll positions
+ */
+export function restoreScrollPosition(element, pos) {
+  if (!pos) return;
+  const apply = () => {
+    if (pos.mainCanvasTop != null) {
+      const mainCanvas = typeof document !== 'undefined' ? document.querySelector('.main-canvas') : null;
+      if (mainCanvas && typeof mainCanvas.scrollTop === 'number') {
+        mainCanvas.scrollTop = pos.mainCanvasTop;
+      }
+    }
+    if (pos.innerTop != null) {
+      const innerScroll = element?.querySelector?.(
+        '.crm-table-container, .inbox-threads-list, .queue-table-container, .queue-table-scroll, .OutFox-settings-layout, .campaigns-view-shell, .templates-view-shell'
+      );
+      if (innerScroll && typeof innerScroll.scrollTop === 'number') {
+        innerScroll.scrollTop = pos.innerTop;
+      } else if (element && typeof element.scrollTop === 'number') {
+        element.scrollTop = pos.innerTop;
+      }
+    }
+    if (pos.windowTop != null && typeof window !== 'undefined') {
+      try {
+        if ((window.scrollY || document.documentElement?.scrollTop) !== pos.windowTop) {
+          if (typeof window.scrollTo === 'function') {
+            window.scrollTo({ top: pos.windowTop, behavior: 'instant' });
+          }
+        }
+      } catch {}
+    }
+  };
+
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(apply);
+  } else {
+    setTimeout(apply, 0);
+  }
+}
+
 /**
  * Switch active dashboard view
- * @param {'home'|'prospects'|'campaigns'|'inbox'|'settings'} viewId
- * @param {object} options Extra props (e.g. openWizard: true)
+ * @param {'home'|'prospects'|'campaigns'|'queue'|'templates'|'inbox'|'research'|'settings'} viewId
+ * @param {object} options Extra props (e.g. openWizard: true, subState: 'completed')
  */
 export async function switchView(viewId, options = {}) {
+  // Support viewId formatted as "view:subState"
+  let targetView = viewId;
+  let targetSubState = options.subState || options.tab || null;
+  if (typeof viewId === 'string' && viewId.includes(':')) {
+    const parts = viewId.split(':');
+    targetView = parts[0];
+    if (!targetSubState && parts[1]) {
+      targetSubState = parts[1];
+    }
+  }
+
   const appRoot = document.getElementById('app-root');
   if (!appRoot) return;
 
@@ -77,7 +215,7 @@ export async function switchView(viewId, options = {}) {
     activeViewCleanup = null;
   }
 
-  currentViewId = viewId;
+  currentViewId = targetView;
   const crumb = document.getElementById('topbar-crumb-title');
   if (crumb) {
     const titles = {
@@ -90,13 +228,13 @@ export async function switchView(viewId, options = {}) {
       research: 'Research',
       settings: 'Settings',
     };
-    crumb.textContent = titles[viewId] || 'Overview';
+    crumb.textContent = titles[targetView] || 'Overview';
   }
 
   // 2. Update navigation items active state (.is-active)
   const navItems = document.querySelectorAll('.sidebar-nav .nav-item');
   navItems.forEach((btn) => {
-    const isTarget = btn.dataset.view === viewId || (btn.dataset.view === 'campaigns' && (viewId === 'queue' || viewId === 'templates'));
+    const isTarget = btn.dataset.view === targetView || (btn.dataset.view === 'campaigns' && (targetView === 'queue' || targetView === 'templates'));
     btn.classList.toggle('is-active', isTarget);
     btn.classList.toggle('active', isTarget);
     btn.setAttribute('aria-selected', isTarget ? 'true' : 'false');
@@ -104,37 +242,65 @@ export async function switchView(viewId, options = {}) {
 
   // Subnav active states
   document.querySelectorAll('.sidebar-subnav .subnav-item').forEach((sb) => {
-    const isTarget = sb.dataset.view === viewId;
+    const isTarget = sb.dataset.view === targetView;
     sb.classList.toggle('is-active', isTarget);
   });
   const campGrp = document.getElementById('nav-group-campaigns');
-  if (campGrp) campGrp.classList.toggle('is-open', viewId === 'campaigns' || viewId === 'queue' || viewId === 'templates');
+  if (campGrp) campGrp.classList.toggle('is-open', targetView === 'campaigns' || targetView === 'queue' || targetView === 'templates');
 
-  // 3. Keep hash synced for browser back/forward and bookmarks
-  try {
-    if (window.location.hash.replace('#', '') !== viewId) {
-      window.location.hash = viewId;
-    }
-  } catch {}
+  // Restore subState from saved state if not explicitly passed
+  const savedState = getViewUiState(targetView);
+  if (!targetSubState) {
+    targetSubState = savedState.activeSubTab || savedState.activeCategory || savedState.activeTab || null;
+  }
+
+  // Keep hash and sessionStorage synced
+  updateHash(targetView, targetSubState);
+  saveUiState({
+    activeView: targetView,
+    subState: targetSubState,
+  });
+  if (targetSubState) {
+    saveViewUiState(targetView, { activeSubTab: targetSubState });
+  }
 
   const ctx = {
     switchView,
     showToast,
     token,
     isStale: () => token !== currentRenderToken,
-    isActiveView: () => currentViewId === viewId && token === currentRenderToken,
+    isActiveView: () => currentViewId === targetView && token === currentRenderToken,
     registerCleanup: (fn) => {
       if (token === currentRenderToken) {
         activeViewCleanup = fn;
       }
     },
     onLiveUpdate: null,
+    getSavedState: () => getViewUiState(targetView),
+    saveState: (partial) => {
+      const updated = saveViewUiState(targetView, partial);
+      const sub = partial.activeSubTab || partial.activeCategory || partial.activeTab;
+      if (sub) {
+        saveUiState({ activeView: targetView, subState: sub });
+        updateHash(targetView, sub);
+      }
+      return updated;
+    },
+    updateSubState: (sub) => {
+      saveUiState({ activeView: targetView, subState: sub });
+      saveViewUiState(targetView, { activeSubTab: sub });
+      updateHash(targetView, sub);
+    },
+    getScrollPosition: (el) => getScrollPosition(el),
+    restoreScrollPosition: (el, pos) => restoreScrollPosition(el, pos),
+    subState: targetSubState,
+    tab: targetSubState,
     ...options,
   };
   currentViewContext = ctx;
 
   // 3. Render appropriate view
-  switch (viewId) {
+  switch (targetView) {
     case 'home':
       await renderHomeView(appRoot, ctx);
       break;
@@ -265,18 +431,36 @@ async function initDashboard() {
     console.warn('[Dashboard] status check warning', e);
   }
 
-  // 4. Initial view selection from URL hash or default to 'home'
-  const initialHash = window.location.hash.replace('#', '').trim();
-  const validViews = ['home', 'prospects', 'campaigns', 'queue', 'templates', 'inbox', 'settings'];
-  const startView = validViews.includes(initialHash) ? initialHash : 'home';
+  // 4. Initial view selection from URL hash or sessionStorage or default to 'home'
+  const validViews = ['home', 'prospects', 'campaigns', 'queue', 'templates', 'inbox', 'research', 'settings'];
+  const rawHash = (typeof window !== 'undefined' && window.location?.hash ? window.location.hash : '').replace('#', '').trim();
+  let startView = 'home';
+  let initialSubState = null;
 
-  await switchView(startView);
+  if (rawHash) {
+    const [hView, hSub] = rawHash.split(':');
+    if (validViews.includes(hView)) {
+      startView = hView;
+      initialSubState = hSub || null;
+    }
+  } else {
+    const saved = getSavedUiState();
+    if (saved && saved.activeView && validViews.includes(saved.activeView)) {
+      startView = saved.activeView;
+      initialSubState = saved.subState || null;
+    }
+  }
+
+  await switchView(startView, initialSubState ? { subState: initialSubState } : {});
 
   // 5. Handle back/forward navigation
   window.addEventListener('hashchange', () => {
-    const currentHash = window.location.hash.replace('#', '').trim();
-    if (validViews.includes(currentHash) && currentHash !== currentViewId) {
-      switchView(currentHash);
+    const currentHash = (window.location.hash || '').replace('#', '').trim();
+    const [hView, hSub] = currentHash.split(':');
+    if (validViews.includes(hView)) {
+      if (hView !== currentViewId || (hSub && hSub !== currentViewContext?.subState)) {
+        switchView(hView, hSub ? { subState: hSub } : {});
+      }
     }
   });
 

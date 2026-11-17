@@ -357,8 +357,11 @@ function ensureSettingsStyles() {
 
 export async function renderSettingsView(container, ctx = {}) {
   if (!container) return;
-  if (ctx && ctx.tab) {
-    activeSettingsTab = ctx.tab;
+  const savedSettingsState = ctx?.getSavedState?.() || {};
+  if (ctx && (ctx.subState || ctx.tab)) {
+    activeSettingsTab = ctx.subState || ctx.tab;
+  } else if (savedSettingsState.activeSubTab || savedSettingsState.activeSettingsTab) {
+    activeSettingsTab = savedSettingsState.activeSubTab || savedSettingsState.activeSettingsTab;
   }
   ensureSettingsStyles();
 
@@ -380,23 +383,6 @@ export async function renderSettingsView(container, ctx = {}) {
   let statusData = {};
   let autoCleanState = { active: false, totalWithdrawnToday: 0 };
 
-  try {
-    const [cRes, sRes, sHealth, statRes, autoCleanRes] = await Promise.all([
-      call(ACTIONS.CONFIG_GET, {}).catch(() => ({})),
-      new Promise((r) => chrome.storage.local.get(null, r)),
-      getStorageHealth().catch(() => ({ isIdbActive: false, profileCount: 0 })),
-      call(ACTIONS.STATUS_GET, {}).catch(() => ({})),
-      call(ACTIONS.NETWORK_WITHDRAW_AUTO_STATUS, {}).catch(() => null),
-    ]);
-    config = cRes || {};
-    storage = sRes || {};
-    storageHealth = sHealth || { isIdbActive: false, profileCount: 0 };
-    statusData = statRes || {};
-    autoCleanState = autoCleanRes || storage.outfox_withdraw_cleanup_state || { active: false, totalWithdrawnToday: 0 };
-  } catch (e) {
-    console.warn('[Settings View] Read error', e);
-  }
-
   const defaultDays = {
     MONDAY: true,
     TUESDAY: true,
@@ -406,24 +392,88 @@ export async function renderSettingsView(container, ctx = {}) {
     SATURDAY: true,
     SUNDAY: true,
   };
-  let workingDays = config.workingDays || defaultDays;
-  let startMinutes = Number.isInteger(config.startMinutes) ? config.startMinutes : 0;
-  let endMinutes = Number.isInteger(config.endMinutes) ? config.endMinutes : 1439;
+  let workingDays = defaultDays;
+  let startMinutes = 0;
+  let endMinutes = 1439;
 
-  let maxInvites = config.dailyInviteCap || 25;
-  let weeklyInviteCap = config.weeklyInviteCap || 150;
-  let maxMessages = config.dailyMessageCap || 40;
-  let maxVisits = config.dailyVisitCap || 120;
-  let maxFollows = config.dailyFollowCap || 100;
-  let maxEmails = config.dailyEmailCap || 50;
-  let accountPreset = config.accountPreset || 'free';
-  let warmupEnabled = Boolean(config.warmup?.enabled);
-  let humanPacing = config.humanPacing !== false;
-  let autoWithdraw = config.autoWithdraw || { enabled: true, olderThanDays: 14, maxPerRun: 15 };
-  let dedupeAcrossCampaigns = config.dedupeAcrossCampaigns !== false;
+  let maxInvites = 25;
+  let weeklyInviteCap = 150;
+  let maxMessages = 40;
+  let maxVisits = 120;
+  let maxFollows = 100;
+  let maxEmails = 50;
+  let accountPreset = 'free';
+  let warmupEnabled = false;
+  let humanPacing = true;
+  let autoWithdraw = { enabled: true, olderThanDays: 14, maxPerRun: 15 };
+  let dedupeAcrossCampaigns = true;
+  let selectedTz = 'Asia/Kolkata';
 
-  // Selected timezone: storage.timezone || config.timezone || 'Asia/Kolkata'
-  let selectedTz = storage.timezone || config.timezone || 'Asia/Kolkata';
+  let mailbox = {};
+  let googleWorkspace = {};
+  let emailAccounts = [];
+  let signatures = [];
+  let defaultSigId = 'none';
+  let activeEditingSig = null;
+  let aiModels = [];
+  let importHistory = [];
+
+  async function refreshSettingsData() {
+    try {
+      const [cRes, sRes, sHealth, statRes, autoCleanRes] = await Promise.all([
+        call(ACTIONS.CONFIG_GET, {}).catch(() => ({})),
+        new Promise((r) => chrome.storage.local.get(null, r)),
+        getStorageHealth().catch(() => ({ isIdbActive: false, profileCount: 0 })),
+        call(ACTIONS.STATUS_GET, {}).catch(() => ({})),
+        call(ACTIONS.NETWORK_WITHDRAW_AUTO_STATUS, {}).catch(() => null),
+      ]);
+      config = cRes || {};
+      storage = sRes || {};
+      storageHealth = sHealth || { isIdbActive: false, profileCount: 0 };
+      statusData = statRes || {};
+      autoCleanState = autoCleanRes || storage.outfox_withdraw_cleanup_state || { active: false, totalWithdrawnToday: 0 };
+
+      workingDays = config.workingDays || defaultDays;
+      startMinutes = Number.isInteger(config.startMinutes) ? config.startMinutes : 0;
+      endMinutes = Number.isInteger(config.endMinutes) ? config.endMinutes : 1439;
+
+      maxInvites = config.dailyInviteCap || 25;
+      weeklyInviteCap = config.weeklyInviteCap || 150;
+      maxMessages = config.dailyMessageCap || 40;
+      maxVisits = config.dailyVisitCap || 120;
+      maxFollows = config.dailyFollowCap || 100;
+      maxEmails = config.dailyEmailCap || 50;
+      accountPreset = config.accountPreset || 'free';
+      warmupEnabled = Boolean(config.warmup?.enabled);
+      humanPacing = config.humanPacing !== false;
+      autoWithdraw = config.autoWithdraw || { enabled: true, olderThanDays: 14, maxPerRun: 15 };
+      dedupeAcrossCampaigns = config.dedupeAcrossCampaigns !== false;
+      selectedTz = storage.timezone || config.timezone || 'Asia/Kolkata';
+
+      mailbox = config.mailbox || {};
+      googleWorkspace = config.googleWorkspace || {};
+      emailAccounts = Array.isArray(storage.emailAccounts) ? storage.emailAccounts : [];
+      if (mailbox.connected && mailbox.email && !emailAccounts.find((a) => a.email === mailbox.email)) {
+        emailAccounts.unshift({
+          id: 'acc_gmail_primary',
+          provider: 'google',
+          email: mailbox.email,
+          senderName: config.senderName || 'Aditya Chaudhary',
+          status: 'active',
+          connectedAt: Date.now(),
+        });
+      }
+
+      signatures = Array.isArray(storage.emailSignatures) ? storage.emailSignatures : [];
+      defaultSigId = config.defaultSignatureId || (signatures[0]?.id || 'none');
+      aiModels = Array.isArray(storage.ai_models) ? storage.ai_models : [];
+      importHistory = Array.isArray(storage.importHistory) ? storage.importHistory : [];
+    } catch (e) {
+      console.warn('[Settings View] refreshSettingsData error', e);
+    }
+  }
+
+  await refreshSettingsData();
 
   function formatMinsToAmPm(mins) {
     const h = Math.floor(mins / 60);
@@ -463,29 +513,8 @@ export async function renderSettingsView(container, ctx = {}) {
     return '';
   }
 
-  let mailbox = config.mailbox || {};
-  let googleWorkspace = config.googleWorkspace || {};
-  let emailAccounts = Array.isArray(storage.emailAccounts) ? storage.emailAccounts : [];
-  if (mailbox.connected && mailbox.email && !emailAccounts.find((a) => a.email === mailbox.email)) {
-    emailAccounts.unshift({
-      id: 'acc_gmail_primary',
-      provider: 'google',
-      email: mailbox.email,
-      senderName: config.senderName || 'Aditya Chaudhary',
-      status: 'active',
-      connectedAt: Date.now(),
-    });
-  }
-
-  let signatures = Array.isArray(storage.emailSignatures) ? storage.emailSignatures : [];
-  let defaultSigId = config.defaultSignatureId || 'none';
-  let activeEditingSig = null;
-
-  let aiModels = Array.isArray(storage.ai_models) ? storage.ai_models : [];
-
-  let importHistory = Array.isArray(storage.importHistory) ? storage.importHistory : [];
-
   function paint() {
+    const scrollPos = ctx?.getScrollPosition?.(container);
     const tzData = getTzDetails(selectedTz);
     const isTodayActive = workingDays[tzData.weekday] !== false;
     const isTimeActive = tzData.mins >= startMinutes && tzData.mins <= endMinutes;
@@ -1232,12 +1261,15 @@ export async function renderSettingsView(container, ctx = {}) {
     `;
 
     wireEvents();
+    ctx?.restoreScrollPosition?.(container, scrollPos);
   }
 
   function wireEvents() {
     container.querySelectorAll('.settings-menu-item').forEach((item) => {
       item.addEventListener('click', () => {
         activeSettingsTab = item.dataset.tab;
+        ctx?.updateSubState?.(activeSettingsTab);
+        ctx?.saveState?.({ activeSubTab: activeSettingsTab, activeSettingsTab });
         paint();
       });
     });
@@ -1671,10 +1703,11 @@ export async function renderSettingsView(container, ctx = {}) {
 
     container.querySelector('#btn-open-connect-modal')?.addEventListener('click', () => {
       openConnectEmailModal({
-        onSuccess: (newAccount) => {
+        onSuccess: async (newAccount) => {
           emailAccounts.push(newAccount);
-          chrome.storage.local.set({ emailAccounts });
+          await chrome.storage.local.set({ emailAccounts });
           ctx.showToast?.(`Email account connected: ${newAccount.email}`, 'success');
+          await refreshSettingsData();
           paint();
         },
       });
@@ -1690,6 +1723,7 @@ export async function renderSettingsView(container, ctx = {}) {
           await call(ACTIONS.GMAIL_DISCONNECT, {}).catch(() => {});
         }
         ctx.showToast?.('Email account disconnected.', 'info');
+        await refreshSettingsData();
         paint();
       });
     });
@@ -1760,9 +1794,7 @@ export async function renderSettingsView(container, ctx = {}) {
     container.querySelector('#btn-connect-google-ws')?.addEventListener('click', async () => {
       try {
         await call(ACTIONS.GOOGLE_WORKSPACE_CONNECT, { interactive: true });
-        config = await call(ACTIONS.CONFIG_GET, {});
-        googleWorkspace = config.googleWorkspace || {};
-        mailbox = config.mailbox || {};
+        await refreshSettingsData();
         ctx.showToast?.('Google Workspace connected successfully!', 'success');
         paint();
       } catch (err) {
@@ -1780,9 +1812,7 @@ export async function renderSettingsView(container, ctx = {}) {
       if (ok) {
         try {
           await call(ACTIONS.GOOGLE_WORKSPACE_DISCONNECT, {});
-          config = await call(ACTIONS.CONFIG_GET, {});
-          googleWorkspace = config.googleWorkspace || {};
-          mailbox = config.mailbox || {};
+          await refreshSettingsData();
           ctx.showToast?.('Google Workspace disconnected.', 'info');
           paint();
         } catch (err) {
@@ -1801,8 +1831,7 @@ export async function renderSettingsView(container, ctx = {}) {
       try {
         const res = await call(ACTIONS.SHEETS_CRM_SYNC_NOW, {}, { timeoutMs: 90000 });
         ctx.showToast?.(`Synced ${res.rowsSynced || 0} leads to Google Sheet!`, 'success');
-        config = await call(ACTIONS.CONFIG_GET, {});
-        googleWorkspace = config.googleWorkspace || {};
+        await refreshSettingsData();
         paint();
       } catch (err) {
         ctx.showToast?.(err.message || 'Failed to sync leads to sheet', 'error');
@@ -1827,8 +1856,7 @@ export async function renderSettingsView(container, ctx = {}) {
       try {
         await call(ACTIONS.BACKUP_DRIVE_SAVE, {}, { timeoutMs: 90000 });
         ctx.showToast?.('Saved snapshot to Google Drive (OutFox Backups/outfox-backup.json)!', 'success');
-        config = await call(ACTIONS.CONFIG_GET, {});
-        googleWorkspace = config.googleWorkspace || {};
+        await refreshSettingsData();
         paint();
       } catch (err) {
         ctx.showToast?.(err.message || 'Drive backup failed', 'error');
@@ -1853,7 +1881,8 @@ export async function renderSettingsView(container, ctx = {}) {
         try {
           const res = await call(ACTIONS.BACKUP_DRIVE_RESTORE, {}, { timeoutMs: 90000 });
           ctx.showToast?.(`Restored ${res.keysRestored || 0} collections from Google Drive!`, 'success');
-          setTimeout(() => window.location.reload(), 1200);
+          await refreshSettingsData();
+          paint();
         } catch (err) {
           ctx.showToast?.(err.message || 'Drive restore failed', 'error');
         }
@@ -1903,7 +1932,8 @@ export async function renderSettingsView(container, ctx = {}) {
           if (ok) {
             const res = await call(ACTIONS.BACKUP_IMPORT_JSON, { snapshot: json });
             ctx.showToast?.(`Restored ${res.keysRestored || 0} collections successfully!`, 'success');
-            setTimeout(() => window.location.reload(), 1200);
+            await refreshSettingsData();
+            paint();
           }
         } catch (err) {
           ctx.showToast?.('Invalid JSON backup file: ' + err.message, 'error');
@@ -1932,6 +1962,7 @@ export async function renderSettingsView(container, ctx = {}) {
               },
             });
           }
+          await refreshSettingsData();
           paint();
         },
       });
@@ -1967,7 +1998,10 @@ export async function renderSettingsView(container, ctx = {}) {
 
     // 4. Telegram Mobile AI Assistant
     container.querySelector('#btn-setup-telegram')?.addEventListener('click', () => {
-      openTelegramGuideModal(() => paint());
+      openTelegramGuideModal(async () => {
+        await refreshSettingsData();
+        paint();
+      });
     });
 
     // 4. Webhooks (Zapier & Make)
@@ -1985,8 +2019,28 @@ export async function renderSettingsView(container, ctx = {}) {
         await new Promise((r) => chrome.storage.local.set({ webhookUrl: url }, r));
         await call(ACTIONS.CONFIG_SET, { config: { webhookUrl: url } });
         ctx.showToast?.('Webhook URL saved successfully!', 'success');
+        await refreshSettingsData();
         paint();
       }
+    });
+  }
+
+  let storageDebounceTimer = null;
+  const storageListener = (changes, area) => {
+    if (area !== 'local') return;
+    clearTimeout(storageDebounceTimer);
+    storageDebounceTimer = setTimeout(async () => {
+      if (!ctx.isActiveView || ctx.isActiveView()) {
+        await refreshSettingsData();
+        paint();
+      }
+    }, 150);
+  };
+  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.addListener(storageListener);
+    ctx.registerCleanup?.(() => {
+      clearTimeout(storageDebounceTimer);
+      chrome.storage.onChanged.removeListener(storageListener);
     });
   }
 

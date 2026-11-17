@@ -1751,8 +1751,9 @@ export async function renderCampaignsView(container, ctx = {}) {
   let customNote = selectedTemplate.steps?.find((s) => s.type === 'invite')?.note || 'Hi {{firstName|there}} — would love to connect!';
   let useAiHook = true;
 
-  let activeStateTab = 'running'; // 'running' | 'paused' | 'draft' | 'archived'
-  let campSearchQuery = '';
+  const savedCampState = ctx.getSavedState?.() || {};
+  let activeStateTab = ctx.subState || ctx.tab || savedCampState.activeSubTab || 'running';
+  let campSearchQuery = savedCampState.searchQuery || '';
   let currentWizardStep = 1;
   let wizardTemplate = null;
 
@@ -1768,6 +1769,7 @@ export async function renderCampaignsView(container, ctx = {}) {
   // STATE A: Campaigns List & Management (Frames 14 & 15 / Screenshot 3)
   // =========================================================================
   function renderList() {
+    const scrollPos = ctx.getScrollPosition?.(container);
     const now = Date.now();
     const autoPilotStatus = computeAutoPilotStatus(campaigns, allStorage, currentConfig, currentAlarm, now);
     const enrichedCampaigns = campaigns.map((camp) => {
@@ -2069,6 +2071,7 @@ export async function renderCampaignsView(container, ctx = {}) {
     `;
 
     wireListEvents();
+    ctx.restoreScrollPosition?.(container, scrollPos);
   }
 
   function wireListEvents() {
@@ -2091,6 +2094,8 @@ export async function renderCampaignsView(container, ctx = {}) {
     container.querySelectorAll('.camp-state-tab').forEach((tab) => {
       tab.addEventListener('click', () => {
         activeStateTab = tab.dataset.tab;
+        ctx.updateSubState?.(activeStateTab);
+        ctx.saveState?.({ activeSubTab: activeStateTab, searchQuery: campSearchQuery });
         renderList();
       });
     });
@@ -2099,6 +2104,7 @@ export async function renderCampaignsView(container, ctx = {}) {
     if (searchInp) {
       searchInp.addEventListener('input', (e) => {
         campSearchQuery = e.target.value;
+        ctx.saveState?.({ activeSubTab: activeStateTab, searchQuery: campSearchQuery });
         renderList();
         const updated = container.querySelector('#input-camp-search');
         if (updated) {
@@ -2107,6 +2113,15 @@ export async function renderCampaignsView(container, ctx = {}) {
         }
       });
     }
+
+    const refreshAndRenderList = async () => {
+      const scrollPos = ctx.getScrollPosition?.(container);
+      const freshCamps = await call(ACTIONS.CAMPAIGN_GET_ALL, {}).catch(() => []);
+      campaigns = Array.isArray(freshCamps) ? freshCamps : (freshCamps?.campaigns || []);
+      allStorage = await new Promise((r) => chrome.storage.local.get(null, r));
+      renderList();
+      ctx.restoreScrollPosition?.(container, scrollPos);
+    };
 
     container.querySelectorAll('.btn-camp-3dots').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -2186,7 +2201,7 @@ export async function renderCampaignsView(container, ctx = {}) {
             }
             await call(ACTIONS.CAMPAIGN_ENROLL, { campaignId: id, publicIds: ids });
             ctx.showToast?.(`Enrolled ${ids.length} prospects into "${camp.name}"!`, 'success');
-            renderCampaignsView(container, ctx);
+            await refreshAndRenderList();
           }
         } else if (action === 'duplicate') {
           const cloned = {
@@ -2199,7 +2214,7 @@ export async function renderCampaignsView(container, ctx = {}) {
           delete cloned.stats;
           await call(ACTIONS.CAMPAIGN_CREATE, cloned);
           ctx.showToast?.(`Campaign "${camp.name}" duplicated!`, 'success');
-          renderCampaignsView(container, ctx);
+          await refreshAndRenderList();
         } else if (action === 'toggle_pause') {
           const isPaused = camp.status === 'paused';
           if (isPaused) {
@@ -2209,7 +2224,7 @@ export async function renderCampaignsView(container, ctx = {}) {
             await call(ACTIONS.CAMPAIGN_PAUSE, { campaignId: id });
             ctx.showToast?.(`Campaign "${camp.name}" paused.`, 'info');
           }
-          renderCampaignsView(container, ctx);
+          await refreshAndRenderList();
         } else if (action === 'archive') {
           const storage = await new Promise((r) => chrome.storage.local.get(['campaigns'], r));
           const allCamps = storage.campaigns || [];
@@ -2218,7 +2233,7 @@ export async function renderCampaignsView(container, ctx = {}) {
             found.status = 'archived';
             await chrome.storage.local.set({ campaigns: allCamps });
             ctx.showToast?.(`Campaign "${camp.name}" archived.`, 'info');
-            renderCampaignsView(container, ctx);
+            await refreshAndRenderList();
           }
         } else if (action === 'delete') {
           const ok = await openUiConfirm({
@@ -2230,7 +2245,7 @@ export async function renderCampaignsView(container, ctx = {}) {
           if (ok) {
             await call(ACTIONS.CAMPAIGN_DELETE, { campaignId: id });
             ctx.showToast?.('Campaign deleted.', 'success');
-            renderCampaignsView(container, ctx);
+            await refreshAndRenderList();
           }
         }
       });
@@ -2259,9 +2274,7 @@ export async function renderCampaignsView(container, ctx = {}) {
             await call(ACTIONS.CAMPAIGN_PAUSE, { campaignId: id });
             ctx.showToast?.(`Campaign "${camp?.name || ''}" paused.`, 'info');
           }
-          const freshCamps = await call(ACTIONS.CAMPAIGN_GET_ALL, {}).catch(() => []);
-          campaigns = Array.isArray(freshCamps) ? freshCamps : (freshCamps?.campaigns || []);
-          renderList();
+          await refreshAndRenderList();
         } catch (err) {
           ctx.showToast?.(err.message || 'Action failed', 'error');
         }

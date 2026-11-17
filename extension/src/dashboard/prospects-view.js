@@ -195,11 +195,12 @@ export async function renderProspectsView(container, ctx = {}) {
   });
 
   // 3. Component State
-  let currentListId = rawLists.length > 0 ? (rawLists[0].listId || rawLists[0].id) : 'all';
-  let searchQuery = '';
-  let statusFilter = 'All';
-  let visitFilter = 'all'; // 'all' | 'visited' | 'not_visited'
-  let tagFilter = 'All';
+  const savedProspectsState = ctx.getSavedState?.() || {};
+  let currentListId = ctx.subState || savedProspectsState.activeSubTab || (rawLists.length > 0 ? (rawLists[0].listId || rawLists[0].id) : 'all');
+  let searchQuery = savedProspectsState.searchQuery || '';
+  let statusFilter = savedProspectsState.statusFilter || 'All';
+  let visitFilter = savedProspectsState.visitFilter || 'all'; // 'all' | 'visited' | 'not_visited'
+  let tagFilter = savedProspectsState.tagFilter || 'All';
   let isEditingTitle = false;
   let selectedIds = new Set();
 
@@ -299,6 +300,7 @@ export async function renderProspectsView(container, ctx = {}) {
   }
 
   function paint() {
+    const scrollPos = ctx.getScrollPosition?.(container);
     const filtered = getFilteredProspects();
     const currentList = rawLists.find((l) => (l.listId || l.id) === currentListId);
     const activeTitle = currentListId === 'all' ? 'All prospects' : (currentListId === 'blacklist' ? 'Do not contact' : (currentList?.name || 'My List'));
@@ -612,6 +614,8 @@ export async function renderProspectsView(container, ctx = {}) {
         statusFilter = 'All';
         searchQuery = '';
         selectedIds.clear();
+        ctx.updateSubState?.(currentListId);
+        ctx.saveState?.({ activeSubTab: currentListId, searchQuery, statusFilter, visitFilter, tagFilter });
         paint();
       });
     });
@@ -680,6 +684,8 @@ export async function renderProspectsView(container, ctx = {}) {
           if (currentListId === id) {
             currentListId = 'all';
           }
+          ctx.updateSubState?.(currentListId);
+          ctx.saveState?.({ activeSubTab: currentListId, searchQuery, statusFilter, visitFilter, tagFilter });
 
           if (ctx.showToast) ctx.showToast('List deleted successfully!', 'success');
           paint();
@@ -707,6 +713,8 @@ export async function renderProspectsView(container, ctx = {}) {
         await chrome.storage.local.set({ lists: rawLists });
         currentListId = newList.listId;
         selectedIds.clear();
+        ctx.updateSubState?.(currentListId);
+        ctx.saveState?.({ activeSubTab: currentListId, searchQuery, statusFilter, visitFilter, tagFilter });
         if (ctx.showToast) ctx.showToast(`List "${name}" created!`, 'success');
         paint();
       }
@@ -746,6 +754,7 @@ export async function renderProspectsView(container, ctx = {}) {
     if (searchInput) {
       searchInput.addEventListener('input', (e) => {
         searchQuery = e.target.value;
+        ctx.saveState?.({ activeSubTab: currentListId, searchQuery, statusFilter, visitFilter, tagFilter });
         paint();
         const fresh = container.querySelector('#crm-search-box');
         if (fresh) {
@@ -758,16 +767,19 @@ export async function renderProspectsView(container, ctx = {}) {
     // C. Status, Visit, & Tag Filters
     container.querySelector('#select-status-filter')?.addEventListener('change', (e) => {
       statusFilter = e.target.value;
+      ctx.saveState?.({ activeSubTab: currentListId, searchQuery, statusFilter, visitFilter, tagFilter });
       paint();
     });
 
     container.querySelector('#select-visit-filter')?.addEventListener('change', (e) => {
       visitFilter = e.target.value;
+      ctx.saveState?.({ activeSubTab: currentListId, searchQuery, statusFilter, visitFilter, tagFilter });
       paint();
     });
 
     container.querySelector('#select-tag-filter')?.addEventListener('change', (e) => {
       tagFilter = e.target.value;
+      ctx.saveState?.({ activeSubTab: currentListId, searchQuery, statusFilter, visitFilter, tagFilter });
       paint();
     });
 
@@ -1202,6 +1214,8 @@ export async function renderProspectsView(container, ctx = {}) {
         }
       });
     });
+
+    ctx.restoreScrollPosition?.(container, scrollPos);
   }
 
   // Global click to close columns menu and list popover menus if open

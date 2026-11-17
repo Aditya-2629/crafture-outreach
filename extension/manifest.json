@@ -3,6 +3,7 @@
   "name": "OutFox — LinkedIn & Email Outreach Automation",
   "short_name": "OutFox",
   "version": "1.0.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuIOaEwV1aTdQDG8MrEtOnzMft0cL8I+P0o54wLLQoMShKPP581K/lKM/siBfZV04ScohqsctM5CTdf/7c4uLZWvmh/dOphWM6R2LREP5s8bMK2epKdCZUGQ4icCJjkmBrYGl4Es3CFi7/LImuCObETsL+DzSok1DsbEHpLfZmtl5nCwsvBVP7tOQNtXr52IOSfoIVxs2s38uw4NLbUdKOgox19xUxdi76wSsRmuJXlN5/CubXNHfNCvQw7wk4murWr1K7Z0NMzzIaWuZAc3Pna8a8ENPX+fTVIm+75Thp/Ch9jEfClGd0o1n9FTRWWQ5zIjjI80PrlNzfAbWtoELxQIDAQAB",
   "description": "OutFox — Intelligent LinkedIn outreach, personalized messaging, and automated cold email sequences.",
   "permissions": [
     "storage",

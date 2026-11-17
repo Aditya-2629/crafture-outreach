@@ -64,14 +64,37 @@ function storageGet(keys, callback) {
   return settle(structuredClone(out), callback);
 }
 
+const storageListeners = new Set();
+const storageOnChanged = {
+  addListener: vi.fn((fn) => storageListeners.add(fn)),
+  removeListener: vi.fn((fn) => storageListeners.delete(fn)),
+  hasListener: vi.fn((fn) => storageListeners.has(fn)),
+};
+
 function storageSet(items, callback) {
-  for (const [k, v] of Object.entries(items || {})) mock.storage.set(k, structuredClone(v));
+  const changes = {};
+  for (const [k, v] of Object.entries(items || {})) {
+    const oldValue = mock.storage.get(k);
+    mock.storage.set(k, structuredClone(v));
+    changes[k] = { oldValue, newValue: structuredClone(v) };
+  }
+  for (const fn of storageListeners) {
+    try { fn(changes, 'local'); } catch {}
+  }
   return settle(undefined, callback);
 }
 
 function storageRemove(keys, callback) {
   const list = Array.isArray(keys) ? keys : [keys];
-  for (const k of list) mock.storage.delete(k);
+  const changes = {};
+  for (const k of list) {
+    const oldValue = mock.storage.get(k);
+    mock.storage.delete(k);
+    changes[k] = { oldValue, newValue: undefined };
+  }
+  for (const fn of storageListeners) {
+    try { fn(changes, 'local'); } catch {}
+  }
   return settle(undefined, callback);
 }
 
@@ -99,6 +122,7 @@ function buildChrome() {
         remove: vi.fn(storageRemove),
         clear: vi.fn(storageClear),
       },
+      onChanged: storageOnChanged,
     },
 
     alarms: {
@@ -267,6 +291,7 @@ const runtime = {
  * import time and are not re-imported between tests.
  */
 export function resetChrome() {
+  storageListeners.clear();
   mock.storage.clear();
   mock.alarms.clear();
   mock.tabs.clear();

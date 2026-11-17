@@ -293,6 +293,7 @@ export async function renderResearchView(container, ctx = {}) {
 
   function paint() {
     if (ctx?.isStale?.() || (ctx?.isActiveView && !ctx.isActiveView())) return;
+    const scrollPos = ctx?.getScrollPosition?.(container);
 
     const progressPct = totalCount > 0 ? Math.min(100, Math.round((doneCount / totalCount) * 100)) : 0;
     const unresolvedCount = packs.filter((p) => !p.resolved || p.resolved.kind === 'unresolved').length;
@@ -844,6 +845,8 @@ export async function renderResearchView(container, ctx = {}) {
         }
       });
     }
+
+    ctx?.restoreScrollPosition?.(container, scrollPos);
   }
 
   paint();

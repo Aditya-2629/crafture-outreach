@@ -629,6 +629,13 @@ export async function renderTemplatesView(container, ctx = {}) {
   ensureTemplatesStyles();
   if (!container) return;
 
+  const savedTemplatesState = ctx?.getSavedState?.() || {};
+  if (ctx?.subState) {
+    activeCategory = ctx.subState;
+  } else if (savedTemplatesState.activeSubTab || savedTemplatesState.activeCategory) {
+    activeCategory = savedTemplatesState.activeSubTab || savedTemplatesState.activeCategory;
+  }
+
   let storage = {};
   let objections = [];
   let activeCandidate = null;
@@ -649,6 +656,7 @@ export async function renderTemplatesView(container, ctx = {}) {
   let templates = Array.isArray(storage.messageTemplates) ? storage.messageTemplates : [];
 
   function paint() {
+    const scrollPos = ctx?.getScrollPosition?.(container);
     const filtered = templates.filter((t) => (t.type || 'message') === activeCategory);
 
     container.innerHTML = `
@@ -826,12 +834,15 @@ export async function renderTemplatesView(container, ctx = {}) {
     `;
 
     wireTemplatesEvents();
+    ctx?.restoreScrollPosition?.(container, scrollPos);
   }
 
   function wireTemplatesEvents() {
     container.querySelectorAll('.template-nav-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         activeCategory = btn.dataset.cat;
+        ctx?.updateSubState?.(activeCategory);
+        ctx?.saveState?.({ activeSubTab: activeCategory, activeCategory });
         paint();
       });
     });

@@ -14,6 +14,14 @@ let searchQuery = '';
 export async function renderInboxView(container, ctx = {}) {
   if (!container) return;
 
+  const savedInboxState = ctx?.getSavedState?.() || {};
+  if (ctx?.subState) {
+    activeFilter = ctx.subState;
+  } else if (savedInboxState.activeSubTab || savedInboxState.activeFilter) {
+    activeFilter = savedInboxState.activeSubTab || savedInboxState.activeFilter;
+  }
+  if (savedInboxState.searchQuery) searchQuery = savedInboxState.searchQuery;
+
   container.innerHTML = `
     <div class="inbox-loading-container" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:60vh; gap:14px;">
       <div class="spinner" style="width:36px; height:36px; border:3px solid #e2e8f0; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
@@ -60,12 +68,14 @@ export async function renderInboxView(container, ctx = {}) {
     };
   });
 
-  let selectedThread = normalizedThreads[0] || null;
+  const savedThreadId = savedInboxState.selectedThreadId;
+  let selectedThread = (savedThreadId && normalizedThreads.find((t) => t.threadId === savedThreadId)) || normalizedThreads[0] || null;
   let activeMessages = [];
   let isFetchingMessages = false;
 
   async function loadMessages(thread) {
     selectedThread = thread;
+    ctx?.saveState?.({ activeSubTab: activeFilter, activeFilter, searchQuery, selectedThreadId: thread?.threadId || null });
     if (!thread) {
       activeMessages = [];
       paint();
@@ -108,6 +118,7 @@ export async function renderInboxView(container, ctx = {}) {
   }
 
   function paint() {
+    const scrollPos = ctx?.getScrollPosition?.(container);
     const filtered = normalizedThreads.filter((t) => {
       if (activeFilter === 'unread' && !t.unread) return false;
       if (searchQuery) {
@@ -311,6 +322,8 @@ export async function renderInboxView(container, ctx = {}) {
     container.querySelectorAll('.btn-inbox-tab').forEach((btn) => {
       btn.addEventListener('click', () => {
         activeFilter = btn.dataset.filter;
+        ctx?.updateSubState?.(activeFilter);
+        ctx?.saveState?.({ activeSubTab: activeFilter, activeFilter, searchQuery, selectedThreadId: selectedThread?.threadId || null });
         paint();
       });
     });
@@ -319,6 +332,7 @@ export async function renderInboxView(container, ctx = {}) {
     const searchInput = container.querySelector('#inbox-search-input');
     searchInput?.addEventListener('input', (e) => {
       searchQuery = e.target.value.trim();
+      ctx?.saveState?.({ activeSubTab: activeFilter, activeFilter, searchQuery, selectedThreadId: selectedThread?.threadId || null });
       paint();
       const newInp = container.querySelector('#inbox-search-input');
       if (newInp) {
@@ -469,6 +483,8 @@ export async function renderInboxView(container, ctx = {}) {
         }
       });
     }
+
+    ctx?.restoreScrollPosition?.(container, scrollPos);
   }
 
   if (selectedThread) {

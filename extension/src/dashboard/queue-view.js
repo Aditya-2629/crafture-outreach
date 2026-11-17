@@ -13,6 +13,7 @@ import { openUiConfirm, openLeadTimelineModal } from './modal-engine.js';
 let selectedQueueIds = new Set();
 let activeCampaignFilter = 'all';
 let activeTypeFilters = new Set(['Invitation', 'Message', 'Visit', 'Follow', 'Email']);
+let activeChannel = 'linkedin';
 
 let queueTimer = null;
 let isRefreshing = false;
@@ -32,7 +33,8 @@ function shouldAbortQueueRender(container, ctx) {
   const rawHash = (typeof window !== 'undefined' && window.location?.hash)
     ? window.location.hash.replace('#', '').trim()
     : '';
-  if (rawHash && rawHash !== 'queue') return true;
+  const hView = rawHash.split(':')[0];
+  if (hView && hView !== 'queue') return true;
   return false;
 }
 
@@ -633,10 +635,15 @@ function paint(state) {
     now,
   } = state;
 
+  const scrollPos = ctx?.getScrollPosition?.(container);
+  const linkedinCount = queuedItems.filter((i) => i.actionType !== 'Email').length;
+  const emailCount = queuedItems.filter((i) => i.actionType === 'Email').length;
+
   const filteredQueue = queuedItems.filter((item) => {
+    const matchChannel = activeChannel === 'email' ? item.actionType === 'Email' : item.actionType !== 'Email';
     const matchCamp = activeCampaignFilter === 'all' || item.campaignId === activeCampaignFilter;
     const matchType = activeTypeFilters.has(item.actionType);
-    return matchCamp && matchType;
+    return matchChannel && matchCamp && matchType;
   });
 
   const isAllChecked = filteredQueue.length > 0 && filteredQueue.every((item) => selectedQueueIds.has(item.id));
@@ -691,11 +698,11 @@ function paint(state) {
         </div>
 
         <div class="queue-channel-tabs">
-          <button type="button" class="channel-tab is-active" data-channel="linkedin">
-            LinkedIn <span class="tab-count-pill">${filteredQueue.length}</span>
+          <button type="button" class="channel-tab ${activeChannel === 'linkedin' ? 'is-active' : ''}" data-channel="linkedin">
+            LinkedIn <span class="tab-count-pill">${linkedinCount}</span>
           </button>
-          <button type="button" class="channel-tab" data-channel="email">
-            Email <span class="tab-count-pill">0</span>
+          <button type="button" class="channel-tab ${activeChannel === 'email' ? 'is-active' : ''}" data-channel="email">
+            Email <span class="tab-count-pill">${emailCount}</span>
           </button>
         </div>
 
@@ -868,6 +875,7 @@ function paint(state) {
   `;
 
   wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allStorage, ctx);
+  ctx?.restoreScrollPosition?.(container, scrollPos);
 }
 
 function wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allStorage, ctx) {
@@ -971,10 +979,20 @@ function wireQueueEvents(container, filteredQueue, queuedItems, campaigns, allSt
     });
   });
 
+  container.querySelectorAll('.channel-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      activeChannel = btn.dataset.channel || 'linkedin';
+      ctx?.updateSubState?.(activeChannel);
+      ctx?.saveState?.({ activeSubTab: activeChannel, activeCampaignFilter });
+      refreshQueueSilently(container, ctx, { force: true });
+    });
+  });
+
   const campSelect = container.querySelector('#select-queue-campaign');
   if (campSelect) {
     campSelect.addEventListener('change', (e) => {
       activeCampaignFilter = e.target.value;
+      ctx?.saveState?.({ activeSubTab: activeChannel, activeCampaignFilter });
       refreshQueueSilently(container, ctx, { force: true });
     });
   }
@@ -1035,6 +1053,16 @@ export async function renderQueueView(container, ctx = {}) {
 
   // 1. Immediately clear existing timer and listener from prior renders
   cleanupTimers();
+
+  const savedQueueState = ctx?.getSavedState?.() || {};
+  if (ctx?.subState) {
+    activeChannel = ctx.subState;
+  } else if (savedQueueState.activeSubTab) {
+    activeChannel = savedQueueState.activeSubTab;
+  }
+  if (savedQueueState.activeCampaignFilter) {
+    activeCampaignFilter = savedQueueState.activeCampaignFilter;
+  }
 
   // 2. Register cleanup with dashboard.js view lifecycle
   ctx.registerCleanup?.(() => {

@@ -25,6 +25,9 @@ import { getActiveCandidate, setActiveCandidate, getAllCandidates, saveCandidate
 import { enrichLead } from './enrich.js';
 import { matchAndAdaptObjection, snoozeLead, popDueSnoozes } from './objections.js';
 import { syncAllLeadsToSheet, backupToGoogleDrive } from './google-workspace.js';
+import { getActiveAiProviders, getAiFallbackChain } from './ai.js';
+
+export { getActiveAiProviders, getAiFallbackChain };
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
 let isPolling = false;
@@ -549,12 +552,44 @@ export async function getTelegramStatus() {
   };
 }
 
-// 🎙️ Voice Note Transcriber via Groq Whisper
-async function transcribeVoice(botToken, fileId) {
-  const cfg = await getConfig();
-  const apiKey = cfg.ai?.apiKey;
-  if (!apiKey) {
-    throw new Error('Groq API Key not found. Please set your Groq key in Settings -> AI Engine for voice transcription.');
+// 🎙️ Voice Note Transcriber via Groq / OpenAI Whisper
+export async function transcribeVoice(botToken, fileId) {
+  const providers = await getActiveAiProviders();
+  const groq = providers.find((p) => p.provider === 'groq' && p.apiKey);
+  const openai = providers.find((p) => (p.provider === 'openai' || p.provider === 'openai-compatible') && p.apiKey);
+
+  const whisperCandidates = [];
+  if (groq) {
+    whisperCandidates.push({
+      ...groq,
+      whisperModel: groq.model?.includes('whisper') ? groq.model : 'whisper-large-v3-turbo',
+      whisperUrl: `${groq.baseUrl || 'https://api.groq.com'}/openai/v1/audio/transcriptions`,
+    });
+  }
+  if (openai) {
+    const base = openai.baseUrl ? openai.baseUrl.replace(/\/+$/, '') : 'https://api.openai.com/v1';
+    const whisperUrl = base.endsWith('/v1') ? `${base}/audio/transcriptions` : `${base}/v1/audio/transcriptions`;
+    whisperCandidates.push({
+      ...openai,
+      whisperModel: openai.model?.includes('whisper') ? openai.model : 'whisper-1',
+      whisperUrl,
+    });
+  }
+
+  // Fallback to any provider with an apiKey if neither groq nor openai was named explicitly
+  if (whisperCandidates.length === 0) {
+    const anyKeyProvider = providers.find((p) => Boolean(p.apiKey));
+    if (anyKeyProvider) {
+      whisperCandidates.push({
+        ...anyKeyProvider,
+        whisperModel: 'whisper-large-v3-turbo',
+        whisperUrl: `${anyKeyProvider.baseUrl || 'https://api.groq.com'}/openai/v1/audio/transcriptions`,
+      });
+    }
+  }
+
+  if (whisperCandidates.length === 0) {
+    throw new Error('Groq or OpenAI API Key not found. Please set your active AI provider key in Settings -> AI Engine for voice transcription.');
   }
 
   const fileInfo = await callTelegramApi(botToken, 'getFile', { file_id: fileId });
@@ -563,24 +598,34 @@ async function transcribeVoice(botToken, fileId) {
   const audioRes = await fetch(fileUrl);
   const audioBlob = await audioRes.blob();
 
-  const formData = new FormData();
-  formData.append('file', audioBlob, 'voice.ogg');
-  formData.append('model', 'whisper-large-v3-turbo');
-  formData.append('response_format', 'json');
+  let lastErr = null;
+  for (const c of whisperCandidates) {
+    try {
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'voice.ogg');
+      formData.append('model', c.whisperModel);
+      formData.append('response_format', 'json');
 
-  const whisperRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: formData,
-  });
+      const whisperRes = await fetch(c.whisperUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${c.apiKey}` },
+        body: formData,
+      });
 
-  if (!whisperRes.ok) {
-    const errText = await whisperRes.text();
-    throw new Error(`Whisper failed: ${errText.slice(0, 150)}`);
+      if (!whisperRes.ok) {
+        const errText = await whisperRes.text();
+        throw new Error(`Whisper failed (${c.provider}): ${errText.slice(0, 150)}`);
+      }
+
+      const data = await whisperRes.json();
+      return data.text || '';
+    } catch (err) {
+      lastErr = err;
+      logDebug('warn', 'Telegram', `[Whisper Fallback] ${c.provider} failed: ${err.message}`);
+    }
   }
 
-  const data = await whisperRes.json();
-  return data.text || '';
+  throw lastErr || new Error('Voice transcription failed across all providers');
 }
 
 // AI Tools Declaration
@@ -1398,18 +1443,20 @@ function _toGeminiContents(openAiMessages) {
 }
 
 export async function callLlmWithTools(provider, aiConfig, messages, tools = [], geminiContents = null) {
-  const apiKey = String(aiConfig.apiKey || '').trim();
-  const baseUrl = String(aiConfig.baseUrl || '').trim();
-  const model = String(aiConfig.model || '').trim() ||
-    (provider === 'groq' ? 'llama-3.3-70b-versatile'
-      : provider === 'gemini' ? 'gemini-2.5-flash'
-      : provider === 'anthropic' ? 'claude-3-5-sonnet-latest'
+  const normalizedProvider = provider === 'claude' ? 'anthropic' : String(provider || '').trim().toLowerCase();
+  const apiKey = String(aiConfig?.apiKey || aiConfig?.key || '').trim();
+  const baseUrl = String(aiConfig?.baseUrl || aiConfig?.host || '').trim();
+  const model = String(aiConfig?.model || aiConfig?.modelId || '').trim() ||
+    (normalizedProvider === 'groq' ? 'llama-3.3-70b-versatile'
+      : normalizedProvider === 'gemini' ? 'gemini-2.5-flash'
+      : normalizedProvider === 'anthropic' ? 'claude-3-5-sonnet-latest'
+      : normalizedProvider === 'ollama' ? 'llama3.1:8b'
       : 'gpt-4o-mini');
 
   const useTools = Array.isArray(tools) && tools.length > 0;
 
-  if (provider === 'anthropic') {
-    const url = `${aiConfig.baseUrl || 'https://api.anthropic.com'}/v1/messages`;
+  if (normalizedProvider === 'anthropic') {
+    const url = `${baseUrl || 'https://api.anthropic.com'}/v1/messages`;
     const sysMsg = messages.find((m) => m.role === 'system');
     const nonSysMessages = messages.filter((m) => m.role !== 'system');
 
@@ -1469,7 +1516,7 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
   }
 
   // --- Gemini: native generateContent (preserves thoughtSignature) ---
-  if (provider === 'gemini') {
+  if (normalizedProvider === 'gemini') {
     const resolvedModel = model || 'gemini-2.5-flash';
     const baseHost = baseUrl || 'https://generativelanguage.googleapis.com';
     const url = `${baseHost}/v1beta/models/${resolvedModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -1544,10 +1591,10 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
   let url = '';
   const headers = { 'Content-Type': 'application/json' };
 
-  if (provider === 'groq') {
+  if (normalizedProvider === 'groq') {
     url = `${baseUrl || 'https://api.groq.com'}/openai/v1/chat/completions`;
     headers['Authorization'] = `Bearer ${apiKey}`;
-  } else if (provider === 'ollama') {
+  } else if (normalizedProvider === 'ollama') {
     url = `${baseUrl || 'http://127.0.0.1:11434'}/api/chat`;
   } else {
     // openai / openai-compatible
@@ -1562,7 +1609,7 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
     messages,
     ...(useTools ? { tools, tool_choice: 'auto' } : {}),
   };
-  if (provider === 'ollama') {
+  if (normalizedProvider === 'ollama') {
     payload.stream = false;
   }
 
@@ -1574,12 +1621,12 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`${provider.toUpperCase()} API error ${res.status}: ${errText.slice(0, 180)}`);
+    throw new Error(`${normalizedProvider.toUpperCase()} API error ${res.status}: ${errText.slice(0, 180)}`);
   }
 
   const data = await res.json();
 
-  if (provider === 'ollama') {
+  if (normalizedProvider === 'ollama') {
     const msg = data.message;
     const text = msg?.content || '';
     const toolCalls = [];
@@ -1635,13 +1682,9 @@ export async function runAgentLoop(botToken, chatId, userText) {
   startTyping();
 
   try {
-    const cfg = await getConfig();
-    const ai = cfg?.ai || {};
-    const provider = String(ai.provider || 'none').toLowerCase();
-    const apiKey = String(ai.apiKey || '').trim();
+    const providers = await getActiveAiProviders();
 
-    const noKey = provider !== 'ollama' && provider !== 'openai-compatible' && !apiKey;
-    if (provider === 'none' || noKey) {
+    if (!providers || providers.length === 0) {
       const offlineMsg =
         `⚠️ *AI Copilot Not Configured:*\n` +
         `OutFox Dashboard ➔ *Settings ➔ AI Engine* me jaakar apna Groq ya Gemini API Key connect karo!\n\n` +
@@ -1672,14 +1715,8 @@ export async function runAgentLoop(botToken, chatId, userText) {
       { role: 'user', content: userText },
     ];
 
-    // Gemini needs its own contents array (native format, no system role)
-    const isGemini = provider === 'gemini';
-    let geminiContents = isGemini
-      ? [
-          ..._toGeminiContents(historyTurns),
-          { role: 'user', parts: [{ text: userText }] },
-        ]
-      : null;
+    let geminiContents = null;
+    let activeProviderRecord = providers[0];
 
     let lastBlueprint = null;
     let launchedCampaign = null;
@@ -1691,13 +1728,54 @@ export async function runAgentLoop(botToken, chatId, userText) {
     while (iterations < MAX_ITERATIONS) {
       iterations++;
 
-      const response = await callLlmWithTools(provider, ai, messages, AI_TOOLS, geminiContents);
+      let response = null;
+      let lastCallError = null;
+
+      for (const candidate of providers) {
+        try {
+          const isCandidateGemini = candidate.provider === 'gemini';
+          const candidateGeminiContents = isCandidateGemini
+            ? (geminiContents || [
+                ..._toGeminiContents(historyTurns),
+                { role: 'user', parts: [{ text: userText }] },
+              ])
+            : null;
+
+          response = await callLlmWithTools(
+            candidate.provider,
+            candidate,
+            messages,
+            AI_TOOLS,
+            candidateGeminiContents
+          );
+
+          activeProviderRecord = candidate;
+          if (isCandidateGemini && !geminiContents) {
+            geminiContents = candidateGeminiContents;
+          }
+          break;
+        } catch (err) {
+          lastCallError = err;
+          logDebug(
+            'warn',
+            'Telegram',
+            `[AI Fallback] Provider ${candidate.provider} (${candidate.model}) failed: ${err.message}. Trying next fallback...`
+          );
+        }
+      }
+
+      if (!response) {
+        throw lastCallError || new Error('All AI providers in fallback chain failed');
+      }
+
+      const isGemini = activeProviderRecord.provider === 'gemini';
 
       if (response.toolCalls && response.toolCalls.length > 0) {
         if (isGemini) {
           // Push raw model content VERBATIM — preserves thoughtSignature
+          if (!geminiContents) geminiContents = _toGeminiContents(messages);
           geminiContents.push(response.rawGeminiContent);
-        } else if (provider === 'anthropic') {
+        } else if (activeProviderRecord.provider === 'anthropic') {
           messages.push({
             role: 'assistant',
             content: response.rawContent || response.toolCalls.map((tc) => ({
@@ -1743,7 +1821,7 @@ export async function runAgentLoop(botToken, chatId, userText) {
             functionResponses.push({
               functionResponse: { name: tc.name, response: { result: toolOutput } },
             });
-          } else if (provider === 'anthropic') {
+          } else if (activeProviderRecord.provider === 'anthropic') {
             messages.push({
               role: 'user',
               content: [{ type: 'tool_result', tool_use_id: tc.id, content: JSON.stringify(toolOutput) }],
@@ -1819,11 +1897,9 @@ export async function runAgentLoop(botToken, chatId, userText) {
 }
 
 export async function callDynamicAi(userText, options = {}) {
-  const cfg = await getConfig();
-  const ai = cfg.ai || {};
-  const provider = ai.provider || 'none';
+  const providers = await getActiveAiProviders();
 
-  if (provider === 'none' || (!ai.apiKey && provider !== 'ollama')) {
+  if (!providers || providers.length === 0) {
     return {
       type: 'text',
       content: 'AI Engine not configured.',
@@ -1838,11 +1914,25 @@ export async function callDynamicAi(userText, options = {}) {
     { role: 'user', content: userText },
   ];
 
-  const res = await callLlmWithTools(provider, ai, messages, []);
-  return {
-    type: 'text',
-    content: res.text,
-  };
+  let lastErr = null;
+  for (const candidate of providers) {
+    try {
+      const isGemini = candidate.provider === 'gemini';
+      const geminiContents = isGemini ? _toGeminiContents(messages) : null;
+      const res = await callLlmWithTools(candidate.provider, candidate, messages, [], geminiContents);
+      return {
+        type: 'text',
+        content: res.text,
+        provider: candidate.provider,
+        model: candidate.model,
+      };
+    } catch (err) {
+      lastErr = err;
+      logDebug('warn', 'Telegram', `[callDynamicAi Fallback] Provider ${candidate.provider} failed: ${err.message}`);
+    }
+  }
+
+  throw lastErr || new Error('All AI providers in fallback chain failed');
 }
 
 // 👥 Send Candidate Personas List with 1-Tap Switch Buttons

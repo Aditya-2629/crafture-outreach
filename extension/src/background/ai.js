@@ -8,6 +8,7 @@
 
 import { ACTIONS, ERROR, EngineError } from '../lib/actions.js';
 import { getConfig } from '../lib/config.js';
+import { get } from '../lib/storage.js';
 import { register } from './engine.js';
 import { parseOutput, promptFor } from './ai-prompts.js';
 import { hasHostAccess, originPatternFor } from '../lib/permissions.js';
@@ -175,17 +176,142 @@ const ADAPTERS = {
 ADAPTERS['openai-compatible'] = ADAPTERS.openai;
 
 /* ================================================================== */
+/*  AI Engine Multi-Model & Fallback Router Helper                    */
+/* ================================================================== */
+
+function normalizeAiProvider(raw) {
+  const p = String(raw || '').trim().toLowerCase();
+  if (p === 'claude') return 'anthropic';
+  return p;
+}
+
+function isValidAiProviderEntry(entry) {
+  if (!entry || typeof entry !== 'object') return false;
+  const provider = normalizeAiProvider(entry.provider);
+  if (!provider || provider === 'none') return false;
+  if (entry.active === false || entry.enabled === false) return false;
+
+  const apiKey = String(entry.apiKey || entry.key || '').trim();
+  const baseUrl = String(entry.baseUrl || entry.host || '').trim();
+
+  if (provider === 'ollama') return true;
+  if (provider === 'openai-compatible') return Boolean(apiKey || baseUrl);
+  return Boolean(apiKey);
+}
+
+function toAiProviderRecord(entry, index = 0) {
+  const provider = normalizeAiProvider(entry.provider);
+  const apiKey = String(entry.apiKey || entry.key || '').trim();
+  const baseUrl = String(entry.baseUrl || entry.host || '').trim();
+  const rawModel = String(entry.model || entry.modelId || '').trim();
+  const model = rawModel || (
+    provider === 'groq' ? DEFAULT_MODELS.groq
+      : provider === 'gemini' ? DEFAULT_MODELS.gemini
+      : provider === 'anthropic' ? DEFAULT_MODELS.anthropic
+      : provider === 'ollama' ? DEFAULT_MODELS.ollama
+      : DEFAULT_MODELS.openai
+  );
+
+  return {
+    id: entry.id || `${provider}_${index}`,
+    provider,
+    apiKey,
+    baseUrl,
+    model,
+    modelId: model,
+    active: true,
+  };
+}
+
+export async function getActiveAiProviders() {
+  const [storedAiModels, storedAiProviders, cfg] = await Promise.all([
+    get('ai_models', null).catch(() => null),
+    get('aiProviders', null).catch(() => null),
+    getConfig().catch(() => ({})),
+  ]);
+
+  const rawCandidates = [];
+
+  // 1. Primary multi-model fallback chain from Settings -> AI Engine Router
+  if (Array.isArray(storedAiModels)) {
+    rawCandidates.push(...storedAiModels);
+  }
+
+  // 2. Storage aiProviders (array or object map)
+  if (Array.isArray(storedAiProviders)) {
+    rawCandidates.push(...storedAiProviders);
+  } else if (storedAiProviders && typeof storedAiProviders === 'object') {
+    for (const [providerKey, val] of Object.entries(storedAiProviders)) {
+      if (val && typeof val === 'object') {
+        rawCandidates.push({ provider: providerKey, ...val });
+      }
+    }
+  }
+
+  // 3. Config ai_models
+  if (Array.isArray(cfg?.ai_models)) {
+    rawCandidates.push(...cfg.ai_models);
+  }
+
+  // 4. Config aiProviders
+  if (Array.isArray(cfg?.aiProviders)) {
+    rawCandidates.push(...cfg.aiProviders);
+  } else if (cfg?.aiProviders && typeof cfg.aiProviders === 'object') {
+    for (const [providerKey, val] of Object.entries(cfg.aiProviders)) {
+      if (val && typeof val === 'object') {
+        rawCandidates.push({ provider: providerKey, ...val });
+      }
+    }
+  }
+
+  // 5. Config ai (legacy single-provider config)
+  if (cfg?.ai && typeof cfg.ai === 'object') {
+    rawCandidates.push(cfg.ai);
+  }
+
+  const validChain = [];
+  const seenKeys = new Set();
+
+  for (let idx = 0; idx < rawCandidates.length; idx++) {
+    const raw = rawCandidates[idx];
+    if (!isValidAiProviderEntry(raw)) continue;
+
+    const record = toAiProviderRecord(raw, idx);
+    const dedupeKey = `${record.provider}:${record.apiKey}:${record.model || ''}:${record.baseUrl || ''}`;
+    if (!seenKeys.has(dedupeKey)) {
+      seenKeys.add(dedupeKey);
+      validChain.push(record);
+    }
+  }
+
+  return validChain;
+}
+
+export const getAiFallbackChain = getActiveAiProviders;
+
+/* ================================================================== */
 /*  Public interface                                                  */
 /* ================================================================== */
 
 /** True when `ai.complete` will do something other than throw. */
 export async function isConfigured() {
   const { ai } = await getConfig();
-  if (!ai || ai.provider === 'none' || !ADAPTERS[ai.provider]) return false;
-  if (NEEDS_KEY.has(ai.provider) && !ai.apiKey) return false;
-  if (ai.provider === 'openai-compatible' && !ai.baseUrl) return false;
-  const model = ai.model || DEFAULT_MODELS[ai.provider];
-  const { url } = ADAPTERS[ai.provider].request(ai, model, { system: '', user: '', maxTokens: 1 });
+  if (ai && ai.provider !== 'none' && ADAPTERS[ai.provider]) {
+    if (!NEEDS_KEY.has(ai.provider) || ai.apiKey) {
+      if (ai.provider !== 'openai-compatible' || ai.baseUrl) {
+        const model = ai.model || DEFAULT_MODELS[ai.provider];
+        const { url } = ADAPTERS[ai.provider].request(ai, model, { system: '', user: '', maxTokens: 1 });
+        return hasHostAccess(url);
+      }
+    }
+  }
+  const providers = await getActiveAiProviders();
+  if (providers.length === 0) return false;
+  const primary = providers[0];
+  const adapter = ADAPTERS[primary.provider];
+  if (!adapter) return false;
+  const model = primary.model || DEFAULT_MODELS[primary.provider];
+  const { url } = adapter.request(primary, model, { system: '', user: '', maxTokens: 1 });
   return hasHostAccess(url);
 }
 
@@ -219,12 +345,17 @@ function assertConfigured(ai) {
  */
 export async function complete(task, input = {}) {
   const { ai } = await getConfig();
-  assertConfigured(ai);
+  const providers = await getActiveAiProviders();
+  const targetAi = (ai && ai.provider !== 'none' && (ai.apiKey || ai.provider === 'ollama'))
+    ? ai
+    : (providers[0] || ai);
 
-  const adapter = ADAPTERS[ai.provider];
-  const model = ai.model || DEFAULT_MODELS[ai.provider];
+  assertConfigured(targetAi);
+
+  const adapter = ADAPTERS[targetAi.provider];
+  const model = targetAi.model || DEFAULT_MODELS[targetAi.provider];
   const prompt = promptFor(task, input);
-  const { url, init } = adapter.request(ai, model, prompt);
+  const { url, init } = adapter.request(targetAi, model, prompt);
 
   // An MV3 worker cannot fetch a host it has no permission for, and the
   // failure looks like a network error. Say what it actually is.

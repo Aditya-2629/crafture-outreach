@@ -13,6 +13,9 @@ import {
   sendChatAction,
   sendTelegramMessage,
   extractErrorMessage,
+  getActiveAiProviders,
+  callDynamicAi,
+  transcribeVoice,
 } from '../../src/background/telegram.js';
 import * as campaigns from '../../src/background/campaigns.js';
 import * as lists from '../../src/background/lists.js';
@@ -24,6 +27,8 @@ describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
     vi.clearAllMocks();
     await set('outfox_chat_history', []);
     await set('outfox_pending_blueprints', {});
+    await set('ai_models', null);
+    await set('aiProviders', null);
   });
 
   describe('1. Live Workspace Context Builder (buildAgentContext)', () => {
@@ -640,6 +645,173 @@ describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
       expect(errorText).toContain('Copilot Error:');
       expect(errorText).toContain('GEMINI API error 400');
       expect(errorText).not.toBe('⚠️ *Copilot Error:* \n\n_Tip: Use /live or /clear to reset._');
+    });
+  });
+
+  describe('5. AI Engine Multi-Model & Fallback Router Integration', () => {
+    it('getActiveAiProviders reads and normalizes multi-model chain from storage.ai_models', async () => {
+      await set('ai_models', [
+        { id: 'm1', provider: 'claude', modelId: 'claude-3-5-sonnet', apiKey: 'sk-ant-123', active: true },
+        { id: 'm2', provider: 'groq', modelId: 'llama-3.3-70b-versatile', apiKey: 'gsk-456', active: true },
+        { id: 'm3', provider: 'gemini', modelId: 'gemini-2.5-flash', apiKey: 'gem-789', active: false },
+      ]);
+
+      const chain = await getActiveAiProviders();
+      expect(chain).toHaveLength(2);
+      expect(chain[0].provider).toBe('anthropic');
+      expect(chain[0].apiKey).toBe('sk-ant-123');
+      expect(chain[0].model).toBe('claude-3-5-sonnet');
+      expect(chain[1].provider).toBe('groq');
+      expect(chain[1].apiKey).toBe('gsk-456');
+    });
+
+    it('getActiveAiProviders supports storage.aiProviders dictionary map and legacy config.ai fallback', async () => {
+      await set('ai_models', null);
+      await set('aiProviders', {
+        openai: { apiKey: 'sk-proj-abc', model: 'gpt-4o-mini' },
+      });
+      await set('config', {
+        ai: { provider: 'groq', apiKey: 'gsk-legacy' },
+      });
+
+      const chain = await getActiveAiProviders();
+      expect(chain).toHaveLength(2);
+      expect(chain[0].provider).toBe('openai');
+      expect(chain[0].apiKey).toBe('sk-proj-abc');
+      expect(chain[1].provider).toBe('groq');
+      expect(chain[1].apiKey).toBe('gsk-legacy');
+    });
+
+    it('runAgentLoop runs when key is ONLY in storage.ai_models (config.ai provider is none)', async () => {
+      const calls = [];
+      global.fetch = vi.fn(async (url, opts) => {
+        if (url.includes('api.telegram.org')) {
+          const body = JSON.parse(opts.body);
+          calls.push({ type: 'telegram', body });
+          return { ok: true, json: async () => ({ ok: true, result: { message_id: 301 } }) };
+        }
+        if (url.includes('api.groq.com')) {
+          calls.push({ type: 'groq', url, body: JSON.parse(opts.body) });
+          return {
+            ok: true,
+            json: async () => ({
+              choices: [{ message: { content: 'Groq AI response: Campaign running smoothly!' } }],
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      await set('config', { ai: { provider: 'none', apiKey: '' } });
+      await set('ai_models', [
+        { id: 'm1', provider: 'groq', modelId: 'llama-3.3-70b-versatile', apiKey: 'gsk_active_key', active: true },
+      ]);
+
+      await runAgentLoop('bot123', 'chat456', 'Status kya hai');
+
+      const groqCalls = calls.filter((c) => c.type === 'groq');
+      expect(groqCalls.length).toBe(1);
+      expect(groqCalls[0].body.model).toBe('llama-3.3-70b-versatile');
+
+      const tgMsg = calls.find((c) => c.type === 'telegram' && c.body.text?.includes('Groq AI response'));
+      expect(tgMsg).toBeDefined();
+    });
+
+    it('runAgentLoop fails over to fallback provider when primary provider returns error', async () => {
+      const calls = [];
+      global.fetch = vi.fn(async (url, opts) => {
+        if (url.includes('api.telegram.org')) {
+          const body = JSON.parse(opts.body);
+          calls.push({ type: 'telegram', body });
+          return { ok: true, json: async () => ({ ok: true, result: { message_id: 302 } }) };
+        }
+        // Primary Groq fails with 429 Rate Limit
+        if (url.includes('api.groq.com')) {
+          calls.push({ type: 'groq_fail' });
+          return {
+            ok: false,
+            status: 429,
+            text: async () => 'Rate limit exceeded: 429',
+          };
+        }
+        // Secondary Anthropic succeeds
+        if (url.includes('api.anthropic.com')) {
+          calls.push({ type: 'anthropic_success' });
+          return {
+            ok: true,
+            json: async () => ({
+              content: [{ type: 'text', text: 'Anthropic Fallback response: All steps approved!' }],
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      await set('ai_models', [
+        { id: 'm1', provider: 'groq', modelId: 'llama-3.3-70b-versatile', apiKey: 'gsk_rate_limited', active: true },
+        { id: 'm2', provider: 'claude', modelId: 'claude-3-5-sonnet', apiKey: 'sk-ant-fallback', active: true },
+      ]);
+
+      await runAgentLoop('bot123', 'chat456', 'How are my campaigns?');
+
+      expect(calls.filter((c) => c.type === 'groq_fail')).toHaveLength(1);
+      expect(calls.filter((c) => c.type === 'anthropic_success')).toHaveLength(1);
+
+      const tgMsg = calls.find((c) => c.type === 'telegram' && c.body.text?.includes('Anthropic Fallback'));
+      expect(tgMsg).toBeDefined();
+    });
+
+    it('transcribeVoice uses active provider key from AI router chain', async () => {
+      const calls = [];
+      global.fetch = vi.fn(async (url, opts) => {
+        if (url.includes('getFile')) {
+          return { ok: true, json: async () => ({ ok: true, result: { file_path: 'voice/sample.ogg' } }) };
+        }
+        if (url.includes('/file/bot')) {
+          return {
+            ok: true,
+            blob: async () => new Blob(['dummy audio bytes'], { type: 'audio/ogg' }),
+          };
+        }
+        if (url.includes('transcriptions')) {
+          calls.push({ url, headers: opts.headers });
+          return { ok: true, json: async () => ({ text: 'Transcribed voice note text' }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      await set('config', { ai: { provider: 'none', apiKey: '' } });
+      await set('ai_models', [
+        { id: 'm1', provider: 'groq', modelId: 'whisper-large-v3-turbo', apiKey: 'gsk_voice_key', active: true },
+      ]);
+
+      const text = await transcribeVoice('bot123', 'file_xyz');
+      expect(text).toBe('Transcribed voice note text');
+      expect(calls).toHaveLength(1);
+      expect(calls[0].url).toContain('api.groq.com');
+      expect(calls[0].headers.Authorization).toBe('Bearer gsk_voice_key');
+    });
+
+    it('callDynamicAi generates copy using active AI router model', async () => {
+      global.fetch = vi.fn(async (url, opts) => {
+        if (url.includes('api.groq.com')) {
+          return {
+            ok: true,
+            json: async () => ({
+              choices: [{ message: { content: 'Warm personalized message' } }],
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      await set('ai_models', [
+        { id: 'm1', provider: 'groq', modelId: 'llama-3.3-70b-versatile', apiKey: 'gsk_copy_key', active: true },
+      ]);
+
+      const res = await callDynamicAi('Write a welcome note for lead');
+      expect(res.content).toBe('Warm personalized message');
+      expect(res.provider).toBe('groq');
     });
   });
 });

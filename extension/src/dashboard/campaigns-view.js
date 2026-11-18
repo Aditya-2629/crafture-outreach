@@ -1586,6 +1586,7 @@ export async function renderCampaignsView(container, ctx = {}) {
   let currentConfig = {};
   let currentAlarm = null;
   let autoPilotInterval = null;
+  let drawerInterval = null;
 
   try {
     const [cRes, lRes, pRes, cfg, sRes, alarmRes] = await Promise.all([
@@ -2358,7 +2359,8 @@ export async function renderCampaignsView(container, ctx = {}) {
     let drawerCampId = null;
     let drawerFilter = 'all';
     let drawerSearchQuery = '';
-    let drawerInterval = null;
+    if (drawerInterval) clearInterval(drawerInterval);
+    drawerInterval = null;
     let cachedLiveData = null;
 
     function formatTimeAgo(ts) {
@@ -3856,7 +3858,10 @@ export async function renderCampaignsView(container, ctx = {}) {
 
   ctx.registerCleanup?.(() => {
     if (autoPilotInterval) clearInterval(autoPilotInterval);
-    if (drawerInterval) clearInterval(drawerInterval);
+    if (typeof drawerInterval !== 'undefined' && drawerInterval) {
+      clearInterval(drawerInterval);
+      drawerInterval = null;
+    }
     clearTimeout(storageDebounceTimer);
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       chrome.storage.onChanged.removeListener(storageListener);

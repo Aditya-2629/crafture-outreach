@@ -1921,7 +1921,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                     const st = camp.computed || computeCampaignStats(camp, allStorage, now);
 
                     return `
-              <div class="OutFox-camp-card clay-card" data-camp-id="${id}">
+              <div class="OutFox-camp-card clay-card" data-camp-id="${id}" tabindex="0" role="button">
                 <!-- LEFT COLUMN: Avatar + Name + Lifecycle Badge + Mini Step Flow -->
                 <div class="camp-row-left">
                   <div class="planet-avatar">
@@ -2314,6 +2314,18 @@ export async function renderCampaignsView(container, ctx = {}) {
           wizardStep = 2;
           currentWizardStep = 2;
           render();
+        }
+      });
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          if (
+            e.target.closest('.btn-camp-3dots') ||
+            e.target.closest('.camp-3dots-menu') ||
+            e.target.closest('.btn-trigger-live-drawer') ||
+            e.target.closest('.btn-camp-pause-toggle')
+          ) return;
+          e.preventDefault();
+          card.click();
         }
       });
     });
@@ -2749,7 +2761,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                 ${filteredTemplates
                   .map(
                     (tpl) => `
-                  <div class="template-card ${selectedTemplate.id === tpl.id ? 'is-selected' : ''}" data-tpl-id="${tpl.id}">
+                  <div class="template-card ${selectedTemplate.id === tpl.id ? 'is-selected' : ''}" data-tpl-id="${tpl.id}" tabindex="0" role="button">
                     <div class="tpl-head">
                       <div class="tpl-icon-box">${tpl.icon}</div>
                       <div class="tpl-tags">
@@ -3354,6 +3366,12 @@ export async function renderCampaignsView(container, ctx = {}) {
           activeStepIdx = 0;
           wizardStep = 2;
           renderWizard();
+        }
+      });
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          card.click();
         }
       });
     });

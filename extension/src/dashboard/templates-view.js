@@ -22,12 +22,12 @@ const POPULAR_EMOJIS = [
 ];
 
 const PRESET_GIFS = [
-  { id: 'wave', title: 'Wave Hello', icon: '👋' },
-  { id: 'thumbsup', title: 'Thumbs Up', icon: '👍' },
-  { id: 'coffee', title: 'Coffee Cheers', icon: '☕' },
-  { id: 'mindblown', title: 'Mind Blown', icon: '🤯' },
-  { id: 'launch', title: 'Rocket Launch', icon: '🚀' },
-  { id: 'highfive', title: 'High Five', icon: '🙌' }
+  { id: 'wave', title: 'Wave Hello', iconKey: 'message', icon: ICONS.message },
+  { id: 'thumbsup', title: 'Thumbs Up', iconKey: 'thumbsUp', icon: ICONS.thumbsUp },
+  { id: 'coffee', title: 'Coffee Cheers', iconKey: 'clock', icon: ICONS.clock },
+  { id: 'mindblown', title: 'Mind Blown', iconKey: 'lightning', icon: ICONS.lightning },
+  { id: 'launch', title: 'Rocket Launch', iconKey: 'rocket', icon: ICONS.rocket },
+  { id: 'highfive', title: 'High Five', iconKey: 'sparkles', icon: ICONS.sparkles }
 ];
 
 export function openEditMessageModal({ template = null, category = 'message', onSave }) {
@@ -191,7 +191,7 @@ export function openEditMessageModal({ template = null, category = 'message', on
                     <div class="gif-popover-head">Select Outreach GIF</div>
                     <div class="gif-grid">
                       ${PRESET_GIFS.map((g) => `
-                        <div class="gif-item-card" data-gif-title="${g.title}" data-gif-icon="${g.icon}">
+                        <div class="gif-item-card" data-gif-id="${g.id}">
                           <span class="gif-card-icon">${g.icon}</span>
                           <span class="gif-card-name">${g.title}</span>
                         </div>
@@ -374,9 +374,10 @@ export function openEditMessageModal({ template = null, category = 'message', on
     backdrop.querySelectorAll('.gif-item-card').forEach((card) => {
       card.addEventListener('click', (e) => {
         e.stopPropagation();
-        const title = card.dataset.gifTitle;
-        const icon = card.dataset.gifIcon;
-        attachments.push({ type: 'gif', name: `GIF: ${title}`, icon });
+        const preset = PRESET_GIFS.find((p) => p.id === card.dataset.gifId);
+        if (preset) {
+          attachments.push({ type: 'gif', name: `GIF: ${preset.title}`, icon: preset.iconKey });
+        }
         gifPop.classList.add('hidden');
         renderModal();
       });

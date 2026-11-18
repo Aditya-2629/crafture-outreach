@@ -339,7 +339,7 @@ export async function renderProspectsView(container, ctx = {}) {
               const lid = l.listId || l.id;
               const count = masterProspects.filter((p) => p.listId === lid).length;
               return `
-                <div class="list-nav-item custom-list-item ${currentListId === lid ? 'is-active' : ''}" data-list-id="${lid}">
+                <div class="list-nav-item custom-list-item ${currentListId === lid ? 'is-active' : ''}" data-list-id="${lid}" tabindex="0" role="button">
                   <span class="list-icon">${ICONS.folder}</span>
                   <span class="list-nav-name" title="${l.name}" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:115px; display:inline-block; font-weight:600;">${l.name}</span>
                   <div style="display:flex; align-items:center; gap:4px; margin-left:auto;">
@@ -554,7 +554,7 @@ export async function renderProspectsView(container, ctx = {}) {
                             ${(p.fullName[0] || 'L').toUpperCase()}
                           </div>
                           <div>
-                            <span class="prospect-timeline-trigger" data-id="${p.publicId}" style="font-weight:600; color:#14142b; display:block; cursor:pointer; text-decoration:underline decoration-dotted;" title="Click to view outreach timeline">${p.fullName}</span>
+                            <span class="prospect-timeline-trigger" data-id="${p.publicId}" tabindex="0" role="button" style="font-weight:600; color:#14142b; display:block; cursor:pointer; text-decoration:underline decoration-dotted;" title="Click to view outreach timeline">${p.fullName}</span>
                             <a href="${p.profileUrl}" target="_blank" style="font-size:11px; color:#ff6b00; text-decoration:none;">Profile ↗</a>
                           </div>
                         </div>
@@ -631,6 +631,13 @@ export async function renderProspectsView(container, ctx = {}) {
         ctx.updateSubState?.(currentListId);
         ctx.saveState?.({ activeSubTab: currentListId, searchQuery, statusFilter, visitFilter, tagFilter });
         paint();
+      });
+      item.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          if (e.target.closest('.list-dots-trigger') || e.target.closest('.list-dropdown-menu')) return;
+          e.preventDefault();
+          item.click();
+        }
       });
     });
 
@@ -759,6 +766,12 @@ export async function renderProspectsView(container, ctx = {}) {
         const publicId = el.dataset.id;
         if (publicId) {
           openLeadTimelineModal({ publicId });
+        }
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          el.click();
         }
       });
     });

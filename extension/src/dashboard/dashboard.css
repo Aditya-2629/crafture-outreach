@@ -275,7 +275,7 @@ body.OutFox-layout {
   border-radius: 50%;
   background: var(--primary);
   color: #ffffff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -504,7 +504,7 @@ body.OutFox-layout {
 .status-pill {
   padding: 2px 8px;
   border-radius: var(--radius-pill);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -984,7 +984,7 @@ table.prospects-table tr:hover td {
 .camp-status-pill {
   padding: 3px 8px;
   border-radius: var(--radius-pill);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -1064,7 +1064,7 @@ table.prospects-table tr:hover td {
 }
 
 .mini-lbl {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-muted);
 }
@@ -1466,7 +1466,7 @@ table.prospects-table tr:hover td {
 
 .breadcrumb-separator {
   color: var(--border);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 /* Template Selection (Step 1) */
@@ -1574,7 +1574,7 @@ table.prospects-table tr:hover td {
 }
 
 .tpl-tag-pill {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   padding: 3px 8px;
   border-radius: var(--radius-pill);
@@ -1779,7 +1779,7 @@ table.prospects-table tr:hover td {
 }
 
 .flow-condition-pill {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   color: #0369a1;
   background: #e0f2fe;
@@ -1828,7 +1828,7 @@ table.prospects-table tr:hover td {
 }
 
 .delay-pill-badge {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--primary);
   background: var(--primary-soft);
@@ -2082,7 +2082,7 @@ input:checked + .slider:before {
 }
 
 .list-item-badge {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   padding: 2px 7px;
   border-radius: var(--radius-pill);
@@ -2537,7 +2537,7 @@ input:checked + .slider:before {
 
 .breadcrumb-separator {
   color: var(--border);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 /* Template Selection (Step 1) */
@@ -2645,7 +2645,7 @@ input:checked + .slider:before {
 }
 
 .tpl-tag-pill {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   padding: 3px 8px;
   border-radius: var(--radius-pill);
@@ -2850,7 +2850,7 @@ input:checked + .slider:before {
 }
 
 .flow-condition-pill {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   color: #0369a1;
   background: #e0f2fe;
@@ -2899,7 +2899,7 @@ input:checked + .slider:before {
 }
 
 .delay-pill-badge {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--primary);
   background: var(--primary-soft);
@@ -3153,7 +3153,7 @@ input:checked + .slider:before {
 }
 
 .list-item-badge {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   padding: 2px 7px;
   border-radius: var(--radius-pill);
@@ -3731,7 +3731,7 @@ input:checked + .slider:before {
   background: #ff4757;
   color: #ffffff;
   border: 2px solid #ffffff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   display: flex;
@@ -4037,7 +4037,7 @@ input:checked + .slider:before {
   background: #ff6b00;
   color: #ffffff;
   font-weight: 700;
-  font-size: 10px;
+  font-size: 11px;
   padding: 1px 4px;
   border-radius: 3px;
 }
@@ -4175,7 +4175,7 @@ input:checked + .slider:before {
   right: 0;
   background: #0077b5;
   color: #fff;
-  font-size: 10px;
+  font-size: 11px;
   padding: 2px 4px;
   border-radius: 4px;
   border: 2px solid #fff;
@@ -4294,7 +4294,7 @@ input:checked + .slider:before {
 }
 
 .status-metric-sub {
-  font-size: 10px;
+  font-size: 11px;
   color: #6e7191;
   display: block;
 }
@@ -6604,7 +6604,7 @@ input:checked + .slider:before {
 }
 
 .att-chip-size {
-  font-size: 10px;
+  font-size: 11px;
   color: #64748b;
 }
 
@@ -7101,7 +7101,7 @@ input:checked + .slider:before {
   right: -2px;
   background: #0077b5;
   color: #ffffff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   padding: 1px 4px;
   border-radius: 3px;
@@ -7609,7 +7609,7 @@ input:checked + .slider:before {
   right: 18px;
   background: #ff6b00;
   color: #ffffff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 6px;
@@ -7740,20 +7740,20 @@ body.OutFox-layout {
 .settings-card,
 .terminal-modal,
 .hero-blue-banner {
-  border-radius: 22px !important;
-  box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.07), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(15, 23, 42, 0.04) !important;
-  border: 1px solid rgba(255, 255, 255, 0.75) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 6px 16px -4px rgba(15, 23, 42, 0.04) !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
 }
 
-/* Hero Vibrant OutFox Clay Banner */
+/* Hero Vibrant OutFox Calm Banner */
 .hero-blue-banner {
   background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.35) !important;
-  box-shadow: 0 16px 36px -6px rgba(255, 107, 0, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -3px 6px rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  box-shadow: 0 4px 16px rgba(255, 107, 0, 0.2) !important;
   color: #ffffff !important;
 }
 
-/* Claymorphism Tactile Buttons */
+/* Tactile Buttons */
 button,
 .btn-primary,
 .btn-secondary,
@@ -7764,14 +7764,14 @@ button,
 .btn-attention-link,
 .action-type-pill,
 .term-btn {
-  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease, background-color 180ms ease, color 180ms ease !important;
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 160ms ease, background-color 160ms ease, color 160ms ease !important;
 }
 
 button:hover,
 .btn-primary:hover,
 .btn-primary-start-camp:hover,
 .btn-email-strategy:hover {
-  transform: translateY(-1.5px);
+  transform: translateY(-1px);
 }
 
 button:active,
@@ -7782,7 +7782,7 @@ button:active,
 .btn-primary-start-camp:active,
 .btn-email-strategy:active,
 .action-type-pill:active {
-  transform: translateY(1px) scale(0.985) !important;
+  transform: translateY(0.5px) scale(0.99) !important;
 }
 
 /* Smooth View-Switch Fade+Slide-Up Animation */
@@ -7802,7 +7802,7 @@ button:active,
   animation: viewFadeSlideUp 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Auto-Pilot Claymorphism Status Pill */
+/* Auto-Pilot Calm Status Pill */
 .autopilot-status-pill {
   display: inline-flex;
   align-items: center;
@@ -7820,21 +7820,21 @@ button:active,
   background: #ecfdf5 !important;
   color: #047857 !important;
   border: 1.5px solid #a7f3d0 !important;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.1) !important;
 }
 
 .pill-autopilot-resting {
   background: #fffbeb !important;
   color: #b45309 !important;
   border: 1.5px solid #fde68a !important;
-  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+  box-shadow: 0 1px 3px rgba(245, 158, 11, 0.1) !important;
 }
 
 .pill-autopilot-idle {
   background: #f8fafc !important;
   color: #64748b !important;
   border: 1.5px solid #e2e8f0 !important;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
 }
 
 .autopilot-dot {
@@ -7874,4 +7874,70 @@ button:active,
   0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
   70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
   100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+/* Tabular Numerals for Live Metrics, Counters, Queue Timers and Tables */
+.stat-card-value,
+.kpi-number,
+.kpi-stat-number,
+.kpi-rate-number,
+.kpi-side-rate,
+.kpi-main-number,
+.kpi-val,
+.metric-big,
+.metric-denom,
+.metric-value-row,
+.metric-val,
+.status-metric-num,
+.quota-metric-val,
+.quota-count-line,
+.quota-count,
+.badge-total-count,
+.banner-stat-val,
+.tab-counter,
+.count-tag,
+.badge-count,
+.counter-pill,
+.prospects-count,
+.camp-stat-val,
+.leads-count,
+.queue-timer,
+.queue-countdown,
+.timer-pill,
+.time-cell,
+.time-relative {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Accessible Focus Rings */
+:focus-visible {
+  outline: 2px solid var(--accent, #ff6b00);
+  outline-offset: 2px;
+}
+
+.search-input:focus-visible,
+.crm-filter-select:focus-visible,
+.crm-filter-btn:focus-visible,
+.delay-select-pill:focus-visible,
+.outfox-logs-pill:focus-visible {
+  outline: 2px solid var(--accent, #ff6b00);
+  outline-offset: 2px;
+}
+
+/* Reduced Motion Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .view-enter-active,
+  .content-body.view-enter-active > *,
+  .autopilot-dot.dot-active.animated,
+  .autopilot-dot.dot-resting,
+  .pulse-dot,
+  .pulse-dot.animated {
+    animation: none !important;
+  }
 }

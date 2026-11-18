@@ -198,7 +198,7 @@ export async function renderInboxView(container, ctx = {}) {
                       const isSelected = selectedThread && selectedThread.threadId === t.threadId;
                       return `
                   <div class="inbox-thread-card" data-id="${t.threadId}" style="display:flex; align-items:flex-start; gap:12px; padding:12px; border-radius:10px; cursor:pointer; margin-bottom:4px; transition:all 0.15s; background:${isSelected ? '#f1f5f9' : '#fff'}; border:${isSelected ? '1.5px solid #ff6b00' : '1px solid transparent'};">
-                    <div style="width:40px; height:40px; min-width:40px; border-radius:50%; background:linear-gradient(135deg, #ff741f 0%, #ea580c 100%); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; box-shadow:0 2px 6px rgba(37,99,235,0.2);">
+                    <div style="width:40px; height:40px; min-width:40px; border-radius:50%; background:linear-gradient(135deg, #ff741f 0%, #ea580c 100%); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; box-shadow:0 1px 3px rgba(15,23,42,0.08);">
                       ${t.initials}
                     </div>
                     <div style="flex:1; min-width:0;">
@@ -232,7 +232,7 @@ export async function renderInboxView(container, ctx = {}) {
                 <p style="font-size:13px; color:#64748b; max-width:360px; margin:0 0 20px; line-height:1.5;">
                   Select a discussion from the left to read conversation history, view profiles, and send replies.
                 </p>
-                <button type="button" id="btn-create-first-convo" style="background:#ff6b00; color:#fff; border:none; padding:10px 20px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 4px 12px rgba(37,99,235,0.25);">
+                <button type="button" id="btn-create-first-convo" style="background:#ea580c; color:#fff; border:none; padding:10px 20px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 1px 2px rgba(15,23,42,0.05);">
                   + Select a conversation to start
                 </button>
               </div>
@@ -282,10 +282,10 @@ export async function renderInboxView(container, ctx = {}) {
                             const isMe = m.fromMe;
                             return `
                         <div style="display:flex; flex-direction:column; align-items:${isMe ? 'flex-end' : 'flex-start'};">
-                          <div style="max-width:70%; padding:12px 16px; border-radius:${isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px'}; background:${isMe ? '#ff6b00' : '#fff'}; color:${isMe ? '#fff' : '#0f172a'}; box-shadow:0 2px 8px rgba(0,0,0,0.04); border:${isMe ? 'none' : '1px solid #e2e8f0'}; font-size:13.5px; line-height:1.45; word-break:break-word;">
+                          <div style="max-width:70%; padding:12px 16px; border-radius:${isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px'}; background:${isMe ? '#ff6b00' : '#fff'}; color:${isMe ? '#fff' : '#0f172a'}; box-shadow:0 1px 2px rgba(15,23,42,0.04); border:${isMe ? 'none' : '1px solid #e2e8f0'}; font-size:13.5px; line-height:1.45; word-break:break-word;">
                             ${m.body}
                           </div>
-                          <span style="font-size:10.5px; font-weight:500; color:#94a3b8; margin-top:4px; padding:0 4px;">
+                          <span style="font-size:11px; font-weight:500; color:#94a3b8; margin-top:4px; padding:0 4px; font-variant-numeric:tabular-nums;">
                             ${m.sentAt ? new Date(m.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                           </span>
                         </div>
@@ -300,23 +300,23 @@ export async function renderInboxView(container, ctx = {}) {
                 <!-- Smart Objection & Closer Bar -->
                 <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
                   <div style="display:flex; align-items:center; gap:8px;">
-                    <button type="button" id="btn-inbox-ai-playbook" style="display:inline-flex; align-items:center; gap:5px; background:#fff7ed; border:1px solid #fed7aa; color:#ea580c; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;" title="Analyze inbound message & apply personalized Objection Playbook response">
+                    <button type="button" id="btn-inbox-ai-playbook" style="display:inline-flex; align-items:center; gap:5px; background:#fff7ed; border:1px solid #fed7aa; color:#ea580c; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;" title="Analyze inbound message & apply personalized Objection Playbook response">
                       ${ICONS.sparkles} AI Playbook Reply
                     </button>
-                    <button type="button" id="btn-inbox-insert-resume" style="display:inline-flex; align-items:center; gap:5px; background:#f8fafc; border:1px solid #e2e8f0; color:#475569; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;" title="Insert active candidate resume link">
+                    <button type="button" id="btn-inbox-insert-resume" style="display:inline-flex; align-items:center; gap:5px; background:#f8fafc; border:1px solid #e2e8f0; color:#475569; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:500; cursor:pointer;" title="Insert active candidate resume link">
                       ${ICONS.fileText} Insert Resume
                     </button>
-                    <button type="button" id="btn-inbox-snooze-30" style="display:inline-flex; align-items:center; gap:5px; background:#f8fafc; border:1px solid #e2e8f0; color:#475569; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;" title="Snooze lead for 30 days">
+                    <button type="button" id="btn-inbox-snooze-30" style="display:inline-flex; align-items:center; gap:5px; background:#f8fafc; border:1px solid #e2e8f0; color:#475569; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:500; cursor:pointer;" title="Snooze lead for 30 days">
                       ${ICONS.clock} Snooze 30d
                     </button>
                   </div>
                   <span id="inbox-intent-badge" style="display:none; font-size:11px; font-weight:700; background:#f1f5f9; color:#64748b; padding:2px 8px; border-radius:12px;"></span>
                 </div>
 
-                <textarea id="inbox-reply-text" rows="2" placeholder="Write a reply to ${selectedThread.senderName}..." style="width:100%; padding:10px 14px; border:1.5px solid #cbd5e1; border-radius:10px; font-size:13px; outline:none; resize:none; font-family:inherit; box-sizing:border-box; transition:border-color 0.2s;"></textarea>
+                <textarea id="inbox-reply-text" rows="2" placeholder="Write a reply to ${selectedThread.senderName}..." style="width:100%; padding:10px 14px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; outline:none; resize:none; font-family:inherit; box-sizing:border-box; transition:border-color 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s cubic-bezier(0.22, 1, 0.36, 1);"></textarea>
                 <div style="display:flex; align-items:center; justify-content:space-between;">
                   <span style="font-size:11px; color:#94a3b8;">Shift + Enter for new line</span>
-                  <button type="button" id="btn-send-inbox-reply" style="background:#ff6b00; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; box-shadow:0 2px 8px rgba(37,99,235,0.25);">
+                  <button type="button" id="btn-send-inbox-reply" style="background:#ea580c; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.18s cubic-bezier(0.22, 1, 0.36, 1); box-shadow:0 1px 2px rgba(15,23,42,0.05);">
                     Send Reply ${ICONS.arrowRight}
                   </button>
                 </div>

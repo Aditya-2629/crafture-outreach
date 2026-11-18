@@ -854,12 +854,12 @@ function ensureCampaignsStyles() {
     .OutFox-camp-grid { display: flex; flex-direction: column; gap: 16px; }
     .OutFox-camp-card {
       background: #ffffff;
-      border: 1px solid rgba(255, 255, 255, 0.85);
-      border-radius: 20px;
-      padding: 20px 24px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 12px;
+      padding: 20px;
       position: relative;
-      box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.05), inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -2px 4px rgba(15, 23, 42, 0.02);
-      transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      transition: border-color 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s cubic-bezier(0.22, 1, 0.36, 1);
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -873,9 +873,8 @@ function ensureCampaignsStyles() {
       position: relative;
     }
     .OutFox-camp-card:hover {
-      border-color: rgba(255, 107, 0, 0.25);
-      box-shadow: 0 16px 32px -4px rgba(255, 107, 0, 0.1), inset 0 2px 4px rgba(255, 255, 255, 0.9);
-      transform: translateY(-2px);
+      border-color: rgba(15, 23, 42, 0.16);
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
     }
     .camp-overview-pills-row {
       display: flex;
@@ -888,13 +887,13 @@ function ensureCampaignsStyles() {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 16px;
+      padding: 6px 14px;
       background: #ffffff;
-      border: 1px solid rgba(255, 255, 255, 0.85);
-      border-radius: 14px;
-      font-size: 13px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 8px;
+      font-size: 12px;
       color: #64748b;
-      box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.04), inset 0 2px 4px rgba(255, 255, 255, 0.9);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     }
     .camp-stat-pill strong {
       color: #0f172a;
@@ -952,6 +951,7 @@ function ensureCampaignsStyles() {
     .camp-progress-pct {
       font-weight: 700;
       color: #0f172a;
+      font-variant-numeric: tabular-nums;
     }
     .camp-progress-track {
       width: 100%;
@@ -964,11 +964,11 @@ function ensureCampaignsStyles() {
     .camp-progress-fill {
       height: 100%;
       border-radius: 9999px;
-      background: linear-gradient(90deg, #ff741f 0%, #ff4d00 100%);
+      background: #f97316;
       transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
     }
     .camp-progress-fill.is-complete {
-      background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+      background: #10b981;
     }
     .camp-mini-kpis {
       display: flex;
@@ -982,7 +982,7 @@ function ensureCampaignsStyles() {
       gap: 2px;
     }
     .mini-kpi-item .kpi-label {
-      font-size: 10.5px;
+      font-size: 11px;
       color: #94a3b8;
       font-weight: 600;
       text-transform: uppercase;
@@ -990,13 +990,15 @@ function ensureCampaignsStyles() {
     }
     .mini-kpi-item .kpi-val {
       font-size: 12.5px;
-      color: #1e293b;
+      color: #0f172a;
       font-weight: 700;
+      font-variant-numeric: tabular-nums;
     }
     .mini-kpi-item .kpi-sub {
-      font-size: 10.5px;
+      font-size: 11px;
       color: #64748b;
       font-weight: 500;
+      font-variant-numeric: tabular-nums;
     }
     .camp-row-right {
       display: flex;

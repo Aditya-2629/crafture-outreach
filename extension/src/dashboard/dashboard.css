@@ -22,40 +22,37 @@ body.OutFox-layout {
 }
 
 /* ==========================================================================
-   OutFox Auto-Collapsing Left Navigation Sidebar (70px -> 240px on Hover)
+   OutFox Left Navigation Sidebar (Crisp 240px Fixed SaaS Sidebar)
    ========================================================================== */
 .sidebar {
-  width: 70px;
-  min-width: 70px;
+  width: 240px;
+  min-width: 240px;
   height: 100vh;
   background: #ffffff;
-  border-right: 1px solid rgba(20, 20, 43, 0.08);
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
   display: flex;
   flex-direction: column;
-  padding: 24px 10px;
+  padding: 20px 14px;
   box-sizing: border-box;
-  transition:
-    width 0.28s cubic-bezier(0.2, 0, 0, 1),
-    box-shadow 0.28s ease,
-    padding 0.28s ease;
   position: relative;
   z-index: 950;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   white-space: nowrap;
 }
 
 .sidebar:hover {
   width: 240px;
   min-width: 240px;
-  padding: 24px 16px;
-  box-shadow: 10px 0 35px rgba(255, 107, 0, 0.08);
+  padding: 20px 14px;
+  box-shadow: none;
 }
 
 .sidebar-logo {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
   padding: 0 8px;
 }
 
@@ -65,8 +62,7 @@ body.OutFox-layout {
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.01em;
-  opacity: 0;
-  transition: opacity 0.2s ease;
+  opacity: 1;
 }
 
 .sidebar:hover .logo-text {
@@ -76,37 +72,45 @@ body.OutFox-layout {
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   flex: 1;
 }
 
-/* Nav Item handling: icons centered when collapsed, label appears on hover */
+/* Nav Item handling */
 .sidebar .nav-item {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 14px;
-  border-radius: 9999px;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 8px;
   border: none;
   background: transparent;
-  color: #6e7191;
+  color: #475569;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   width: 100%;
   text-align: left;
-  transition: all 0.2s ease;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.sidebar .nav-item:hover {
+  background: #f8fafc;
+  color: #0f172a;
 }
 
 .sidebar .nav-item .nav-icon {
   font-size: 18px;
-  min-width: 24px;
+  min-width: 20px;
   text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .sidebar .nav-item .nav-label {
-  opacity: 0;
-  transition: opacity 0.2s ease;
+  opacity: 1;
+  flex: 1;
 }
 
 .sidebar:hover .nav-item .nav-label {
@@ -116,9 +120,9 @@ body.OutFox-layout {
 .sidebar .nav-item.is-active,
 .sidebar .nav-item.active {
   background: #fff7ed !important;
-  color: #ff6b00 !important;
+  color: #ea580c !important;
   font-weight: 600 !important;
-  border-radius: 9999px !important;
+  border-radius: 8px !important;
 }
 
 .sidebar-footer {
@@ -153,8 +157,7 @@ body.OutFox-layout {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  opacity: 0;
-  transition: opacity 0.2s ease;
+  opacity: 1;
 }
 
 .sidebar:hover .profile-meta {
@@ -191,9 +194,17 @@ body.OutFox-layout {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 32px;
-  background: transparent;
-  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 56px;
+  min-height: 56px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  box-sizing: border-box;
 }
 
 .greeting-box {
@@ -202,7 +213,7 @@ body.OutFox-layout {
 }
 
 .greeting-title {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.02em;
@@ -764,6 +775,9 @@ table.prospects-table {
 }
 
 table.prospects-table th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   background: var(--bg-page);
   padding: 14px 16px;
   font-size: 11.5px;
@@ -782,7 +796,7 @@ table.prospects-table td {
 }
 
 table.prospects-table tr:hover td {
-  background: #fafbfd;
+  background: #f8fafc;
 }
 
 /* Modals */
@@ -2208,6 +2222,9 @@ input:checked + .slider:before {
 }
 
 .crm-table th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   background: var(--bg-page);
   padding: 13px 16px;
   font-size: 11px;
@@ -2227,7 +2244,7 @@ input:checked + .slider:before {
 }
 
 .crm-table tr:hover td {
-  background: #fafbfd;
+  background: #f8fafc;
 }
 
 .crm-table tr.row-selected td {
@@ -3279,6 +3296,9 @@ input:checked + .slider:before {
 }
 
 .crm-table th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   background: var(--bg-page);
   padding: 13px 16px;
   font-size: 11px;
@@ -3298,7 +3318,7 @@ input:checked + .slider:before {
 }
 
 .crm-table tr:hover td {
-  background: #fafbfd;
+  background: #f8fafc;
 }
 
 .crm-table tr.row-selected td {
@@ -3920,10 +3940,11 @@ input:checked + .slider:before {
 }
 
 .home-greeting {
-  font-size: 26px;
+  font-size: 20px;
   font-weight: 700;
-  color: #14142b;
+  color: #0f172a;
   margin: 0;
+  letter-spacing: -0.02em;
 }
 
 .home-filters-row {
@@ -5047,10 +5068,11 @@ input:checked + .slider:before {
 }
 
 .queue-view-title {
-  font-size: 26px;
-  font-weight: 800;
-  color: #14142b;
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
   margin: 0 0 6px 0;
+  letter-spacing: -0.02em;
 }
 
 .queue-subtitle-line {
@@ -5188,14 +5210,15 @@ input:checked + .slider:before {
 
 .floating-queue-bulk {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 12px;
   padding: 8px 16px;
   margin-bottom: 12px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
   display: none;
   align-items: center;
   justify-content: space-between;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease, box-shadow 180ms ease;
 }
 
 .floating-queue-bulk.is-visible {
@@ -5216,7 +5239,7 @@ input:checked + .slider:before {
 /* Queue Table */
 .queue-table-container {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 14px;
   overflow: hidden;
 }
@@ -5227,6 +5250,9 @@ input:checked + .slider:before {
 }
 
 .queue-table th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   text-align: left;
   padding: 12px 16px;
   font-size: 11px;
@@ -5241,6 +5267,10 @@ input:checked + .slider:before {
   font-size: 13px;
   border-bottom: 1px solid #f1f5f9;
   color: #14142b;
+}
+
+.queue-table tr:hover td {
+  background: #f8fafc;
 }
 
 .queue-action-badge {
@@ -5473,10 +5503,11 @@ input:checked + .slider:before {
   margin-bottom: 28px;
 }
 .main-page-title {
-  font-size: 26px;
-  font-weight: 800;
-  color: #14142b;
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
   margin: 0 0 6px 0;
+  letter-spacing: -0.02em;
 }
 .category-heading-row {
   display: flex;
@@ -6374,27 +6405,19 @@ input:checked + .slider:before {
 /* ========================================================
    CRITICAL OutFox MATCH FIXES & MEDIA TOOLS
    ======================================================== */
-/* 1. Prevent sidebar subnav text from leaking under icons when collapsed */
-.sidebar:not(:hover) .sidebar-subnav {
-  display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
+/* 1. Fixed 240px sidebar retains full visibility regardless of hover state */
+.sidebar .sidebar-subnav {
+  opacity: 1;
 }
 
-.sidebar:not(:hover) .nav-chevron {
-  display: none !important;
+.sidebar .nav-chevron {
+  display: inline-flex;
 }
 
-.sidebar:not(:hover) .logo-text,
-.sidebar:not(:hover) .nav-label,
-.sidebar:not(:hover) .profile-meta {
-  display: none !important;
-}
-
-.sidebar:not(:hover) .nav-item {
-  justify-content: center !important;
-  padding: 12px 0 !important;
+.sidebar .logo-text,
+.sidebar .nav-label,
+.sidebar .profile-meta {
+  opacity: 1;
 }
 
 /* 2. Flat underline tabs with pill count badges matching OutFox Screenshot 3 */
@@ -6647,21 +6670,26 @@ input:checked + .slider:before {
    AUTHENTIC 1:1 OutFox HOME DASHBOARD STYLES (IMAGE 747b61)
    ======================================================== */
 .topbar {
-  height: 52px !important;
-  min-height: 52px !important;
-  background: #ffffff !important;
-  border-bottom: 1px solid #fff7ed !important;
+  height: 56px !important;
+  min-height: 56px !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
-  padding: 0 28px !important;
+  padding: 0 24px !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 40 !important;
   box-sizing: border-box !important;
 }
 
 .topbar-crumb {
-  font-size: 15px !important;
-  font-weight: 700 !important;
-  color: #14142b !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #0f172a !important;
 }
 
 .OutFox-home-grid {
@@ -6706,9 +6734,9 @@ input:checked + .slider:before {
 }
 
 .home-greeting {
-  font-size: 28px;
-  font-weight: 800;
-  color: #14142b;
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
   margin: 0;
   letter-spacing: -0.02em;
 }
@@ -6720,27 +6748,27 @@ input:checked + .slider:before {
 
 .home-filter-select {
   background: #ffffff;
-  border: 1.5px solid #e2e8f0;
-  border-radius: 20px;
-  padding: 6px 14px;
-  font-size: 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
   font-weight: 600;
-  color: #14142b;
+  color: #0f172a;
   cursor: pointer;
   outline: none;
 }
 
 .hero-blue-banner {
-  background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 22px;
-  padding: 24px 28px;
-  color: #ffffff;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  padding: 20px;
+  color: #0f172a;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
-  box-shadow: 0 16px 36px -6px rgba(255, 107, 0, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -3px 6px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .hero-banner-badge {
@@ -7719,14 +7747,14 @@ input:checked + .slider:before {
    OutFox Global Claymorphism Design System & View Transitions
    ========================================================================== */
 body.OutFox-layout {
-  background-color: #F3F6FC !important;
+  background-color: #F8FAFC !important;
 }
 
 .main-canvas {
-  background: #F3F6FC !important;
+  background: #F8FAFC !important;
 }
 
-/* Rounded Claymorphism Cards across all views */
+/* Rounded Cards across all views */
 .OutFox-card,
 .kpi-card-white,
 .actions-sent-card,
@@ -7738,19 +7766,19 @@ body.OutFox-layout {
 .modal-card,
 .modal-content,
 .settings-card,
-.terminal-modal,
-.hero-blue-banner {
-  border-radius: 16px !important;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 6px 16px -4px rgba(15, 23, 42, 0.04) !important;
+.terminal-modal {
+  border-radius: 12px !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
   border: 1px solid rgba(15, 23, 42, 0.08) !important;
 }
 
-/* Hero Vibrant OutFox Calm Banner */
+/* Crisp White 4-Column KPI Strip */
 .hero-blue-banner {
-  background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.25) !important;
-  box-shadow: 0 4px 16px rgba(255, 107, 0, 0.2) !important;
-  color: #ffffff !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  color: #0f172a !important;
 }
 
 /* Tactile Buttons */

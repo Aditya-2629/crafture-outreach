@@ -1,6 +1,6 @@
 /**
  * OutFox — Authentic OutFox Quick Controller Popup Stylesheet
- * 340px Light Theme (#f8fafc / #FFFFFF / #ff6b00)
+ * 340px Light Theme (#F8FAFC / #FFFFFF / #F97316)
  */
 
 * {
@@ -16,13 +16,13 @@ body.popup-controller-body {
   height: 440px !important;
   max-height: 440px !important;
   overflow: hidden !important;
-  background: var(--bg-page, #f8fafc) !important;
-  color: var(--text-primary, #14142b) !important;
+  background: var(--bg-page, #F8FAFC) !important;
+  color: var(--text-primary, #0F172A) !important;
   margin: 0 !important;
   padding: 0 !important;
   display: flex !important;
   flex-direction: column !important;
-  font-family: var(--font-main, 'Helvetica Neue', Helvetica, -apple-system, sans-serif);
+  font-family: var(--font-main, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
 }
 
 .popup-controller {
@@ -40,7 +40,7 @@ body.popup-controller-body {
   align-items: center;
   justify-content: space-between;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--border, rgba(20, 20, 43, 0.08));
+  border-bottom: 1px solid var(--border, rgba(15, 23, 42, 0.08));
 }
 
 .brand-group {
@@ -52,12 +52,12 @@ body.popup-controller-body {
 .brand-title {
   font-size: 14.5px;
   font-weight: 700;
-  color: var(--text-primary, #14142b);
+  color: var(--text-primary, #0F172A);
   letter-spacing: -0.01em;
 }
 
 .brand-title span {
-  color: var(--primary, #ff6b00);
+  color: var(--primary, #F97316);
 }
 
 .status-badge {
@@ -68,9 +68,9 @@ body.popup-controller-body {
   font-weight: 600;
   padding: 3px 10px;
   border-radius: var(--radius-pill, 9999px);
-  background: var(--success-soft, rgba(0, 186, 136, 0.12));
-  color: var(--success, #00ba88);
-  border: 1px solid rgba(0, 186, 136, 0.2);
+  background: var(--success-soft, #ECFDF5);
+  color: var(--success, #10B981);
+  border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
 .status-badge .status-dot {
@@ -88,10 +88,10 @@ body.popup-controller-body {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: var(--surface, #ffffff);
-  border: 1px solid rgba(20, 20, 43, 0.06);
-  border-radius: var(--radius-card, 14px);
-  box-shadow: 0px 8px 20px rgba(255, 107, 0, 0.06);
+  background: var(--surface, #FFFFFF);
+  border: 1px solid var(--border, rgba(15, 23, 42, 0.08));
+  border-radius: var(--radius-card, 12px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .meter-radial {
@@ -111,18 +111,18 @@ body.popup-controller-body {
 
 .radial-track {
   fill: none;
-  stroke: var(--primary-soft, #fff7ed);
+  stroke: var(--primary-soft, #FFF7ED);
   stroke-width: 10;
 }
 
 .radial-progress {
   fill: none;
-  stroke: var(--primary, #ff6b00);
+  stroke: var(--primary, #F97316);
   stroke-width: 10;
   stroke-linecap: round;
   stroke-dasharray: 390;
   stroke-dashoffset: 390;
-  transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .meter-center {
@@ -136,7 +136,7 @@ body.popup-controller-body {
 .meter-number {
   font-size: 24px;
   font-weight: 700;
-  color: var(--text-primary, #14142b);
+  color: var(--text-primary, #0F172A);
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
@@ -144,7 +144,7 @@ body.popup-controller-body {
 .meter-denom {
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-muted, #a0a3bd);
+  color: var(--text-muted, #64748B);
   margin-top: 3px;
   font-variant-numeric: tabular-nums;
 }
@@ -152,7 +152,7 @@ body.popup-controller-body {
 .meter-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary, #6e7191);
+  color: var(--text-secondary, #475569);
   margin-top: 10px;
 }
 
@@ -162,10 +162,10 @@ body.popup-controller-body {
   align-items: center;
   justify-content: space-around;
   padding: 11px 14px;
-  background: var(--surface, #ffffff);
-  border: 1px solid rgba(20, 20, 43, 0.06);
-  border-radius: var(--radius-card, 14px);
-  box-shadow: 0px 4px 12px rgba(255, 107, 0, 0.04);
+  background: var(--surface, #FFFFFF);
+  border: 1px solid var(--border, rgba(15, 23, 42, 0.08));
+  border-radius: var(--radius-card, 12px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .quick-stat {
@@ -178,35 +178,35 @@ body.popup-controller-body {
 .quick-stat-val {
   font-size: 13.5px;
   font-weight: 700;
-  color: var(--text-primary, #14142b);
+  color: var(--text-primary, #0F172A);
   font-variant-numeric: tabular-nums;
 }
 
 .quick-stat-lbl {
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-muted, #a0a3bd);
+  color: var(--text-muted, #64748B);
 }
 
 .quick-stat-divider {
   width: 1px;
   height: 20px;
-  background: rgba(20, 20, 43, 0.08);
+  background: var(--border, rgba(15, 23, 42, 0.08));
 }
 
 /* Full Dashboard Button */
 .btn-launch-full {
   width: 100%;
   padding: 12px 18px;
-  border-radius: var(--radius-pill, 9999px);
-  background: var(--primary, #ff6b00);
-  color: #ffffff;
+  border-radius: 8px;
+  background: var(--primary, #F97316);
+  color: #FFFFFF;
   font-size: 13px;
   font-weight: 600;
   border: none;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(255, 107, 0, 0.24);
-  transition: var(--transition, all 0.2s ease);
+  box-shadow: 0 1px 2px rgba(249, 115, 22, 0.24);
+  transition: all 180ms cubic-bezier(0.22, 1, 0.36, 1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -216,12 +216,16 @@ body.popup-controller-body {
 
 .btn-launch-full:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(255, 107, 0, 0.32);
-  background: var(--primary-hover, #e05a00);
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.32);
+  background: var(--primary-hover, #EA580C);
+}
+
+.btn-launch-full:active {
+  transform: scale(0.98) !important;
 }
 
 .btn-launch-full:focus-visible {
-  outline: 2px solid var(--primary, #ff6b00);
+  outline: 2px solid var(--primary, #F97316);
   outline-offset: 2px;
 }
 
@@ -229,35 +233,20 @@ body.popup-controller-body {
 .controller-foot {
   text-align: center;
   font-size: 11px;
-  color: var(--text-muted, #a0a3bd);
+  color: var(--text-muted, #64748B);
   font-weight: 500;
 }
 
 /* Crisp Modern Popup Styling */
 body.popup-controller-body {
-  background: #F3F6FC !important;
+  background: var(--bg-page, #F8FAFC) !important;
 }
 
 .controller-meter-card,
 .controller-stats-row {
-  border-radius: 14px !important;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 4px 12px rgba(15, 23, 42, 0.04) !important;
-  border: 1px solid rgba(15, 23, 42, 0.08) !important;
-}
-
-.btn-launch-full {
-  border-radius: 9999px !important;
-  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 160ms ease !important;
-  box-shadow: 0 2px 8px rgba(255, 107, 0, 0.24) !important;
-}
-
-.btn-launch-full:hover {
-  transform: translateY(-1px) !important;
-  box-shadow: 0 4px 14px rgba(255, 107, 0, 0.32) !important;
-}
-
-.btn-launch-full:active {
-  transform: translateY(0.5px) scale(0.99) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  border: 1px solid var(--border, rgba(15, 23, 42, 0.08)) !important;
 }
 
 /* Reduced Motion Accessibility */

@@ -1,61 +1,69 @@
 /**
- * OutFox — Flat Modern Design System
+ * OutFox — Refined High-Trust B2B SaaS Design System
+ * Inspired by Linear / Attio / Clay
  */
 
 :root {
-  /* OutFox Fox Orange Brand Core Tokens */
-  --primary: #ff6b00;
-  --primary-hover: #e05a00;
-  --primary-soft: #fff7ed;
-  --primary-border-soft: #ffedd5;
-  --primary-glow: rgba(255, 107, 0, 0.22);
-  --primary-gradient: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);
+  /* Brand Core Tokens — Linear/Clay Restraint: Reserve #F97316 strictly for primary CTAs and active indicators */
+  --primary: #F97316;
+  --primary-hover: #EA580C;
+  --primary-active: #C2410C;
+  --primary-soft: #FFF7ED;
+  --primary-border-soft: #FFEDD5;
+  --primary-glow: rgba(249, 115, 22, 0.16);
+  --primary-gradient: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
 
-  --bg-page: #F3F6FC;
-  --canvas-bg: #F3F6FC;
-  --surface: #ffffff;
-  --surface-2: #f8fafc;
-  --surface-elevated: #ffffff;
+  /* Canvas & Elevated Surfaces (Linear/Attio Calm Chrome) */
+  --bg-page: #F8FAFC;
+  --canvas-bg: #F8FAFC;
+  --surface: #FFFFFF;
+  --surface-2: #F8FAFC;
+  --surface-elevated: #FFFFFF;
+  --surface-hover: #F1F5F9;
 
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
-  --text-muted: #94a3b8;
+  /* High-Contrast Typography Ramp */
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #64748B;
 
-  --border: #e2e8f0;
-  --border-subtle: #f1f5f9;
-  --border-focus: #ff6b00;
+  /* Crisp Hairline Borders */
+  --border: rgba(15, 23, 42, 0.08);
+  --border-subtle: rgba(15, 23, 42, 0.04);
+  --border-focus: #F97316;
 
-  --success: #10b981;
-  --success-soft: #ecfdf5;
-  --warning: #f59e0b;
-  --warning-soft: #fffbeb;
-  --danger: #ef4444;
-  --danger-soft: #fef2f2;
+  /* Semantic Feedback */
+  --success: #10B981;
+  --success-soft: #ECFDF5;
+  --warning: #F59E0B;
+  --warning-soft: #FFFBEB;
+  --danger: #EF4444;
+  --danger-soft: #FEF2F2;
 
   /* Crisp Modern Calm Shadows & Radii */
-  --clay-card-radius: 16px;
-  --clay-card-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 6px 16px -4px rgba(15, 23, 42, 0.04);
+  --clay-card-radius: 12px;
+  --clay-card-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.04);
   --clay-card-border: 1px solid rgba(15, 23, 42, 0.08);
-  --clay-card-border-subtle: 1px solid rgba(226, 232, 240, 0.8);
+  --clay-card-border-subtle: 1px solid rgba(15, 23, 42, 0.04);
 
-  --clay-btn-transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 160ms ease, background-color 160ms ease, color 160ms ease;
-  --clay-btn-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --clay-btn-primary-shadow: 0 2px 8px rgba(255, 107, 0, 0.24);
+  --clay-btn-transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease, background-color 180ms ease, color 180ms ease;
+  --clay-btn-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --clay-btn-primary-shadow: 0 1px 2px rgba(249, 115, 22, 0.24);
 
   --card-shadow: var(--clay-card-shadow);
   --shadow-card: var(--clay-card-shadow);
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-popover: 0 10px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.06);
+  --shadow-popover: 0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
 
-  --radius-card: var(--clay-card-radius);
+  --radius-card: 12px;
   --radius-pill: 9999px;
-  --radius-input: 10px;
+  --radius-input: 8px;
   --radius-sm: 6px;
   --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-lg: 14px;
 
-  --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-family: var(--font-main);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --transition: var(--clay-btn-transition);
 
   /* Backward Compatibility Aliases */
@@ -86,7 +94,8 @@ body {
   background: var(--bg-page);
   color: var(--text-primary);
   font-family: var(--font-main);
-  font-size: 13.33px;
+  font-size: 13px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -107,20 +116,20 @@ button {
 }
 
 button:active {
-  transform: translateY(1px) scale(0.985);
+  transform: scale(0.98);
 }
 
 /* Card & Button Utilities */
 .clay-card {
   background: var(--surface);
-  border-radius: var(--clay-card-radius);
-  box-shadow: var(--clay-card-shadow);
-  border: var(--clay-card-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border);
 }
 
 .clay-btn {
   transition: var(--clay-btn-transition);
-  box-shadow: var(--clay-btn-shadow);
+  box-shadow: var(--shadow-sm);
   border-radius: var(--radius-pill);
 }
 
@@ -130,13 +139,13 @@ button:active {
 }
 
 .clay-btn:active {
-  transform: translateY(0.5px) scale(0.99);
+  transform: scale(0.98);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 }
 
 /* Accessible Focus Rings */
 :focus-visible {
-  outline: 2px solid var(--accent, #ff6b00);
+  outline: 2px solid var(--accent, #F97316);
   outline-offset: 2px;
 }
 

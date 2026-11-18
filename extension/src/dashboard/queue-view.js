@@ -335,14 +335,15 @@ function ensureQueueStyles() {
     .action-type-menu { position: absolute; top: 100%; left: 0; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.08); padding: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 20; min-width: 140px; margin-top: 4px; }
     .action-type-menu.hidden { display: none; }
     .action-checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #14142b; cursor: pointer; padding: 4px 6px; }
-    .floating-queue-bulk { display: none; align-items: center; justify-content: space-between; background: #14142b; color: #ffffff; padding: 10px 16px; border-radius: 10px; margin-bottom: 14px; }
+    .floating-queue-bulk { display: none; align-items: center; justify-content: space-between; background: #ffffff; color: #0f172a; padding: 10px 16px; border-radius: 10px; border: 1px solid rgba(15, 23, 42, 0.08); box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08); margin-bottom: 14px; transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease; }
     .floating-queue-bulk.is-visible { display: flex; }
     .bulk-count-label { font-size: 12px; font-weight: 700; }
     .btn-queue-bulk-delete { background: #ef4444; border: none; color: #ffffff; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; }
-    .queue-table-container { overflow-x: auto; }
+    .queue-table-container { overflow-x: auto; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 12px; background: #ffffff; }
     .queue-table { width: 100%; border-collapse: collapse; }
-    .queue-table th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; color: #64748b; background: #f8fafc; border-bottom: 1px solid #e2e8f0; letter-spacing: 0.5px; }
+    .queue-table th { position: sticky; top: 0; z-index: 10; text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; color: #64748b; background: #f8fafc; border-bottom: 1px solid #e2e8f0; letter-spacing: 0.5px; }
     .queue-table td { padding: 12px; font-size: 13px; color: #14142b; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+    .queue-table tr:hover td { background: #f8fafc; }
     .queue-action-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #ff6b00; background: #fff7ed; padding: 4px 10px; border-radius: 6px; }
     .q-icon { display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; }
     .prospect-name { font-weight: 600; color: #14142b; }

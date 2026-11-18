@@ -3,6 +3,7 @@ import { ACTIONS } from '../../src/lib/actions.js';
 import { setConfig } from '../../src/lib/config.js';
 import * as outreach from '../../src/background/outreach.js';
 import * as voyager from '../../src/background/voyager.js';
+import * as quota from '../../src/background/quota.js';
 
 describe('withdrawStaleInvites', () => {
   beforeEach(async () => {
@@ -364,6 +365,73 @@ describe('auto-withdraw cleanup scheduler', () => {
       const resEmpty = await outreach.send(ACTIONS.OUTREACH_LIKE, { publicId: 'test_user', postUrl: '' });
       expect(resEmpty.status).toBe('skipped');
       expect(resEmpty.reason).toBe('no_post_url');
+    });
+  });
+
+  describe('withdrawStaleInvites & quota verification', () => {
+    it('never consumes profileView or visit quota, and never calls getProfile or getProfileNormalized', async () => {
+      await quota.resetDailyQuota();
+      const beforeSnapshot = await quota.snapshot('visit');
+      expect(beforeSnapshot.dailyUsed).toBe(0);
+
+      const now = Date.now();
+      const staleTime = now - 20 * 24 * 60 * 60 * 1000;
+
+      const mockInvites = [
+        {
+          invitationId: '7504239478362759168',
+          entityUrn: 'urn:li:fs_relInvitation:7504239478362759168',
+          sentTime: staleTime,
+          sentAt: staleTime,
+          profileUrn: 'ACoAA0106FIXTURE',
+          toMemberUrn: 'urn:li:member:123456',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          fullName: 'Ada Lovelace',
+          vanityName: 'adalovelace',
+          publicId: 'adalovelace',
+        },
+      ];
+
+      const fetchSpy = vi.spyOn(voyager, 'fetchSentInvitations').mockResolvedValue(mockInvites);
+      const withdrawSpy = vi.spyOn(voyager, 'withdrawInvitation').mockResolvedValue({ ok: true, method: 'sdui_api' });
+      const getProfileSpy = vi.spyOn(voyager, 'getProfile');
+      const getProfileNormSpy = vi.spyOn(voyager, 'getProfileNormalized');
+      const resolveUrnSpy = vi.spyOn(voyager, 'resolveProfileUrn');
+      const reserveSpy = vi.spyOn(quota, 'reserve');
+
+      const res = await outreach.withdrawStaleInvites({ olderThanDays: 14, maxCount: 10 });
+      expect(res.withdrawnCount).toBe(1);
+
+      expect(withdrawSpy).toHaveBeenCalledWith(
+        '7504239478362759168',
+        expect.objectContaining({
+          profileUrn: 'urn:li:member:123456',
+          entityUrn: 'urn:li:fs_relInvitation:7504239478362759168',
+          publicId: 'adalovelace',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+        }),
+      );
+
+      // Verify zero profile lookups
+      expect(getProfileSpy).not.toHaveBeenCalled();
+      expect(getProfileNormSpy).not.toHaveBeenCalled();
+      expect(resolveUrnSpy).not.toHaveBeenCalled();
+
+      // Verify zero quota reservations
+      expect(reserveSpy).not.toHaveBeenCalledWith('visit', expect.anything());
+      expect(reserveSpy).not.toHaveBeenCalledWith('profileView', expect.anything());
+
+      const afterSnapshot = await quota.snapshot('visit');
+      expect(afterSnapshot.dailyUsed).toBe(0);
+
+      fetchSpy.mockRestore();
+      withdrawSpy.mockRestore();
+      getProfileSpy.mockRestore();
+      getProfileNormSpy.mockRestore();
+      resolveUrnSpy.mockRestore();
+      reserveSpy.mockRestore();
     });
   });
 });

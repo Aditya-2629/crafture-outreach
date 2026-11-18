@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as v from '../../src/background/voyager.js';
+import * as quota from '../../src/background/quota.js';
 import { ERROR } from '../../src/lib/actions.js';
 import { landed, routeBackground, seedSession, status, stubFetch } from '../helpers/net.js';
 
@@ -265,6 +266,21 @@ describe('profile', () => {
     expect(p.publicId).toBe('adalovelace');
     expect(p.experience).toEqual([]);
     expect(p.title).toBe('');
+  });
+
+  it('purpose !== "visit" does not deduct from daily quota', async () => {
+    await quota.resetDailyQuota();
+    const quotaSpy = vi.spyOn(quota, 'reserve');
+    net.push(profileView);
+
+    const p = await v.getProfileNormalized('adalovelace', 'profile', { purpose: 'withdraw' });
+    expect(p.publicId).toBe('adalovelace');
+    expect(quotaSpy).not.toHaveBeenCalled();
+
+    const snap = await quota.snapshot('visit');
+    expect(snap.dailyUsed).toBe(0);
+
+    quotaSpy.mockRestore();
   });
 
   it('reads a school with no degree line without inventing one', () => {
@@ -917,6 +933,25 @@ describe('withdraw invitation', () => {
     expect(net.calls).toHaveLength(1);
     const call = net.calls[0];
     expect(call.json.requestedArguments.payload.invitationUrn).toEqual({ invitationId: '7504239478362759168' });
+  });
+
+  it('uses invitationId, entityUrn, and profileUrn directly without calling getProfileNormalized or reserving quota', async () => {
+    net.push({ ok: true });
+    const profileSpy = vi.spyOn(v, 'getProfileNormalized');
+    const quotaSpy = vi.spyOn(quota, 'reserve');
+
+    await v.withdrawInvitation({
+      invitationId: '7504239478362759168',
+      entityUrn: 'urn:li:fs_relInvitation:7504239478362759168',
+      profileUrn: 'ACoAA0106FIXTURE',
+      publicId: 'adalovelace',
+    });
+
+    expect(profileSpy).not.toHaveBeenCalled();
+    expect(quotaSpy).not.toHaveBeenCalled();
+
+    profileSpy.mockRestore();
+    quotaSpy.mockRestore();
   });
 
   it('treats 200 OK with non-JSON RSC stream response as successful sdui_api', async () => {

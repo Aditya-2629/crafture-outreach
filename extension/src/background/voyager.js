@@ -447,15 +447,34 @@ export async function getProfileSection(profileUrn, sectionType) {
  * `full` adds the full-profile decoration (summary, industry) and the
  * education and skills sections. Every one of those extras is best-effort: a
  * section that fails leaves its field empty rather than failing the read.
+ *
+ * NOTE: Internal profile reads (for memberId, urn, vanity resolution, withdrawal checks, etc.)
+ * MUST NEVER deduct from the user's daily visit / profileView quota.
+ * Quota deduction is strictly reserved for an explicit visit / viewProfile step (purpose === 'visit').
+ *
+ * @param {string} publicId
+ * @param {string | { full?: boolean, purpose?: string, source?: string }} [source='profile']
+ * @param {{ full?: boolean, purpose?: string, source?: string }} [options={}]
  */
-export async function getProfileNormalized(publicId, source = 'profile', { full = false } = {}) {
-  const base = normalizeProfileView(await getProfile(publicId), source);
+export async function getProfileNormalized(publicId, source = 'profile', options = {}) {
+  let opts = options;
+  let src = typeof source === 'string' ? source : 'profile';
+  if (typeof source === 'object' && source !== null) {
+    opts = source;
+    src = opts.source || opts.purpose || 'profile';
+  }
+  const full = Boolean(opts?.full);
+  const purpose = opts?.purpose || (src === 'visit' ? 'visit' : src);
+
+  // If purpose !== 'visit', this is an internal/informational profile lookup.
+  // It NEVER deducts from the user's daily profileView/visit quota.
+  const base = normalizeProfileView(await getProfile(publicId), src);
 
   if (full) {
     try {
       const extra = normalizeProfileView(
         await getProfile(publicId, ENDPOINTS.decorations.fullProfile),
-        source,
+        src,
       );
       Object.assign(base, mergeProfiles(base, extra));
     } catch {
@@ -1094,16 +1113,20 @@ export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
       return normalized.map((inv) => {
         const id = inv.invitationId || (inv.invitationUrn ? (inv.invitationUrn.match(/\d+$/) || [])[0] : '') || inv.invitationUrn;
         const toPublicId = inv.toPublicId || inv.publicId || inv.vanityName || '';
+        const entityUrn = inv.invitationUrn || inv.toMemberUrn || '';
+        const toMemberUrn = inv.toMemberUrn || '';
+        const profileUrn = inv.profileUrn || (toMemberUrn ? String(toMemberUrn).replace(/^urn:li:[^:]+:/, '') : '');
         return {
           invitationId: String(id),
+          entityUrn,
           sentTime: inv.sentTime || inv.sentAt || 0,
           sentAt: inv.sentTime || inv.sentAt || 0,
-          profileUrn: inv.profileUrn || '',
+          profileUrn,
           firstName: inv.firstName || '',
           lastName: inv.lastName || '',
           fullName: inv.fullName || [inv.firstName, inv.lastName].filter(Boolean).join(' ').trim() || '',
           vanityName: inv.vanityName || toPublicId,
-          toMemberUrn: inv.toMemberUrn || '',
+          toMemberUrn,
           toPublicId,
           invitationUrn: inv.invitationUrn,
           recipientPublicId: toPublicId,
@@ -1122,16 +1145,20 @@ export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
   return fallback.map((inv) => {
     const id = inv.invitationId || (inv.invitationUrn ? (inv.invitationUrn.match(/\d+$/) || [])[0] : '') || inv.invitationUrn;
     const toPublicId = inv.toPublicId || inv.publicId || inv.vanityName || '';
+    const entityUrn = inv.invitationUrn || inv.toMemberUrn || '';
+    const toMemberUrn = inv.toMemberUrn || '';
+    const profileUrn = inv.profileUrn || (toMemberUrn ? String(toMemberUrn).replace(/^urn:li:[^:]+:/, '') : '');
     return {
       invitationId: String(id),
+      entityUrn,
       sentTime: inv.sentTime || inv.sentAt || 0,
       sentAt: inv.sentTime || inv.sentAt || 0,
-      profileUrn: inv.profileUrn || '',
+      profileUrn,
       firstName: inv.firstName || '',
       lastName: inv.lastName || '',
       fullName: inv.fullName || [inv.firstName, inv.lastName].filter(Boolean).join(' ').trim() || '',
       vanityName: inv.vanityName || toPublicId,
-      toMemberUrn: inv.toMemberUrn || '',
+      toMemberUrn,
       toPublicId,
       invitationUrn: inv.invitationUrn,
       recipientPublicId: toPublicId,
@@ -2653,6 +2680,9 @@ export async function withdrawInvitation(invitationId, meta = {}) {
     throw new EngineError(ERROR.INVALID_PARAMS, 'invitationId or invite object is required to withdraw an invitation');
   }
 
+  // NOTE: Withdrawing invitations NEVER calls getProfile, getProfileNormalized,
+  // resolveProfileUrn, or quota.reserve('profileView'). It uses the pre-fetched
+  // invitationId, entityUrn, and profileUrn from fetchSentInvitations directly.
   let rawId = '';
   let profileUrn = '';
   let firstName = '';
@@ -2661,15 +2691,26 @@ export async function withdrawInvitation(invitationId, meta = {}) {
   let vanityName = '';
 
   if (typeof invitationId === 'object' && invitationId !== null) {
-    rawId = String(invitationId.invitationId || invitationId.invitationUrn || invitationId.id || '');
-    profileUrn = meta.profileUrn || invitationId.profileUrn || (invitationId.toMemberUrn ? String(invitationId.toMemberUrn).replace(/^urn:li:[^:]+:/, '') : '') || '';
+    rawId = String(invitationId.invitationId || invitationId.invitationUrn || invitationId.id || (invitationId.entityUrn && /invitation/i.test(invitationId.entityUrn) ? invitationId.entityUrn : '') || '');
+    profileUrn =
+      meta.profileUrn ||
+      meta.toMemberUrn ||
+      (meta.entityUrn && !/invitation/i.test(meta.entityUrn) ? meta.entityUrn : '') ||
+      invitationId.profileUrn ||
+      (invitationId.toMemberUrn ? String(invitationId.toMemberUrn).replace(/^urn:li:[^:]+:/, '') : '') ||
+      (invitationId.entityUrn && !/invitation/i.test(invitationId.entityUrn) ? String(invitationId.entityUrn).replace(/^urn:li:[^:]+:/, '') : '') ||
+      '';
     firstName = meta.firstName || invitationId.firstName || '';
     lastName = meta.lastName || invitationId.lastName || '';
     fullName = meta.fullName || invitationId.fullName || [firstName, lastName].filter(Boolean).join(' ').trim();
     vanityName = meta.publicId || meta.vanityName || invitationId.vanityName || invitationId.publicId || invitationId.toPublicId || '';
   } else {
     rawId = String(invitationId);
-    profileUrn = meta.profileUrn || '';
+    profileUrn =
+      meta.profileUrn ||
+      meta.toMemberUrn ||
+      (meta.entityUrn && !/invitation/i.test(meta.entityUrn) ? meta.entityUrn : '') ||
+      '';
     firstName = meta.firstName || '';
     lastName = meta.lastName || '';
     fullName = meta.fullName || [firstName, lastName].filter(Boolean).join(' ').trim();
@@ -2677,7 +2718,7 @@ export async function withdrawInvitation(invitationId, meta = {}) {
   }
 
   const cleanId = String(rawId).split(':').pop().replace(/\D+/g, '') || String(rawId).split(':').pop();
-  const cleanProfileUrn = String(profileUrn || '').split(':').pop();
+  const cleanProfileUrn = String(profileUrn || '').replace(/^urn:li:[^:]+:/, '').split(':').pop();
 
   if (!cleanId) {
     throw new EngineError(ERROR.INVALID_PARAMS, 'Valid numeric invitationId is required to withdraw an invitation');

@@ -88,6 +88,7 @@ export const CHALLENGE_HOW_TO_FIX =
 let sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function setSleepFn(fn) {
+  sessionWriteCount = 0;
   sleepFn = typeof fn === 'function' ? fn : (ms) => new Promise((r) => setTimeout(r, ms));
 }
 
@@ -255,13 +256,20 @@ export function isWithinBusinessHours(config, now = new Date()) {
 
 export const BUCKET_COOLDOWNS_KEY = K.BUCKET_COOLDOWNS || 'outfox_bucket_cooldowns';
 
+export function normalizeQuotaKind(kind) {
+  if (!kind) return kind;
+  const k = String(kind).toLowerCase().replace(/[-_]/g, '');
+  if (k === 'profileview' || k === 'view' || k === 'visit') return 'visit';
+  return kind;
+}
+
 export function normalizeBucket(stepType) {
   if (!stepType) return 'view';
-  const s = String(stepType).toLowerCase();
+  const s = String(stepType).toLowerCase().replace(/[-_]/g, '');
   if (s === 'invite') return 'invite';
   if (s === 'message' || s === 'inmail') return 'message';
   if (s === 'email') return 'email';
-  if (s === 'view' || s === 'visit' || s === 'follow' || s === 'like' || s === 'comment' || s === 'endorse') return 'view';
+  if (s === 'view' || s === 'visit' || s === 'profileview' || s === 'follow' || s === 'like' || s === 'comment' || s === 'endorse') return 'view';
   return s;
 }
 
@@ -420,7 +428,8 @@ export async function pauseState() {
 /* ================================================================== */
 
 function assertKind(kind) {
-  if (!KINDS.includes(kind)) {
+  const norm = normalizeQuotaKind(kind);
+  if (!KINDS.includes(norm)) {
     throw new EngineError(ERROR.INTERNAL, `unknown quota bucket: ${kind}`);
   }
 }
@@ -434,8 +443,9 @@ function assertKind(kind) {
  * @returns {Promise<object>} the RateLimit snapshot that permitted the call
  */
 export async function check(kind, cost = 1) {
-  assertKind(kind);
-  return gate(kind, cost);
+  const norm = normalizeQuotaKind(kind);
+  assertKind(norm);
+  return gate(norm, cost);
 }
 
 /**
@@ -448,10 +458,11 @@ export async function check(kind, cost = 1) {
  * LinkedIn answers — over-counting is safe, under-counting is not.
  */
 export async function reserve(kind, cost = 1) {
-  assertKind(kind);
+  const norm = normalizeQuotaKind(kind);
+  assertKind(norm);
   return withKeyLock(K.QUOTA, async () => {
-    const rateLimit = await gate(kind, cost);
-    await bump(kind, cost);
+    const rateLimit = await gate(norm, cost);
+    await bump(norm, cost);
     return rateLimit;
   });
 }
@@ -554,8 +565,9 @@ async function gate(kind, cost) {
 
 /** Count `n` units against a bucket (search records the number of results). */
 export async function record(kind, n = 1) {
-  assertKind(kind);
-  return withKeyLock(K.QUOTA, () => bump(kind, n));
+  const norm = normalizeQuotaKind(kind);
+  assertKind(norm);
+  return withKeyLock(K.QUOTA, () => bump(norm, n));
 }
 
 /**
@@ -570,18 +582,19 @@ export async function record(kind, n = 1) {
  * Only `send()` in outreach.js calls this, and only for its own INVALID_PARAMS.
  */
 export async function release(kind, n = 1) {
-  assertKind(kind);
+  const norm = normalizeQuotaKind(kind);
+  assertKind(norm);
   return withKeyLock(K.QUOTA, async () => {
     const units = Math.max(0, Math.round(n));
-    if (!units) return (await readState()).daily[kind];
+    if (!units) return (await readState()).daily[norm];
     const state = await readState();
-    state.daily[kind] = Math.max(0, state.daily[kind] - units);
-    state.hourly[kind] = Math.max(0, state.hourly[kind] - units);
-    if (kind === 'invite' && state.weeklyInvites) {
+    state.daily[norm] = Math.max(0, state.daily[norm] - units);
+    state.hourly[norm] = Math.max(0, state.hourly[norm] - units);
+    if (norm === 'invite' && state.weeklyInvites) {
       state.weeklyInvites = Math.max(0, state.weeklyInvites - units);
     }
     await writeState(state);
-    return state.daily[kind];
+    return state.daily[norm];
   });
 }
 
@@ -641,12 +654,13 @@ function toRateLimit(state, kind, hourlyCap, dailyCap, now, config) {
 
 /** RateLimit for one bucket. Wired into the engine via `setRateLimitProvider`. */
 export async function snapshot(kind) {
-  assertKind(kind);
+  const norm = normalizeQuotaKind(kind);
+  assertKind(norm);
   const now = Date.now();
   const config = await getConfig();
   const state = await readState(new Date(now));
-  const dailyCap = await dailyCapFor(kind, config);
-  return toRateLimit(state, kind, hourlyCapFor(kind, config, dailyCap), dailyCap, now, config);
+  const dailyCap = await dailyCapFor(norm, config);
+  return toRateLimit(state, norm, hourlyCapFor(norm, config, dailyCap), dailyCap, now, config);
 }
 
 /** RateLimit for all four buckets — the `quotas` field of `Status`. */

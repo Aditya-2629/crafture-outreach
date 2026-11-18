@@ -12,7 +12,7 @@
  * `contactedBefore`, campaign stats and `sync.pull` read.
  */
 
-import { ACTIONS, ERROR, EVENTS } from '../lib/actions.js';
+import { ACTIONS, ERROR, EVENTS, EngineError } from '../lib/actions.js';
 import { getConfig, setConfig } from '../lib/config.js';
 import { getStoredProfile, logAction, putProfile, logDebug } from '../lib/storage.js';
 import { register, setRateLimitProvider } from './engine.js';
@@ -98,17 +98,10 @@ const SENDERS = {
 export async function send(action, params, origin = 'approved', context = {}) {
   const kind = QUOTA_KIND[action];
 
-  if (kind === 'invite') {
-    // Only check quota upfront without bumping; record quota ONLY AFTER sendInvite succeeds,
-    // so failed 400 attempts and retries never burn quota!
-    await quota.check(kind);
-    await quota.humanDelay();
-  } else {
-    // Reserve, do not check-then-record: two concurrent sends that both read
-    // `daily = cap - 1` would otherwise both pass.
-    await quota.reserve(kind);
-    await quota.humanDelay();
-  }
+  // Reserve, do not check-then-record: two concurrent sends that both read
+  // `daily = cap - 1` would otherwise both pass.
+  await quota.reserve(kind);
+  await quota.humanDelay();
 
   let sendResult;
   try {
@@ -129,23 +122,19 @@ export async function send(action, params, origin = 'approved', context = {}) {
         await quota.noteBucketBackoff('invite', 24 * 60 * 60 * 1000);
       } catch (_) {}
     }
-    // Release reserved quota on any client error (400) or invalid params for reserved kinds
-    if (kind !== 'invite' && e && (e.code === ERROR.INVALID_PARAMS || e.status === 400 || (e.response && e.response.status === 400))) {
+    if (e && e.code === ERROR.INVALID_PARAMS && e.message?.startsWith('LinkedIn refused')) {
+      throw new EngineError(ERROR.LINKEDIN_ERROR, e.message, e.extra);
+    }
+    // Release reserved quota ONLY when we refused the send ourselves on our own validation
+    if (e && e.code === ERROR.INVALID_PARAMS) {
       await quota.release(kind);
     }
     throw e;
   }
 
-  // Record quota for invite only AFTER successful send
-  if (kind === 'invite') {
-    await quota.record(kind);
-  }
-
   // Graceful skip (e.g. like step when prospect has no posts)
   if (sendResult?.status === 'skipped') {
-    if (kind !== 'invite') {
-      await quota.release(kind);
-    }
+    await quota.release(kind);
     return {
       status: 'skipped',
       reason: sendResult.reason || 'skipped',
@@ -308,12 +297,17 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
     await new Promise((resolve) => setTimeout(resolve, delayMs));
 
     try {
-      // Pass invitation metadata into voyager.withdrawInvitation(invitationId, meta)
-      const res = await voyager.withdrawInvitation(inv.invitationId, {
+      // Pass invitation metadata directly into voyager.withdrawInvitation(invitationId, meta)
+      // NOTE: Withdrawing stale invitations MUST NEVER call getProfile, getProfileNormalized,
+      // or reserve profileView/visit quota.
+      const res = await voyager.withdrawInvitation(inv.invitationId || inv.invitationUrn || inv.entityUrn, {
         profileUrn: inv.toMemberUrn || inv.profileUrn || '',
+        entityUrn: inv.entityUrn || inv.invitationUrn || '',
+        toMemberUrn: inv.toMemberUrn || '',
         publicId: inv.toPublicId || inv.publicId || inv.vanityName || '',
         firstName: inv.firstName || '',
         lastName: inv.lastName || '',
+        fullName: inv.fullName || '',
         allowDomFallback: false,
       });
       withdrawnCount++;

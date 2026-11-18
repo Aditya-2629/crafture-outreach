@@ -276,4 +276,47 @@ describe('instant wake-up when connection accepted', () => {
     const doneEnrollment = await campaigns.readEnrollments(c.campaignId);
     expect(['done', 'accepted']).toContain(doneEnrollment[0].status);
   });
+
+  it('checkNewAcceptancesAndWakeUp skips immediately without API calls when 0 enrollments are waiting', async () => {
+    const getConnectionsSpy = vi.spyOn(voyager, 'getConnections');
+    getConnectionsSpy.mockClear();
+
+    const woken = await campaigns.checkNewAcceptancesAndWakeUp({ triggerTick: false });
+    expect(woken).toBe(0);
+    expect(getConnectionsSpy).not.toHaveBeenCalled();
+  });
+
+  it('checkNewAcceptancesAndWakeUp makes 1 single call ({ count: 40 }) and wakes matched leads', async () => {
+    await storage.putProfile({ publicId: 'matched_lead', firstName: 'Matched' });
+    const c = (await handle(ACTIONS.CAMPAIGN_CREATE, {
+      name: 'WatcherCamp',
+      steps: [
+        { type: 'invite', note: 'Hi' },
+        { type: 'message', body: 'Hello' },
+      ],
+      publicIds: ['matched_lead'],
+      settings: { autopilot: true },
+    })).data;
+
+    const enrollments = await campaigns.readEnrollments(c.campaignId);
+    enrollments[0].stepIndex = 1;
+    enrollments[0].parkReason = 'waiting_acceptance';
+    enrollments[0].nextAt = Date.now() + 10 * 3600 * 1000;
+    await campaigns.writeEnrollments(c.campaignId, enrollments);
+
+    const getConnectionsSpy = vi.spyOn(voyager, 'getConnections').mockResolvedValue({
+      profiles: [{ publicId: 'matched_lead', connectionDegree: 1 }],
+      total: 1,
+    });
+
+    const now = Date.now();
+    const woken = await campaigns.checkNewAcceptancesAndWakeUp({ triggerTick: false, now });
+    expect(woken).toBe(1);
+    expect(getConnectionsSpy).toHaveBeenCalledWith({ count: 40 });
+
+    const updated = await campaigns.readEnrollments(c.campaignId);
+    expect(updated[0].accepted).toBe(true);
+    expect(updated[0].parkReason).toBeUndefined();
+    expect(updated[0].nextAt).toBe(now);
+  });
 });

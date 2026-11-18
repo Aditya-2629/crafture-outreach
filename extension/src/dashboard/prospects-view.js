@@ -1230,6 +1230,7 @@ export async function renderProspectsView(container, ctx = {}) {
     });
 
     ctx.restoreScrollPosition?.(container, scrollPos);
+    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
   }
 
   // Global click to close columns menu and list popover menus if open
@@ -1244,8 +1245,6 @@ export async function renderProspectsView(container, ctx = {}) {
     if (!e.target.closest('.list-dots-trigger') && !e.target.closest('.list-dropdown-menu')) {
       container.querySelectorAll('.list-dropdown-menu').forEach((m) => m.classList.remove('is-open'));
     }
-    ctx.restoreScrollPosition?.(container, scrollPos);
-    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
   });
 
   let storageDebounceTimer = null;

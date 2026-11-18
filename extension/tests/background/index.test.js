@@ -7,6 +7,7 @@ import {
   CAMPAIGN_TICK_ALARM,
   QUEUE_TICK_ALARM,
   QUEUE_TICK_MINUTES,
+  ACCEPT_WATCHER_ALARM,
   route,
 } from '../../src/background/index.js';
 
@@ -33,6 +34,14 @@ describe('service worker wiring', () => {
     expect(QUEUE_TICK_ALARM).toBe('queueTick');
     expect(QUEUE_TICK_MINUTES).toBe(1);
     expect(QUEUE_TICK_ALARM).not.toBe(CAMPAIGN_TICK_ALARM);
+  });
+
+  it('registers the 5-minute outfox-accept-watcher alarm', () => {
+    expect(ACCEPT_WATCHER_ALARM).toBe('outfox-accept-watcher');
+    for (const fn of mock().listeners.onStartup) fn();
+    const alarm = mock().alarms.get(ACCEPT_WATCHER_ALARM);
+    expect(alarm).toBeDefined();
+    expect(alarm.periodInMinutes).toBe(5);
   });
 
   it('the queue alarm sends what is waiting, without running a campaign tick', async () => {

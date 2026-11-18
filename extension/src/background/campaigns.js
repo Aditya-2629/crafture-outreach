@@ -16,7 +16,7 @@ import { K, allActions, get, getStoredProfile, putProfile, newId, remove, set, s
 import { pickVariant, renderTemplate } from '../lib/template.js';
 import { emit } from './events.js';
 import * as inbox from './inbox.js';
-import { isWithinBusinessHours, getBucketCooldowns, setBucketCooldown, isBucketCoolingDown, getNextActiveWindowStart, normalizeBucket, sleep } from './quota.js';
+import { isWithinBusinessHours, getBucketCooldowns, setBucketCooldown, isBucketCoolingDown, getNextActiveWindowStart, normalizeBucket, sleep, check as checkQuota } from './quota.js';
 import * as lists from './lists.js';
 import * as queue from './queue.js';
 import { enrichLead } from './enrich.js';
@@ -1171,15 +1171,18 @@ export async function unparkNonInviteEnrollments(now = Date.now()) {
 }
 
 /**
- * Wakes up enrollments that were parked waiting for invite acceptance as soon as
- * their connection has been accepted on LinkedIn.
- * Compares recently accepted connections from getConnections({ count: 50 })
- * against enrollments with parkReason === 'waiting_acceptance'.
- * Sets nextAt = now so their message step executes immediately on that exact tick.
+ * Safe 5-minute constant-call acceptance watcher.
+ * Checks all pending leads waiting for acceptance across all active campaigns
+ * using a single getConnections({ count: 40 }) API call per cycle.
+ *
+ * @param {object} [options]
+ * @param {boolean} [options.triggerTick=true] whether to trigger tick() if any enrollment is woken
+ * @param {number} [options.now=Date.now()]
  * @returns {Promise<number>} number of enrollments woken up
  */
-export async function wakeAcceptedEnrollments(now = Date.now()) {
+export async function checkNewAcceptancesAndWakeUp({ triggerTick = true, now = Date.now() } = {}) {
   try {
+    // 1. Skip immediately if 0 enrollments across active/running campaigns are waiting on acceptance
     const campaigns = await readCampaigns();
     const activeCampaigns = campaigns.filter((c) => c.status === 'active');
     if (!activeCampaigns.length) return 0;
@@ -1202,17 +1205,33 @@ export async function wakeAcceptedEnrollments(now = Date.now()) {
 
     if (totalWaiting === 0) return 0;
 
+    // 2. Skip immediately if outside active working hours
+    const config = await getConfig();
+    if (config.businessHoursOnly && !isWithinBusinessHours(config)) {
+      return 0;
+    }
+
+    // 3. Skip immediately if daily message quota is full or cooling down
+    try {
+      await checkQuota('message');
+    } catch (err) {
+      logDebug('info', 'Runner', `[AcceptWatcher] Message quota unavailable or cooling down (${err?.message}). Skipping check.`);
+      return 0;
+    }
+
+    // 4. Make ONLY 1 single API call (getConnections({ count: 40 }))
     let recentConnections = [];
     try {
-      const res = await voyager.getConnections({ count: 50 });
+      const res = await voyager.getConnections({ count: 40 });
       recentConnections = res?.profiles || [];
     } catch (err) {
-      logDebug('warn', 'Runner', `[wakeAcceptedEnrollments] getConnections failed: ${err?.message}`);
+      logDebug('warn', 'Runner', `[AcceptWatcher] getConnections failed: ${err?.message}`);
       return 0;
     }
 
     if (!recentConnections.length) return 0;
 
+    // 5. Match newest connections locally in memory
     const recentPublicIds = new Set();
     const recentMemberIds = new Set();
     const recentUrns = new Set();
@@ -1275,7 +1294,7 @@ export async function wakeAcceptedEnrollments(now = Date.now()) {
           logDebug(
             'good',
             'Runner',
-            `[Runner] Connection accepted for prospect ${enrollment.publicId}. Waking up enrollment for immediate message step.`,
+            `[AcceptWatcher] Detected new connection ${enrollment.publicId} — waking message step.`,
           );
         }
       }
@@ -1286,11 +1305,28 @@ export async function wakeAcceptedEnrollments(now = Date.now()) {
       }
     }
 
+    // 6. If 1 or more enrollments were woken up, immediately trigger tick()
+    if (triggerTick && wokenCount > 0) {
+      tick().catch((err) => {
+        logDebug('warn', 'Runner', `[AcceptWatcher] tick() after wake failed: ${err?.message}`);
+      });
+    }
+
     return wokenCount;
   } catch (err) {
-    logDebug('warn', 'Runner', `[wakeAcceptedEnrollments] Error: ${err?.message}`);
+    logDebug('warn', 'Runner', `[AcceptWatcher] Error: ${err?.message}`);
     return 0;
   }
+}
+
+/**
+ * Wakes up enrollments that were parked waiting for invite acceptance as soon as
+ * their connection has been accepted on LinkedIn.
+ * Reuses the constant-call acceptance watcher logic without triggering a duplicate tick.
+ * @returns {Promise<number>} number of enrollments woken up
+ */
+export async function wakeAcceptedEnrollments(now = Date.now()) {
+  return checkNewAcceptancesAndWakeUp({ triggerTick: false, now });
 }
 
 /**

@@ -26,7 +26,7 @@ import './quota.js';
 import './ai.js';
 import './inbox.js';
 import './campaigns.js';
-import { ensureCampaignAlarmWatchdog } from './campaigns.js';
+import { ensureCampaignAlarmWatchdog, checkNewAcceptancesAndWakeUp } from './campaigns.js';
 import './capture.js';
 import './research.js';
 import { RESEARCH_TICK_ALARM, progress as researchProgress, allJobs as allResearchJobs } from './research.js';
@@ -152,6 +152,7 @@ export const STALE_WITHDRAW_ALARM = 'outfox-stale-withdraw';
 export const SNOOZE_CHECK_ALARM = 'outfox-snooze-check';
 export const DRIVE_AUTOBACKUP_ALARM = 'outfox-drive-autobackup';
 export const ENDPOINTS_SYNC_ALARM = 'outfox-endpoints-sync';
+export const ACCEPT_WATCHER_ALARM = 'outfox-accept-watcher';
 
 // Clear legacy campaignTick alarm on startup so duplicate alarms never collide
 try {
@@ -172,6 +173,7 @@ try {
   }
 } catch {}
 chrome.alarms.create(QUEUE_TICK_ALARM, { periodInMinutes: QUEUE_TICK_MINUTES });
+chrome.alarms.create(ACCEPT_WATCHER_ALARM, { periodInMinutes: 5 });
 chrome.alarms.create(STALE_WITHDRAW_ALARM, { periodInMinutes: 720 });
 chrome.alarms.create(SNOOZE_CHECK_ALARM, { periodInMinutes: 60 });
 chrome.alarms.create(DRIVE_AUTOBACKUP_ALARM, { periodInMinutes: 1440 });
@@ -225,6 +227,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     return;
   }
 
+  if (alarm.name === ACCEPT_WATCHER_ALARM) {
+    checkNewAcceptancesAndWakeUp().catch((e) => console.warn('[AcceptWatcher]', e.message));
+    return;
+  }
+
   if (alarm.name !== CAMPAIGN_TICK_ALARM && alarm.name !== OUTFOX_CAMPAIGN_TICK_ALARM) return;
   reconnectBridge();
   syncEndpointsFromVault(false).catch(() => {});
@@ -251,6 +258,9 @@ function onStartup() {
     }
   } catch {}
   ensureCampaignAlarmWatchdog().catch(() => {});
+  try {
+    chrome.alarms?.create?.(ACCEPT_WATCHER_ALARM, { periodInMinutes: 5 });
+  } catch {}
   allResearchJobs().then((jobs) => {
     if (jobs?.some((j) => j.status === 'pending' || j.status === 'running')) {
       chrome.alarms?.create(RESEARCH_TICK_ALARM, { periodInMinutes: 1 });

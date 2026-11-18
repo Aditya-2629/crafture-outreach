@@ -23,8 +23,10 @@ const SETTINGS_RELEVANT_KEYS = new Set([
   'google_tokens',
   'google_sheets',
   'google_drive',
+  'telegram',
   'telegram_bot',
   'telegramBot',
+  'webhookUrl',
   'apolloApiKey',
   'hunterApiKey',
   'outfox_withdraw_cleanup_state',
@@ -1287,6 +1289,7 @@ export async function renderSettingsView(container, ctx = {}) {
 
     wireEvents();
     ctx?.restoreScrollPosition?.(container, scrollPos);
+    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
   }
 
   function wireEvents() {
@@ -2048,9 +2051,6 @@ export async function renderSettingsView(container, ctx = {}) {
         paint();
       }
     });
-
-    ctx?.restoreScrollPosition?.(container, scrollPos);
-    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
   }
 
   let storageDebounceTimer = null;
@@ -2059,6 +2059,7 @@ export async function renderSettingsView(container, ctx = {}) {
     const checkFn = ctx.isStorageChangeRelevant || isStorageChangeRelevant;
     if (checkFn && !checkFn(changes, SETTINGS_RELEVANT_KEYS)) return;
     clearTimeout(storageDebounceTimer);
+    const debounceMs = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 50 : 400;
     storageDebounceTimer = setTimeout(async () => {
       if (!ctx.isActiveView || ctx.isActiveView()) {
         await refreshSettingsData();
@@ -2066,7 +2067,7 @@ export async function renderSettingsView(container, ctx = {}) {
           paint();
         }
       }
-    }, 400);
+    }, debounceMs);
   };
   if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
     chrome.storage.onChanged.addListener(storageListener);

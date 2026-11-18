@@ -839,6 +839,7 @@ export async function renderTemplatesView(container, ctx = {}) {
 
     wireTemplatesEvents();
     ctx?.restoreScrollPosition?.(container, scrollPos);
+    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
   }
 
   function wireTemplatesEvents() {
@@ -1099,8 +1100,6 @@ export async function renderTemplatesView(container, ctx = {}) {
         runObjectionTest();
       }
     });
-    ctx?.restoreScrollPosition?.(container, scrollPos);
-    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
   }
 
   let storageDebounceTimer = null;

@@ -248,9 +248,60 @@ describe('Audience Filter — 2-Stage Hybrid Execution in filterProspectsByCrite
       { targetCount: 2, aiPromptFn }
     );
 
-    // Does not throw; returns Stage 1 deterministic matches cleanly
-    expect(filtered).toHaveLength(1);
+    // Does not throw; falls back safely to keep ambiguous Indian names rather than dropping them
+    expect(filtered).toHaveLength(2);
     expect(filtered[0].publicId).toBe('rohan-sharma');
+    expect(filtered[1].publicId).toBe('ambiguous-sam');
+  });
+
+  it('robustly parses Stage 2 AI responses with markdown fences or json objects', async () => {
+    const miniPool = [
+      {
+        publicId: 'rohan-sharma',
+        fullName: 'Rohan Sharma',
+        headline: 'Data Analyst',
+        location: 'Dallas-Fort Worth Metroplex',
+      },
+      {
+        publicId: 'ambiguous-sam',
+        fullName: 'Sam K.',
+        headline: 'Data Analyst',
+        location: 'New York City Metropolitan Area',
+      },
+    ];
+
+    // Markdown fenced array
+    const aiPromptFn1 = vi.fn().mockResolvedValue({
+      text: '```json\n[0]\n```',
+    });
+    const res1 = await filterProspectsByCriteria(miniPool, 'Indians in USA', {
+      targetCount: 2,
+      aiPromptFn: aiPromptFn1,
+    });
+    expect(res1).toHaveLength(2);
+    expect(res1.map((p) => p.publicId)).toEqual(['rohan-sharma', 'ambiguous-sam']);
+
+    // Object with indices
+    const aiPromptFn2 = vi.fn().mockResolvedValue({
+      text: '```json\n{"indices": [0]}\n```',
+    });
+    const res2 = await filterProspectsByCriteria(miniPool, 'Indians in USA', {
+      targetCount: 2,
+      aiPromptFn: aiPromptFn2,
+    });
+    expect(res2).toHaveLength(2);
+    expect(res2.map((p) => p.publicId)).toEqual(['rohan-sharma', 'ambiguous-sam']);
+
+    // Invalid JSON: safe fallback keeps ambiguous candidate
+    const aiPromptFn3 = vi.fn().mockResolvedValue({
+      text: 'Sorry, I cannot determine this.',
+    });
+    const res3 = await filterProspectsByCriteria(miniPool, 'Indians in USA', {
+      targetCount: 2,
+      aiPromptFn: aiPromptFn3,
+    });
+    expect(res3).toHaveLength(2);
+    expect(res3.map((p) => p.publicId)).toEqual(['rohan-sharma', 'ambiguous-sam']);
   });
 });
 
@@ -305,7 +356,7 @@ describe('Audience Filter — Telegram Copilot Tool Integration', () => {
 
     expect(voyager.searchProfiles).toHaveBeenCalledWith(
       expect.objectContaining({
-        keywords: 'Data Analyst',
+        keywords: 'Data Analyst ("open to work" OR "actively looking" OR "seeking" OR "looking for")',
         location: 'United States',
         count: 6, // Math.min(2 * 3, 100) = 6
       })
@@ -348,5 +399,41 @@ describe('Audience Filter — Telegram Copilot Tool Integration', () => {
     expect(result.audienceFilter).toBeTruthy();
     expect(result.countFound).toBe(1);
     expect(result.topProfiles[0].name).toBe('Aditya Verma');
+  });
+
+  it('paginates across multiple pages until requestedCount is met', async () => {
+    let callCount = 0;
+    vi.spyOn(voyager, 'searchProfiles').mockImplementation(async ({ start }) => {
+      callCount++;
+      if (start === 0) {
+        return {
+          profiles: [
+            { publicId: 'non-indian-1', fullName: 'John Doe', location: 'New York, NY' },
+            { publicId: 'p1', fullName: 'Rahul Sharma', location: 'San Francisco Bay Area' },
+          ],
+          total: 10,
+          nextStart: 25,
+        };
+      } else {
+        return {
+          profiles: [
+            { publicId: 'p2', fullName: 'Pooja Verma', location: 'Greater Seattle Area' },
+          ],
+          total: 10,
+          nextStart: 50,
+        };
+      }
+    });
+
+    const result = await executeToolCall('search_and_save_leads', {
+      keywords: 'Data Analyst',
+      location: 'United States',
+      audienceFilter: 'Indian origin in United States',
+      count: 2,
+    });
+
+    expect(callCount).toBe(2);
+    expect(result.countFound).toBe(2);
+    expect(result.topProfiles.map((p) => p.publicId)).toEqual(['p1', 'p2']);
   });
 });

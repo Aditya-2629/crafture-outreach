@@ -321,7 +321,7 @@ CORE CAPABILITIES & DIRECTIVES:
 5. Multi-Action Execution:
    - If the user asks for multiple tasks at once (e.g. "pause old campaign and design a new sequence for recruiter leads"), execute both tools in your ReAct loop and summarize the outcomes together.
 6. Lead Sourcing & Audience Filtering:
-   - When sourcing leads (e.g. "25 Indians in USA searching for Data Analyst job"), call \`search_and_save_leads\` with \`keywords: "Data Analyst"\`, \`location: "United States"\`, \`count: 25\`, and \`audienceFilter: "Indian origin in United States actively job searching"\`. Always separate LinkedIn search keywords from demographic, nationality, or intent constraints.
+   - When sourcing leads (e.g. "25 Indians in USA searching for Data Analyst job"), call \`search_and_save_leads\` with \`keywords: "Data Analyst"\`, \`location: "United States"\`, \`count: 25\`, and \`audienceFilter: "Indian origin in United States"\`. Job-seeker intent (e.g. "open to work" OR "actively looking") is automatically integrated into the LinkedIn search query. Always separate LinkedIn search keywords from demographic/nationality constraints.
 
 ⚡ LIVE WORKSPACE STATE:
 • Active Persona: "${activePersona.name}" (Slug: ${activePersona.slug}, Mode: ${activePersona.mode}, Resume: ${activePersona.resumeUrl || 'None'}, Calendar: ${activePersona.calendarUrl || 'None'})
@@ -1363,18 +1363,36 @@ export async function executeTool(name, args = {}) {
       kw = kw.replace(/\b(?:in\s+)?(usa|united states|us)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
       if (!args.location) args.location = 'United States';
     }
-    if (!kw) kw = 'Data Analyst';
-    if (args.openToWorkOnly && !kw.includes('Open to work')) kw += ' "Open to work"';
 
+    // Separate job-seeker intent into LinkedIn search query
+    const jobSeekerRegex = /\b(job search(?:ing)?|actively looking|job seeker|seeking (?:a )?job|looking for (?:a )?job|searching for (?:a )?job|seeking opportunities)\b/i;
+    const hasJobSeekerIntent = Boolean(args.openToWorkOnly) || jobSeekerRegex.test(audienceFilter) || jobSeekerRegex.test(kw);
+    if (hasJobSeekerIntent) {
+      kw = kw.replace(jobSeekerRegex, '').replace(/\s{2,}/g, ' ').trim();
+      const jobSeekerQuery = '("open to work" OR "actively looking" OR "seeking" OR "looking for")';
+      if (!kw.toLowerCase().includes('open to work') && !kw.toLowerCase().includes('actively looking')) {
+        kw = kw ? `${kw} ${jobSeekerQuery}` : jobSeekerQuery;
+      }
+    }
+
+    if (!kw) kw = 'Data Analyst';
     const loc = args.location || (activeCand?.targetLocations ? activeCand.targetLocations[0] : 'United States');
 
-    // Over-fetch Math.min(count * 3, 100) candidates when audienceFilter is present, without extra getProfile calls
-    const targetFetch = audienceFilter ? Math.min(requestedCount * 3, 100) : Math.min(requestedCount, 25);
-    const rawProfiles = [];
+    // Paginated Search Loop: Fetch pages (start = 0, 25, 50, ..., max 5 pages / 150-200 profiles)
+    // until matched.length >= requestedCount
+    const maxPages = 5;
+    const pageSize = 25;
     let currentStart = 0;
+    const rawProfiles = [];
+    let finalProfiles = [];
 
-    while (rawProfiles.length < targetFetch) {
-      const pageBatch = Math.min(25, targetFetch - rawProfiles.length);
+    for (let page = 0; page < maxPages; page++) {
+      const pageBatch = (page === 0 && requestedCount <= 2 && !audienceFilter)
+        ? requestedCount
+        : (page === 0 && requestedCount <= 2 && audienceFilter)
+          ? Math.min(requestedCount * 3, pageSize)
+          : pageSize;
+
       const searchRes = await voyager.searchProfiles({
         keywords: kw,
         location: loc,
@@ -1386,16 +1404,23 @@ export async function executeTool(name, args = {}) {
       if (batch.length === 0) break;
       rawProfiles.push(...batch);
 
-      if (!searchRes?.nextStart || batch.length < pageBatch) break;
-      currentStart = searchRes.nextStart;
-    }
+      // Apply 2-stage hybrid audience filter to accumulated raw profiles
+      if (audienceFilter) {
+        finalProfiles = await filterProspectsByCriteria(rawProfiles, audienceFilter, {
+          targetCount: requestedCount,
+        });
+      } else {
+        finalProfiles = rawProfiles;
+      }
 
-    // Apply 2-stage hybrid audience filter
-    let finalProfiles = rawProfiles;
-    if (audienceFilter && rawProfiles.length > 0) {
-      finalProfiles = await filterProspectsByCriteria(rawProfiles, audienceFilter, {
-        targetCount: requestedCount,
-      });
+      if (finalProfiles.length >= requestedCount) {
+        break;
+      }
+
+      if (!searchRes?.nextStart || batch.length === 0) {
+        break;
+      }
+      currentStart = searchRes.nextStart;
     }
 
     finalProfiles = finalProfiles.slice(0, requestedCount);
@@ -1426,6 +1451,7 @@ export async function executeTool(name, args = {}) {
       listName: args.listName || null,
       listSaved,
       topProfiles: finalProfiles.slice(0, 5).map((p) => ({
+        publicId: p.publicId || '',
         name: p.fullName || `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'LinkedIn Member',
         headline: p.headline || p.title || 'Professional',
         location: p.location || 'USA',

@@ -570,15 +570,27 @@ export const NON_INDIAN_NAMES = new Set([
 ]);
 
 /**
- * Drop leads whose location clearly belongs to another country when USA is specified.
+ * Drop leads ONLY if location explicitly names a non-US country or foreign city/region.
+ * Keeps all US states, US metros (e.g. "San Francisco Bay Area", "Greater Seattle Area",
+ * "Dallas-Fort Worth Metroplex", "New York City Metropolitan Area", "Greater Boston"),
+ * and empty/unspecified locations.
  */
 export function isDefiniteNonUsaLocation(loc) {
   if (!loc || typeof loc !== 'string') return false;
   const l = loc.trim();
   if (!l) return false;
-  if (/\b(united states|usa|u\.s\.a\.?|u\.s\.)\b/i.test(l)) return false;
+
+  // 1. If location explicitly mentions USA, United States, or US states / metros / abbreviations, keep it
+  const isUsa =
+    /\b(united states|usa|u\.s\.a\.?|u\.s\.|al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy|california|texas|new york|washington|illinois|massachusetts|georgia|florida|virginia|ohio|michigan|north carolina|pennsylvania|new jersey|colorado|arizona|san francisco|bay area|seattle|dallas|fort worth|metroplex|austin|houston|chicago|boston|new york city|nyc|manhattan|brooklyn|los angeles|san diego|san jose|atlanta|denver|phoenix|philadelphia|detroit|minneapolis|portland|las vegas|orlando|tampa|charlotte|pittsburgh|baltimore|greater\s+[a-z]+(?:\s+area)?)\b/i.test(
+      l,
+    );
+  if (isUsa) return false;
+
+  // 2. Only drop if location explicitly names a NON-US country or foreign city/region
   const nonUsaRegex =
-    /\b(india|karnataka|maharashtra|tamil nadu|telangana|delhi|mumbai|bengaluru|bangalore|hyderabad|pune|chennai|noida|gurgaon|gurugram|kolkata|ahmedabad|united kingdom|uk|england|london|manchester|canada|toronto|vancouver|montreal|ontario|germany|berlin|munich|france|paris|australia|sydney|melbourne|singapore|uae|dubai|netherlands|amsterdam|ireland|dublin|pakistan|bangladesh|philippines|brazil|nigeria|kenya|mexico|spain|italy)\b/i;
+    /\b(india|karnataka|maharashtra|tamil nadu|telangana|delhi|mumbai|bengaluru|bangalore|hyderabad|pune|chennai|noida|gurgaon|gurugram|kolkata|ahmedabad|united kingdom|uk|great britain|england|london|manchester|canada|toronto|vancouver|montreal|ontario|germany|berlin|munich|france|paris|australia|sydney|melbourne|singapore|uae|united arab emirates|dubai|netherlands|amsterdam|ireland|dublin|pakistan|bangladesh|philippines|brazil|nigeria|kenya|mexico|spain|italy|switzerland|sweden|norway|denmark|finland|new zealand|poland|austria|belgium|japan|china|hong kong|taiwan|indonesia|malaysia|vietnam|thailand|south africa|egypt|saudi arabia|qatar|israel|russia|ukraine|turkey)\b/i;
+
   return nonUsaRegex.test(l);
 }
 
@@ -629,6 +641,50 @@ export function classifyProspectByIndianCriteria(p) {
 }
 
 /**
+ * Robust JSON parser for Stage 2 AI responses.
+ * Handles:
+ * - Direct JSON array: [0, 1]
+ * - Markdown fences: ```json\n[0, 1]\n```
+ * - Object with indices/matches: {"indices": [0, 1]}
+ * - Fenced object: ```json\n{"indices": [0, 1]}\n```
+ * - Brackets in prose: "Matching candidates are: [0, 1]"
+ * Returns null if parsing fails so caller can invoke safe fallback.
+ */
+export function parseAiIndices(text) {
+  if (!text || typeof text !== 'string') return null;
+  let clean = text.trim();
+  clean = clean.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+  try {
+    const parsed = JSON.parse(clean);
+    if (Array.isArray(parsed)) return parsed.map(Number).filter((n) => !isNaN(n));
+    if (parsed && typeof parsed === 'object') {
+      const arr = parsed.indices || parsed.matches || parsed.results || Object.values(parsed).find(Array.isArray);
+      if (Array.isArray(arr)) return arr.map(Number).filter((n) => !isNaN(n));
+    }
+  } catch (_) {}
+
+  const arrayMatch = clean.match(/\[[\d\s,]*\]/);
+  if (arrayMatch) {
+    try {
+      const parsed = JSON.parse(arrayMatch[0]);
+      if (Array.isArray(parsed)) return parsed.map(Number).filter((n) => !isNaN(n));
+    } catch (_) {}
+  }
+
+  const objectMatch = clean.match(/\{[\s\S]*?\}/);
+  if (objectMatch) {
+    try {
+      const parsed = JSON.parse(objectMatch[0]);
+      const arr = parsed.indices || parsed.matches || parsed.results || Object.values(parsed).find(Array.isArray);
+      if (Array.isArray(arr)) return arr.map(Number).filter((n) => !isNaN(n));
+    } catch (_) {}
+  }
+
+  return null;
+}
+
+/**
  * 2-Stage Hybrid Audience Filter for leads.
  * Stage 1: Zero-token deterministic local pre-filter (location dropping, high-confidence signal/name keeping).
  * Stage 2: Minimal single-batch AI check for ambiguous leads only when needed to fill targetCount.
@@ -651,6 +707,8 @@ export async function filterProspectsByCriteria(prospects = [], criteria = '', o
   const wantsUsa = /\b(usa|u\.s\.a\.?|united states|us|america)\b/i.test(critStr);
   const wantsIndian = /\b(indians?|desi|south asian|indian origin|from india)\b/i.test(critStr);
 
+  const rawCount = prospects.filter(Boolean).length;
+  let droppedLoc = 0;
   const stage1Matches = [];
   const ambiguousLeads = [];
 
@@ -658,6 +716,7 @@ export async function filterProspectsByCriteria(prospects = [], criteria = '', o
     if (!p) continue;
     // Stage 1.1: Location check (Zero-Token Local Pre-Filter)
     if (wantsUsa && isDefiniteNonUsaLocation(p.location)) {
+      droppedLoc++;
       continue;
     }
 
@@ -674,12 +733,19 @@ export async function filterProspectsByCriteria(prospects = [], criteria = '', o
     }
   }
 
+  const s1Kept = stage1Matches.length;
+  let s2In = 0;
+  let s2Kept = 0;
+
   // If Stage 1 deterministic filter already satisfies target count, or no ambiguous leads exist
   if (stage1Matches.length >= targetCount || ambiguousLeads.length === 0) {
+    logDebug('info', 'AI', `[Filter] raw=${rawCount}, droppedLocation=${droppedLoc}, stage1Kept=${s1Kept}, stage2Input=${s2In}, stage2Kept=${s2Kept}`);
+    console.log(`[Filter] raw=${rawCount}, droppedLocation=${droppedLoc}, stage1Kept=${s1Kept}, stage2Input=${s2In}, stage2Kept=${s2Kept}`);
     return stage1Matches.slice(0, targetCount);
   }
 
   // Stage 2: Minimal Single-Batch AI Check for ambiguous leads
+  s2In = Math.min(30, ambiguousLeads.length);
   const compactAmbiguous = ambiguousLeads.slice(0, 30).map((p, idx) => ({
     i: idx,
     name: p.fullName || p.name || `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'Unknown',
@@ -687,31 +753,49 @@ export async function filterProspectsByCriteria(prospects = [], criteria = '', o
     location: (p.location || '').slice(0, 50),
   }));
 
+  // Clean criteria to focus purely on demographic and location for Stage 2
+  let aiCriteria = critStr.replace(/\b(actively job searching|job searching|actively looking|job seeker|seeking (?:a )?job|looking for (?:a )?job|searching for (?:a )?job)\b/gi, '').trim();
+  if (!aiCriteria) aiCriteria = 'Indian origin/heritage currently in the United States';
+
   const system =
-    'You are an accurate prospect classifier. Return ONLY a valid JSON array of indices [i] of candidates who fit the target criteria. No conversational text or markdown.';
-  const user = `Target Criteria: ${critStr}\n\nCandidates:\n${JSON.stringify(compactAmbiguous)}\n\nReturn JSON array of matching indices [i] (e.g. [0, 2]):`;
+    'You are an accurate prospect classifier. Return ONLY a valid JSON array of indices [i] of candidates who fit the target demographic/location criteria (e.g. Indian origin/heritage currently in the United States). Do NOT reject candidates solely for lacking job-seeking keywords in their headline. Include ambiguous or modern Indian names. Return ONLY a valid JSON array like [0, 2] or object {"indices": [0, 2]}.';
+  const user = `Target Demographic & Location Criteria: ${aiCriteria}\n\nCandidates:\n${JSON.stringify(compactAmbiguous)}\n\nReturn JSON array of matching indices [i] (e.g. [0, 2]):`;
 
   try {
     const aiFn = options.aiPromptFn || executeAiPrompt;
     const aiRes = await aiFn({ system, user, maxTokens: 150 });
     const text = String(aiRes?.text || '').trim();
-    const match = text.match(/\[[\d\s,]*\]/);
-    if (match) {
-      const indices = JSON.parse(match[0]);
-      if (Array.isArray(indices)) {
-        for (const idx of indices) {
-          if (typeof idx === 'number' && ambiguousLeads[idx]) {
-            stage1Matches.push(ambiguousLeads[idx]);
-            if (stage1Matches.length >= targetCount) break;
-          }
+    const indices = parseAiIndices(text);
+
+    if (Array.isArray(indices) && indices.length > 0) {
+      for (const idx of indices) {
+        if (typeof idx === 'number' && ambiguousLeads[idx]) {
+          stage1Matches.push(ambiguousLeads[idx]);
+          s2Kept++;
+          if (stage1Matches.length >= targetCount) break;
         }
+      }
+    } else {
+      // If Stage 2 returned invalid JSON or empty result, do NOT drop ambiguous Indian-sounding names — fall back safely
+      for (const lead of ambiguousLeads) {
+        if (stage1Matches.length >= targetCount) break;
+        stage1Matches.push(lead);
+        s2Kept++;
       }
     }
   } catch (err) {
     // Graceful fallback: If the AI call fails, times out, or returns 429,
-    // fall back cleanly to Stage 1 deterministic matches (never throw or abort).
+    // do NOT drop ambiguous Indian-sounding names — fall back safely.
     logDebug('warn', 'AI', `[filterProspectsByCriteria Stage 2 AI Fallback] ${err.message}`);
+    for (const lead of ambiguousLeads) {
+      if (stage1Matches.length >= targetCount) break;
+      stage1Matches.push(lead);
+      s2Kept++;
+    }
   }
+
+  logDebug('info', 'AI', `[Filter] raw=${rawCount}, droppedLocation=${droppedLoc}, stage1Kept=${s1Kept}, stage2Input=${s2In}, stage2Kept=${s2Kept}`);
+  console.log(`[Filter] raw=${rawCount}, droppedLocation=${droppedLoc}, stage1Kept=${s1Kept}, stage2Input=${s2In}, stage2Kept=${s2Kept}`);
 
   return stage1Matches.slice(0, targetCount);
 }

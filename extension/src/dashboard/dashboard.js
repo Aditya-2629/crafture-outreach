@@ -255,6 +255,60 @@ export function restoreScrollPosition(element, pos) {
   }
 }
 
+let userSidebarPinned = null; // 'expanded' | 'collapsed' | null
+
+/**
+ * Check if sidebar is currently in collapsed state
+ */
+export function getSidebarCollapsed() {
+  const sidebar = document.querySelector('.sidebar');
+  return sidebar ? sidebar.classList.contains('is-collapsed') : false;
+}
+
+/**
+ * Toggle or set sidebar collapsed state
+ * @param {boolean} collapsed
+ * @param {boolean} [manual=false] Whether this change was explicitly triggered by user
+ */
+export function setSidebarCollapsed(collapsed, manual = false) {
+  const sidebar = document.querySelector('.sidebar');
+  if (!sidebar) return;
+  if (manual) {
+    userSidebarPinned = collapsed ? 'collapsed' : 'expanded';
+    try {
+      sessionStorage.setItem('outfox_sidebar_pinned', userSidebarPinned);
+    } catch (_) {}
+  }
+  sidebar.classList.toggle('is-collapsed', Boolean(collapsed));
+  const toggleBtn = document.getElementById('btn-sidebar-toggle');
+  if (toggleBtn) {
+    toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    toggleBtn.setAttribute('title', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+  }
+}
+
+/**
+ * Auto-collapse rules: collapse for dense split views (prospects, inbox) or viewport < 1280px
+ * unless user explicitly pinned their preference.
+ */
+export function updateSidebarStateForView(targetView) {
+  if (userSidebarPinned === 'expanded') {
+    setSidebarCollapsed(false);
+    return;
+  }
+  if (userSidebarPinned === 'collapsed') {
+    setSidebarCollapsed(true);
+    return;
+  }
+  const isDenseView = targetView === 'prospects' || targetView === 'inbox';
+  const isNarrowScreen = typeof window !== 'undefined' && window.innerWidth < 1280;
+  if (isDenseView || isNarrowScreen) {
+    setSidebarCollapsed(true);
+  } else {
+    setSidebarCollapsed(false);
+  }
+}
+
 /**
  * Switch active dashboard view
  * @param {'home'|'prospects'|'campaigns'|'queue'|'templates'|'inbox'|'research'|'settings'} viewId
@@ -333,6 +387,9 @@ export async function switchView(viewId, options = {}) {
   });
   const campGrp = document.getElementById('nav-group-campaigns');
   if (campGrp) campGrp.classList.toggle('is-open', targetView === 'campaigns' || targetView === 'queue' || targetView === 'templates');
+
+  // Auto-collapse rules: collapse for dense split views (prospects, inbox) or viewport < 1280px
+  updateSidebarStateForView(targetView);
 
   // Restore subState from saved state if not explicitly passed
   const savedState = getViewUiState(targetView);
@@ -464,6 +521,29 @@ async function initDashboard() {
 
   // Sync actual logged-in user profile dynamically
   syncUserProfile();
+
+  // 1a. Hook Sidebar Pin/Collapse Toggle Button & saved preference
+  try {
+    const savedPin = sessionStorage.getItem('outfox_sidebar_pinned');
+    if (savedPin === 'expanded' || savedPin === 'collapsed') {
+      userSidebarPinned = savedPin;
+      setSidebarCollapsed(savedPin === 'collapsed', false);
+    }
+  } catch (_) {}
+
+  document.getElementById('btn-sidebar-toggle')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const isCurrentlyCollapsed = getSidebarCollapsed();
+    setSidebarCollapsed(!isCurrentlyCollapsed, true);
+  });
+
+  // Responsive resize watcher for auto-collapse
+  window.addEventListener('resize', () => {
+    if (!userSidebarPinned) {
+      updateSidebarStateForView(currentViewId);
+    }
+  });
 
   // 1. Hook Sidebar Navigation
   navItems.forEach((btn) => {

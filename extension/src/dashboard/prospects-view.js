@@ -321,9 +321,9 @@ export async function renderProspectsView(container, ctx = {}) {
     const uniqueTags = getUniqueTags();
 
     container.innerHTML = `
-      <div class="prospects-page-container" style="display:flex; gap:24px; min-height:600px;">
+      <div class="prospects-page-container" style="display:flex; gap:24px; min-height:600px; width:100%; box-sizing:border-box;">
         <!-- Left Lists Sidebar (Video Frame 18 & 25) -->
-        <aside class="lists-sidebar-card" style="width:230px; background:#FFFFFF; border:1px solid rgba(15,23,42,0.08); border-radius:12px; padding:16px; box-shadow:0 1px 2px rgba(15,23,42,0.04); display:flex; flex-direction:column; gap:8px;">
+        <aside class="lists-sidebar-card" style="width:230px; min-width:230px; background:#FFFFFF; border:1px solid rgba(15,23,42,0.08); border-radius:12px; padding:16px; box-shadow:0 1px 2px rgba(15,23,42,0.04); display:flex; flex-direction:column; gap:8px; flex-shrink:0;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <h4 style="margin:0; font-size:12px; text-transform:uppercase; color:#a0a3bd; letter-spacing:0.5px; font-weight:700;">Lists</h4>
             <button type="button" id="btn-add-new-list" style="border:none; background:transparent; color:#ff6b00; font-weight:700; font-size:18px; cursor:pointer;" title="Create New List">+</button>
@@ -331,7 +331,7 @@ export async function renderProspectsView(container, ctx = {}) {
 
           <div class="list-nav-scroll" style="display:flex; flex-direction:column; gap:4px; flex:1;">
             <button class="list-nav-item ${currentListId === 'all' ? 'is-active' : ''}" data-list-id="all">
-              <span>${ICONS.list} All prospects</span>
+              <span style="display:flex; align-items:center; gap:8px;">${ICONS.list} <span>All prospects</span></span>
               <span class="count-tag">${masterProspects.length}</span>
             </button>
 
@@ -340,9 +340,11 @@ export async function renderProspectsView(container, ctx = {}) {
               const count = masterProspects.filter((p) => p.listId === lid).length;
               return `
                 <div class="list-nav-item custom-list-item ${currentListId === lid ? 'is-active' : ''}" data-list-id="${lid}" tabindex="0" role="button">
-                  <span class="list-icon">${ICONS.folder}</span>
-                  <span class="list-nav-name" title="${l.name}" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:115px; display:inline-block; font-weight:600;">${l.name}</span>
-                  <div style="display:flex; align-items:center; gap:4px; margin-left:auto;">
+                  <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
+                    <span class="list-icon" style="display:inline-flex; align-items:center; flex-shrink:0;">${ICONS.folder}</span>
+                    <span class="list-nav-name" title="${l.name}" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; display:inline-block; font-weight:600;">${l.name}</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:4px; margin-left:8px; flex-shrink:0;">
                     <span class="count-tag">${count}</span>
                     <div class="list-dots-trigger" data-dots-id="${lid}" title="List options">⋮</div>
                   </div>
@@ -361,14 +363,14 @@ export async function renderProspectsView(container, ctx = {}) {
             }).join('')}
 
             <button class="list-nav-item ${currentListId === 'blacklist' ? 'is-active is-danger' : ''}" data-list-id="blacklist">
-              <span>${ICONS.ban} Do not contact</span>
+              <span style="display:flex; align-items:center; gap:8px;">${ICONS.ban} <span>Do not contact</span></span>
               <span class="count-tag" style="background:rgba(255,71,87,0.1); color:#FF4757;">${blacklist.size}</span>
             </button>
           </div>
         </aside>
 
         <!-- Right Main CRM Area -->
-        <main class="crm-main-area" style="flex:1; display:flex; flex-direction:column; gap:16px;">
+        <main class="crm-main-area" style="flex:1; min-width:0; display:flex; flex-direction:column; gap:16px;">
           <!-- Floating Bulk Action Bar (OutFox Screenshot 1) -->
           <div id="floating-bulk-bar" class="floating-bulk-bar" style="display:${selectedIds.size > 0 ? 'flex' : 'none'}; transform:${selectedIds.size > 0 ? 'translateY(0)' : 'translateY(-20px)'}; opacity:${selectedIds.size > 0 ? '1' : '0'}; transition:all 0.18s cubic-bezier(0.22, 1, 0.36, 1); position:sticky; top:12px; z-index:900; background:#FFFFFF; border:1px solid rgba(15,23,42,0.08); border-radius:12px; padding:10px 18px; box-shadow:0 4px 12px rgba(15,23,42,0.08); align-items:center; justify-content:space-between; margin-bottom:8px;">
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -516,7 +518,7 @@ export async function renderProspectsView(container, ctx = {}) {
           </div>
 
           <!-- Table Container -->
-          <div style="background:#FFFFFF; border:1px solid rgba(15,23,42,0.08); border-radius:12px; box-shadow:0 1px 2px rgba(15,23,42,0.04); overflow:hidden;">
+          <div style="background:#FFFFFF; border:1px solid rgba(15,23,42,0.08); border-radius:12px; box-shadow:0 1px 2px rgba(15,23,42,0.04); overflow-x:auto; max-width:100%;">
             ${filtered.length === 0 ? `
               <div style="padding:60px 20px; text-align:center; color:#6e7191;">
                 <img src="../../icons/icon48.png" width="52" height="52" alt="OutFox" style="border-radius: 14px; margin: 0 auto 14px; display: block; box-shadow: 0 6px 20px rgba(255, 107, 0, 0.22);" />

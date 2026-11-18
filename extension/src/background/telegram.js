@@ -25,9 +25,9 @@ import { getActiveCandidate, setActiveCandidate, getAllCandidates, saveCandidate
 import { enrichLead } from './enrich.js';
 import { matchAndAdaptObjection, snoozeLead, popDueSnoozes } from './objections.js';
 import { syncAllLeadsToSheet, backupToGoogleDrive } from './google-workspace.js';
-import { getActiveAiProviders, getAiFallbackChain } from './ai.js';
+import { getActiveAiProviders, getAiFallbackChain, filterProspectsByCriteria } from './ai.js';
 
-export { getActiveAiProviders, getAiFallbackChain };
+export { getActiveAiProviders, getAiFallbackChain, filterProspectsByCriteria };
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
 let isPolling = false;
@@ -320,6 +320,8 @@ CORE CAPABILITIES & DIRECTIVES:
    - Always present the updated copy and steps clearly in your response so the user can review before launching.
 5. Multi-Action Execution:
    - If the user asks for multiple tasks at once (e.g. "pause old campaign and design a new sequence for recruiter leads"), execute both tools in your ReAct loop and summarize the outcomes together.
+6. Lead Sourcing & Audience Filtering:
+   - When sourcing leads (e.g. "25 Indians in USA searching for Data Analyst job"), call \`search_and_save_leads\` with \`keywords: "Data Analyst"\`, \`location: "United States"\`, \`count: 25\`, and \`audienceFilter: "Indian origin in United States actively job searching"\`. Always separate LinkedIn search keywords from demographic, nationality, or intent constraints.
 
 ⚡ LIVE WORKSPACE STATE:
 • Active Persona: "${activePersona.name}" (Slug: ${activePersona.slug}, Mode: ${activePersona.mode}, Resume: ${activePersona.resumeUrl || 'None'}, Calendar: ${activePersona.calendarUrl || 'None'})
@@ -848,13 +850,14 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'search_and_save_leads',
-      description: 'Search LinkedIn for prospects by keyword/title and location, and save to a list.',
+      description: 'Search LinkedIn for prospects by keyword/title and location, with optional audience demographic/intent filtering, and save to a list.',
       parameters: {
         type: 'object',
         properties: {
           keywords: { type: 'string', description: 'Job title or search keywords, e.g. "Data Analyst" or "Engineering Manager"' },
           location: { type: 'string', description: 'Geographic location filter, e.g. "United States" or "Austin, Texas"' },
           openToWorkOnly: { type: 'boolean', description: 'True if looking for candidates who are open to work' },
+          audienceFilter: { type: 'string', description: 'Optional demographic, nationality, or intent constraint to filter leads by, e.g. "Indian origin in United States actively job searching"' },
           listName: { type: 'string', description: 'Optional name of the list to automatically save these leads into' },
           count: { type: 'number', description: 'Number of prospects to find (default: 10, max: 25)' },
         },
@@ -1345,36 +1348,84 @@ export async function executeTool(name, args = {}) {
 
   if (name === 'search_and_save_leads') {
     const activeCand = await getActiveCandidate().catch(() => null);
-    let kw = args.keywords || (activeCand?.targetRoles ? activeCand.targetRoles[0] : 'Data Analyst');
+    const requestedCount = Math.max(1, Math.min(Number(args.count) || 10, 50));
+    let audienceFilter = String(args.audienceFilter || '').trim();
+    let kw = String(args.keywords || (activeCand?.targetRoles ? activeCand.targetRoles[0] : 'Data Analyst')).trim();
+
+    // Auto-detect demographic / nationality intent if not explicitly set in audienceFilter
+    const indianDemographicMatch = /\b(indians?|desi|south asian|indian origin)\b/i;
+    if (!audienceFilter && indianDemographicMatch.test(kw)) {
+      audienceFilter = 'Indian origin in United States';
+      kw = kw.replace(/\b(indians?|desi|south asian|indian origin)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+    }
+    // Clean "in USA" / "in United States" if embedded in keywords
+    if (/\b(?:in\s+)?(usa|united states|us)\b/i.test(kw) && (!args.location || args.location === 'United States')) {
+      kw = kw.replace(/\b(?:in\s+)?(usa|united states|us)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+      if (!args.location) args.location = 'United States';
+    }
+    if (!kw) kw = 'Data Analyst';
     if (args.openToWorkOnly && !kw.includes('Open to work')) kw += ' "Open to work"';
 
     const loc = args.location || (activeCand?.targetLocations ? activeCand.targetLocations[0] : 'United States');
 
-    const searchRes = await voyager.searchProfiles({
-      keywords: kw,
-      location: loc,
-      count: Math.min(Math.max(1, args.count || 10), 25),
-    });
+    // Over-fetch Math.min(count * 3, 100) candidates when audienceFilter is present, without extra getProfile calls
+    const targetFetch = audienceFilter ? Math.min(requestedCount * 3, 100) : Math.min(requestedCount, 25);
+    const rawProfiles = [];
+    let currentStart = 0;
 
-    const profiles = searchRes?.profiles || [];
+    while (rawProfiles.length < targetFetch) {
+      const pageBatch = Math.min(25, targetFetch - rawProfiles.length);
+      const searchRes = await voyager.searchProfiles({
+        keywords: kw,
+        location: loc,
+        start: currentStart,
+        count: pageBatch,
+      });
+
+      const batch = searchRes?.profiles || [];
+      if (batch.length === 0) break;
+      rawProfiles.push(...batch);
+
+      if (!searchRes?.nextStart || batch.length < pageBatch) break;
+      currentStart = searchRes.nextStart;
+    }
+
+    // Apply 2-stage hybrid audience filter
+    let finalProfiles = rawProfiles;
+    if (audienceFilter && rawProfiles.length > 0) {
+      finalProfiles = await filterProspectsByCriteria(rawProfiles, audienceFilter, {
+        targetCount: requestedCount,
+      });
+    }
+
+    finalProfiles = finalProfiles.slice(0, requestedCount);
     let listSaved = false;
 
-    if (args.listName && profiles.length > 0) {
+    if (args.listName && finalProfiles.length > 0) {
       try {
         lastSearchedList = args.listName;
         const listObj = await lists.ensureList(args.listName);
-        await lists.add(listObj.listId, { profiles });
+        await lists.add(listObj.listId, { profiles: finalProfiles });
         listSaved = true;
       } catch (e) {
         console.error('[Telegram List Save Error]', e);
       }
     }
 
+    const totalSearched = rawProfiles.length;
+    const countFound = finalProfiles.length;
+    const summaryMessage = audienceFilter
+      ? `Found ${countFound} matching prospects (filtered from ${totalSearched} searched for "${audienceFilter}")`
+      : `Found ${countFound} prospects (searched ${totalSearched})`;
+
     return {
-      countFound: profiles.length,
+      countFound,
+      totalSearched,
+      audienceFilter: audienceFilter || null,
+      summaryMessage,
       listName: args.listName || null,
       listSaved,
-      topProfiles: profiles.slice(0, 5).map((p) => ({
+      topProfiles: finalProfiles.slice(0, 5).map((p) => ({
         name: p.fullName || `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'LinkedIn Member',
         headline: p.headline || p.title || 'Professional',
         location: p.location || 'USA',
@@ -1393,6 +1444,8 @@ export async function executeTool(name, args = {}) {
 
   throw new Error(`Unknown tool: ${name}`);
 }
+
+export const executeToolCall = executeTool;
 
 // Convert OpenAI JSON schema types to Gemini uppercase types recursively
 function _toGeminiSchema(schema) {

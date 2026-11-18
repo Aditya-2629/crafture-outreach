@@ -7,6 +7,9 @@
 import { call } from '../ui/api.js';
 import { ACTIONS } from '../lib/actions.js';
 import { ICONS } from '../ui/icons.js';
+import { isStorageChangeRelevant, captureInputFocus, restoreInputFocus } from './dashboard.js';
+
+const INBOX_RELEVANT_KEYS = new Set(['conversations', 'inbox', 'messages', 'leads', 'prospects']);
 
 let activeFilter = 'all'; // 'all' | 'unread'
 let searchQuery = '';
@@ -22,12 +25,17 @@ export async function renderInboxView(container, ctx = {}) {
   }
   if (savedInboxState.searchQuery) searchQuery = savedInboxState.searchQuery;
 
-  container.innerHTML = `
-    <div class="inbox-loading-container" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:60vh; gap:14px;">
-      <div class="spinner" style="width:36px; height:36px; border:3px solid #e2e8f0; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
-      <span style="font-size:14px; font-weight:600; color:#64748b;">Syncing conversations from LinkedIn...</span>
-    </div>
-  `;
+  const hasExistingContent = Boolean(container.querySelector('.OutFox-inbox-layout'));
+  const isInitial = !hasExistingContent && !ctx.silent && ctx.isInitialRender !== false;
+
+  if (isInitial) {
+    container.innerHTML = `
+      <div class="inbox-loading-container" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:60vh; gap:14px;">
+        <div class="spinner" style="width:36px; height:36px; border:3px solid #e2e8f0; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+        <span style="font-size:14px; font-weight:600; color:#64748b;">Syncing conversations from LinkedIn...</span>
+      </div>
+    `;
+  }
 
   let rawThreads = [];
 
@@ -119,6 +127,7 @@ export async function renderInboxView(container, ctx = {}) {
 
   function paint() {
     const scrollPos = ctx?.getScrollPosition?.(container);
+    const focusedInput = ctx?.captureInputFocus?.(container) || captureInputFocus(container);
     const filtered = normalizedThreads.filter((t) => {
       if (activeFilter === 'unread' && !t.unread) return false;
       if (searchQuery) {
@@ -485,7 +494,32 @@ export async function renderInboxView(container, ctx = {}) {
     }
 
     ctx?.restoreScrollPosition?.(container, scrollPos);
+    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
   }
+
+  let storageDebounceTimer = null;
+  const storageListener = (changes, area) => {
+    if (area !== 'local') return;
+    const checkFn = ctx.isStorageChangeRelevant || isStorageChangeRelevant;
+    if (checkFn && !checkFn(changes, INBOX_RELEVANT_KEYS)) return;
+    clearTimeout(storageDebounceTimer);
+    storageDebounceTimer = setTimeout(async () => {
+      if (!ctx.isActiveView || ctx.isActiveView()) {
+        await renderInboxView(container, { ...ctx, silent: true });
+      }
+    }, 400);
+  };
+
+  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.addListener(storageListener);
+  }
+
+  ctx.registerCleanup?.(() => {
+    clearTimeout(storageDebounceTimer);
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.removeListener(storageListener);
+    }
+  });
 
   if (selectedThread) {
     loadMessages(selectedThread);

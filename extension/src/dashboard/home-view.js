@@ -15,6 +15,23 @@ import { call } from '../ui/api.js';
 import { ACTIONS } from '../lib/actions.js';
 import { ICONS } from '../ui/icons.js';
 import { downloadCsv, today } from '../ui/download.js';
+import { isStorageChangeRelevant } from './dashboard.js';
+
+const HOME_RELEVANT_KEYS = new Set([
+  'campaigns',
+  'prospects',
+  'lists',
+  'events',
+  'stats',
+  'dailyStats',
+  'quotas',
+  'outfox_quotas',
+  'activeCandidate',
+  'aiProviders',
+  'candidates',
+  'hunterApiKey',
+  'apolloApiKey',
+]);
 
 let selectedDays = '30';
 let selectedCampaignId = 'all';
@@ -357,12 +374,17 @@ export async function renderHomeView(container, ctx = {}) {
   if (!container) return;
   ensureHomeStyles();
 
-  container.innerHTML = `
-    <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
-      <div style="width:34px; height:34px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
-    </div>
-    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
-  `;
+  const hasExistingGrid = Boolean(container.querySelector('.OutFox-home-grid'));
+  const isInitial = !hasExistingGrid && !ctx.silent && ctx.isInitialRender !== false;
+
+  if (isInitial) {
+    container.innerHTML = `
+      <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
+        <div style="width:34px; height:34px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      </div>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+    `;
+  }
 
   // 4-second timeout guard to prevent infinite spinner if network/stats call hangs
   const [statsRes, storageRes] = await Promise.all([
@@ -893,16 +915,18 @@ export async function renderHomeView(container, ctx = {}) {
   let storageDebounceTimer = null;
   const storageListener = (changes, area) => {
     if (area !== 'local') return;
+    const checkFn = ctx.isStorageChangeRelevant || isStorageChangeRelevant;
+    if (checkFn && !checkFn(changes, HOME_RELEVANT_KEYS)) return;
     clearTimeout(storageDebounceTimer);
     storageDebounceTimer = setTimeout(async () => {
       if (!ctx.isActiveView || ctx.isActiveView()) {
         const latestStorage = await new Promise((r) => chrome.storage.local.get(null, r)).catch(() => null);
-        if (latestStorage) {
+        if (latestStorage && (!ctx.isActiveView || ctx.isActiveView())) {
           storage = latestStorage;
           paint();
         }
       }
-    }, 150);
+    }, 400);
   };
   if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
     chrome.storage.onChanged.addListener(storageListener);

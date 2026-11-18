@@ -52,6 +52,84 @@ export function showToast(message, type = 'info') {
 
 const UI_STATE_KEY = 'outfox_ui_state';
 
+export const NOISY_STORAGE_KEYS = new Set([
+  'logs',
+  'outfox_debug_logs',
+  'debug_logs',
+  'outfox_logs',
+  'lastTick',
+  'outfox_remote_endpoints',
+  'outfox_dev_logs_enabled',
+  'outfox_logs_cache',
+  'terminal_logs',
+  'audit_logs',
+  'outfox_chat_history',
+]);
+
+/**
+ * Check if changes from chrome.storage.onChanged contain meaningful user-visible keys
+ * and are not purely internal logging/tick noise.
+ * @param {object} changes
+ * @param {Set|Array|Function} [relevantKeys] Optional whitelist of keys or predicate
+ * @returns {boolean}
+ */
+export function isStorageChangeRelevant(changes, relevantKeys = null) {
+  if (!changes || typeof changes !== 'object') return false;
+  const changedKeys = Object.keys(changes);
+  if (changedKeys.length === 0) return false;
+
+  const meaningful = changedKeys.filter((k) => !NOISY_STORAGE_KEYS.has(k));
+  if (meaningful.length === 0) return false;
+
+  if (relevantKeys) {
+    if (typeof relevantKeys === 'function') {
+      return meaningful.some(relevantKeys);
+    }
+    const keySet = relevantKeys instanceof Set ? relevantKeys : new Set(relevantKeys);
+    return meaningful.some((k) => keySet.has(k));
+  }
+
+  return true;
+}
+
+/**
+ * Capture currently focused input / textarea and cursor position
+ */
+export function captureInputFocus(container) {
+  const active = typeof document !== 'undefined' ? document.activeElement : null;
+  if (!active || !container?.contains?.(active)) return null;
+  const isInput = active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable;
+  if (!isInput) return null;
+  return {
+    id: active.id || null,
+    name: active.name || null,
+    tagName: active.tagName,
+    value: active.value,
+    selectionStart: typeof active.selectionStart === 'number' ? active.selectionStart : null,
+    selectionEnd: typeof active.selectionEnd === 'number' ? active.selectionEnd : null,
+  };
+}
+
+/**
+ * Restore focused input and cursor selection
+ */
+export function restoreInputFocus(container, focused) {
+  if (!focused || !container) return;
+  const target = focused.id
+    ? container.querySelector(`#${focused.id}`)
+    : focused.name
+    ? container.querySelector(`[name="${focused.name}"]`)
+    : null;
+  if (target && typeof target.focus === 'function') {
+    try {
+      target.focus();
+      if (focused.selectionStart != null && focused.selectionEnd != null && typeof target.setSelectionRange === 'function') {
+        target.setSelectionRange(focused.selectionStart, focused.selectionEnd);
+      }
+    } catch {}
+  }
+}
+
 /**
  * Read global UI state from sessionStorage
  */
@@ -215,6 +293,14 @@ export async function switchView(viewId, options = {}) {
     activeViewCleanup = null;
   }
 
+  const cleanups = [];
+  activeViewCleanup = () => {
+    cleanups.forEach((fn) => {
+      try { fn(); } catch (err) { console.warn(err); }
+    });
+    cleanups.length = 0;
+  };
+
   currentViewId = targetView;
   const crumb = document.getElementById('topbar-crumb-title');
   if (crumb) {
@@ -271,10 +357,15 @@ export async function switchView(viewId, options = {}) {
     isStale: () => token !== currentRenderToken,
     isActiveView: () => currentViewId === targetView && token === currentRenderToken,
     registerCleanup: (fn) => {
-      if (token === currentRenderToken) {
-        activeViewCleanup = fn;
+      if (token === currentRenderToken && typeof fn === 'function') {
+        cleanups.push(fn);
       }
     },
+    isStorageChangeRelevant,
+    captureInputFocus: (el) => captureInputFocus(el || appRoot),
+    restoreInputFocus: (el, f) => restoreInputFocus(el || appRoot, f),
+    isInitialRender: options.isInitialRender !== undefined ? options.isInitialRender : true,
+    silent: options.silent || false,
     onLiveUpdate: null,
     getSavedState: () => getViewUiState(targetView),
     saveState: (partial) => {
@@ -386,7 +477,7 @@ async function initDashboard() {
 
   // 1b. Hook Subnav Navigation (Campaigns List / Queue)
   document.addEventListener('click', (e) => {
-    const subnavBtn = e.target.closest('.subnav-item');
+    const subnavBtn = e.target?.closest ? e.target.closest('.subnav-item') : null;
     if (subnavBtn) {
       e.preventDefault();
       const targetView = subnavBtn.dataset.view;
@@ -405,8 +496,8 @@ async function initDashboard() {
     if (!target) return;
     const isGuideBtn =
       target.id === 'btn-guide-sheet' ||
-      target.classList?.contains('btn-crm-guide') ||
-      target.closest?.('[data-guide="sheet"]');
+      target.classList?.contains?.('btn-crm-guide') ||
+      (target.closest ? target.closest('[data-guide="sheet"]') : null);
 
     if (isGuideBtn) {
       e.preventDefault();
@@ -488,6 +579,25 @@ async function initDashboard() {
           countEl.textContent = current + 1;
         }
       }
+    });
+  }
+
+  // 8. Filtered storage listener for global dashboard state (no re-renders, updates in-place)
+  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    let globalStorageTimer = null;
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return;
+      if (!isStorageChangeRelevant(changes, ['outfox_dev_logs_enabled', 'profile', 'status', 'auth'])) return;
+      clearTimeout(globalStorageTimer);
+      globalStorageTimer = setTimeout(() => {
+        if (changes.outfox_dev_logs_enabled) {
+          const pill = document.getElementById('outfox-logs-pill');
+          if (pill) pill.classList.toggle('hidden', !changes.outfox_dev_logs_enabled.newValue);
+        }
+        if (changes.profile || changes.status) {
+          syncUserProfile();
+        }
+      }, 400);
     });
   }
 }

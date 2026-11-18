@@ -9,6 +9,9 @@ import { call } from '../ui/api.js';
 import { ACTIONS } from '../lib/actions.js';
 import { ICONS } from '../ui/icons.js';
 import { openUiConfirm, openLeadTimelineModal } from './modal-engine.js';
+import { isStorageChangeRelevant, captureInputFocus, restoreInputFocus } from './dashboard.js';
+
+const QUEUE_RELEVANT_KEYS = new Set(['campaigns', 'queue', 'quotas', 'outfox_quotas', 'enrollments']);
 
 let selectedQueueIds = new Set();
 let activeCampaignFilter = 'all';
@@ -403,7 +406,9 @@ async function performQueueFetchAndPaint(container, ctx = {}, { isInitial = fals
   isRefreshing = true;
 
   try {
-    if (isInitial) {
+    const hasExistingContent = Boolean(container.querySelector('.OutFox-queue-layout'));
+    const showSpinner = isInitial && !hasExistingContent && !ctx.silent && ctx.isInitialRender !== false;
+    if (showSpinner) {
       container.innerHTML = `
         <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
           <div style="width:34px; height:34px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
@@ -1064,9 +1069,30 @@ export async function renderQueueView(container, ctx = {}) {
     activeCampaignFilter = savedQueueState.activeCampaignFilter;
   }
 
+  let storageDebounceTimer = null;
+  const storageListener = (changes, area) => {
+    if (area !== 'local') return;
+    const checkFn = ctx.isStorageChangeRelevant || isStorageChangeRelevant;
+    if (checkFn && !checkFn(changes, QUEUE_RELEVANT_KEYS)) return;
+    clearTimeout(storageDebounceTimer);
+    storageDebounceTimer = setTimeout(async () => {
+      if (!shouldAbortQueueRender(container, ctx)) {
+        await refreshQueueSilently(container, ctx);
+      }
+    }, 400);
+  };
+
+  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.addListener(storageListener);
+  }
+
   // 2. Register cleanup with dashboard.js view lifecycle
   ctx.registerCleanup?.(() => {
     cleanupTimers();
+    clearTimeout(storageDebounceTimer);
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.removeListener(storageListener);
+    }
   });
 
   // 3. Provide silent live update handler to dashboard.js storage listener
@@ -1075,7 +1101,9 @@ export async function renderQueueView(container, ctx = {}) {
   ensureQueueStyles();
   lastRenderedSnapshot = '';
 
-  await performQueueFetchAndPaint(container, ctx, { isInitial: true, force: true });
+  const hasExistingContent = Boolean(container.querySelector('.OutFox-queue-layout'));
+  const isInitial = !hasExistingContent && !ctx.silent && ctx.isInitialRender !== false;
+  await performQueueFetchAndPaint(container, ctx, { isInitial, force: true });
 
   // 4. If user navigated away during initial fetch, stop right here
   if (shouldAbortQueueRender(container, ctx)) {

@@ -22,6 +22,9 @@ import {
   RESEARCH_FIELDS,
 } from '../ui/csv.js';
 import { downloadCsv, downloadMarkdown, slug, today } from '../ui/download.js';
+import { isStorageChangeRelevant, captureInputFocus, restoreInputFocus } from './dashboard.js';
+
+const RESEARCH_RELEVANT_KEYS = new Set(['research', 'research_jobs', 'candidates', 'activeCandidate']);
 
 const POLL_INTERVAL_MS = 4000;
 const PREVIEW_ROW_COUNT = 3;
@@ -294,6 +297,7 @@ export async function renderResearchView(container, ctx = {}) {
   function paint() {
     if (ctx?.isStale?.() || (ctx?.isActiveView && !ctx.isActiveView())) return;
     const scrollPos = ctx?.getScrollPosition?.(container);
+    const focusedInput = ctx?.captureInputFocus?.(container) || captureInputFocus(container);
 
     const progressPct = totalCount > 0 ? Math.min(100, Math.round((doneCount / totalCount) * 100)) : 0;
     const unresolvedCount = packs.filter((p) => !p.resolved || p.resolved.kind === 'unresolved').length;
@@ -847,6 +851,34 @@ export async function renderResearchView(container, ctx = {}) {
     }
 
     ctx?.restoreScrollPosition?.(container, scrollPos);
+    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
+  }
+
+  let storageDebounceTimer = null;
+  const storageListener = (changes, area) => {
+    if (area !== 'local') return;
+    const checkFn = ctx.isStorageChangeRelevant || isStorageChangeRelevant;
+    if (checkFn && !checkFn(changes, RESEARCH_RELEVANT_KEYS)) return;
+    clearTimeout(storageDebounceTimer);
+    storageDebounceTimer = setTimeout(async () => {
+      if (!ctx.isActiveView || ctx.isActiveView()) {
+        paint();
+      }
+    }, 400);
+  };
+
+  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.addListener(storageListener);
+  }
+
+  if (typeof ctx?.registerCleanup === 'function') {
+    ctx.registerCleanup(() => {
+      stopPolling();
+      clearTimeout(storageDebounceTimer);
+      if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+        chrome.storage.onChanged.removeListener(storageListener);
+      }
+    });
   }
 
   paint();

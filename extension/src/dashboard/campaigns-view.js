@@ -10,6 +10,9 @@ import { openUiConfirm, openUiAlert, openUiSelectModal, openLeadTimelineModal } 
 import { ICONS } from '../ui/icons.js';
 import { getConfig } from '../lib/config.js';
 import { renderTemplate, resolveSpintax } from '../lib/template.js';
+import { isStorageChangeRelevant, captureInputFocus, restoreInputFocus } from './dashboard.js';
+
+const CAMPAIGNS_RELEVANT_KEYS = new Set(['campaigns', 'lists', 'quotas', 'outfox_quotas', 'enrollments']);
 
 // Pre-built OutFox Campaign Templates (From Video Frame 11)
 export const CAMPAIGN_TEMPLATES = [
@@ -1560,12 +1563,17 @@ export async function renderCampaignsView(container, ctx = {}) {
   ensureCampaignsStyles();
   if (!container) return;
 
-  container.innerHTML = `
-    <div class="view-loading-state">
-      <div class="spinner"></div>
-      <span>Loading campaigns...</span>
-    </div>
-  `;
+  const hasExistingContent = Boolean(container.querySelector('.campaigns-view-shell, .wizard-full-view'));
+  const isInitial = !hasExistingContent && !ctx.silent && ctx.isInitialRender !== false;
+
+  if (isInitial) {
+    container.innerHTML = `
+      <div class="view-loading-state">
+        <div class="spinner"></div>
+        <span>Loading campaigns...</span>
+      </div>
+    `;
+  }
 
   let campaigns = [];
   let lists = [];
@@ -3823,6 +3831,37 @@ export async function renderCampaignsView(container, ctx = {}) {
   window.addEventListener('resize', () => {
     document.querySelectorAll('.pipeline-popover-menu, .step-insert-menu, .delay-dropdown-menu').forEach((p) => p.remove());
   }, { passive: true });
+
+  let storageDebounceTimer = null;
+  const storageListener = (changes, area) => {
+    if (area !== 'local') return;
+    const checkFn = ctx.isStorageChangeRelevant || isStorageChangeRelevant;
+    if (checkFn && !checkFn(changes, CAMPAIGNS_RELEVANT_KEYS)) return;
+    clearTimeout(storageDebounceTimer);
+    storageDebounceTimer = setTimeout(async () => {
+      if (!ctx.isActiveView || ctx.isActiveView()) {
+        const freshCamps = await call(ACTIONS.CAMPAIGN_GET_ALL, {}).catch(() => []);
+        campaigns = Array.isArray(freshCamps) ? freshCamps : (freshCamps?.campaigns || []);
+        allStorage = await new Promise((r) => chrome.storage.local.get(null, r));
+        if (viewState === 'list' && (!ctx.isActiveView || ctx.isActiveView())) {
+          renderList();
+        }
+      }
+    }, 400);
+  };
+
+  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.addListener(storageListener);
+  }
+
+  ctx.registerCleanup?.(() => {
+    if (autoPilotInterval) clearInterval(autoPilotInterval);
+    if (drawerInterval) clearInterval(drawerInterval);
+    clearTimeout(storageDebounceTimer);
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.removeListener(storageListener);
+    }
+  });
 
   render();
 }

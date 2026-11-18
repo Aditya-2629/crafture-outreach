@@ -10,18 +10,31 @@ import { openCsvImportWizard } from './csv-import-modal.js';
 import { openUiPrompt, openUiConfirm, openUiSelectModal, openUiAlert, openLeadTimelineModal } from './modal-engine.js';
 import { ICONS } from '../ui/icons.js';
 import { recordImportHistory } from '../lib/storage.js';
+import { isStorageChangeRelevant, captureInputFocus, restoreInputFocus } from './dashboard.js';
 export { openUiPrompt, openUiConfirm, openUiSelectModal, openUiAlert, openLeadTimelineModal };
+
+const isProspectsKey = (k) =>
+  k === 'lists' ||
+  k === 'blacklist' ||
+  k === 'campaigns' ||
+  k === 'prospects' ||
+  k.startsWith('listMembers:') ||
+  k.startsWith('list_members_');
 
 export async function renderProspectsView(container, ctx = {}) {
   if (!container) return;
 
-  // Show clean loading spinner while reading local storage
-  container.innerHTML = `
-    <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
-      <div style="width:32px; height:32px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
-    </div>
-    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
-  `;
+  const hasExistingContent = Boolean(container.querySelector('.prospects-page-container'));
+  const isInitial = !hasExistingContent && !ctx.silent && ctx.isInitialRender !== false;
+
+  if (isInitial) {
+    container.innerHTML = `
+      <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
+        <div style="width:32px; height:32px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      </div>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+    `;
+  }
 
   // 1. Fetch 100% Real Storage Data
   const allData = await new Promise((resolve) => {
@@ -301,6 +314,7 @@ export async function renderProspectsView(container, ctx = {}) {
 
   function paint() {
     const scrollPos = ctx.getScrollPosition?.(container);
+    const focusedInput = ctx?.captureInputFocus?.(container) || captureInputFocus(container);
     const filtered = getFilteredProspects();
     const currentList = rawLists.find((l) => (l.listId || l.id) === currentListId);
     const activeTitle = currentListId === 'all' ? 'All prospects' : (currentListId === 'blacklist' ? 'Do not contact' : (currentList?.name || 'My List'));
@@ -1229,6 +1243,37 @@ export async function renderProspectsView(container, ctx = {}) {
     }
     if (!e.target.closest('.list-dots-trigger') && !e.target.closest('.list-dropdown-menu')) {
       container.querySelectorAll('.list-dropdown-menu').forEach((m) => m.classList.remove('is-open'));
+    }
+    ctx.restoreScrollPosition?.(container, scrollPos);
+    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
+  });
+
+  let storageDebounceTimer = null;
+  const storageListener = (changes, area) => {
+    if (area !== 'local') return;
+    const checkFn = ctx.isStorageChangeRelevant || isStorageChangeRelevant;
+    if (checkFn && !checkFn(changes, isProspectsKey)) return;
+    clearTimeout(storageDebounceTimer);
+    storageDebounceTimer = setTimeout(async () => {
+      if (!ctx.isActiveView || ctx.isActiveView()) {
+        const freshData = await new Promise((r) => chrome.storage.local.get(null, r)).catch(() => null);
+        if (freshData && (!ctx.isActiveView || ctx.isActiveView())) {
+          allData = freshData;
+          initData();
+          paint();
+        }
+      }
+    }, 400);
+  };
+
+  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.addListener(storageListener);
+  }
+
+  ctx.registerCleanup?.(() => {
+    clearTimeout(storageDebounceTimer);
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.removeListener(storageListener);
     }
   });
 

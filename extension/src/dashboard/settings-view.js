@@ -10,6 +10,25 @@ import { ICONS } from '../ui/icons.js';
 import { openUiConfirm, openUiAlert, openUiPrompt } from './modal-engine.js';
 import { openTelegramGuideModal, openMcpGuideModal } from './guide-modal.js';
 import { getStorageHealth, formatImportDate, clearImportHistory } from '../lib/storage.js';
+import { isStorageChangeRelevant, captureInputFocus, restoreInputFocus } from './dashboard.js';
+
+const SETTINGS_RELEVANT_KEYS = new Set([
+  'config',
+  'ai',
+  'ai_models',
+  'aiProviders',
+  'integrations',
+  'candidates',
+  'activeCandidate',
+  'google_tokens',
+  'google_sheets',
+  'google_drive',
+  'telegram_bot',
+  'telegramBot',
+  'apolloApiKey',
+  'hunterApiKey',
+  'outfox_withdraw_cleanup_state',
+]);
 
 let activeSettingsTab = 'activity';
 let liveClockInterval = null;
@@ -370,12 +389,17 @@ export async function renderSettingsView(container, ctx = {}) {
     liveClockInterval = null;
   }
 
-  container.innerHTML = `
-    <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
-      <div style="width:34px; height:34px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
-    </div>
-    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
-  `;
+  const hasExistingSettings = Boolean(container.querySelector('.OutFox-settings-layout'));
+  const isInitial = !hasExistingSettings && !ctx.silent && ctx.isInitialRender !== false;
+
+  if (isInitial) {
+    container.innerHTML = `
+      <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
+        <div style="width:34px; height:34px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      </div>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+    `;
+  }
 
   let config = {};
   let storage = {};
@@ -515,6 +539,7 @@ export async function renderSettingsView(container, ctx = {}) {
 
   function paint() {
     const scrollPos = ctx?.getScrollPosition?.(container);
+    const focusedInput = ctx?.captureInputFocus?.(container) || captureInputFocus(container);
     const tzData = getTzDetails(selectedTz);
     const isTodayActive = workingDays[tzData.weekday] !== false;
     const isTimeActive = tzData.mins >= startMinutes && tzData.mins <= endMinutes;
@@ -2023,18 +2048,25 @@ export async function renderSettingsView(container, ctx = {}) {
         paint();
       }
     });
+
+    ctx?.restoreScrollPosition?.(container, scrollPos);
+    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
   }
 
   let storageDebounceTimer = null;
   const storageListener = (changes, area) => {
     if (area !== 'local') return;
+    const checkFn = ctx.isStorageChangeRelevant || isStorageChangeRelevant;
+    if (checkFn && !checkFn(changes, SETTINGS_RELEVANT_KEYS)) return;
     clearTimeout(storageDebounceTimer);
     storageDebounceTimer = setTimeout(async () => {
       if (!ctx.isActiveView || ctx.isActiveView()) {
         await refreshSettingsData();
-        paint();
+        if (!ctx.isActiveView || ctx.isActiveView()) {
+          paint();
+        }
       }
-    }, 150);
+    }, 400);
   };
   if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
     chrome.storage.onChanged.addListener(storageListener);

@@ -8,6 +8,9 @@ import { ACTIONS } from '../lib/actions.js';
 import { openUiConfirm } from './modal-engine.js';
 import { ICONS } from '../ui/icons.js';
 import { resolveSpintax } from '../lib/template.js';
+import { isStorageChangeRelevant, captureInputFocus, restoreInputFocus } from './dashboard.js';
+
+const TEMPLATES_RELEVANT_KEYS = new Set(['messageTemplates', 'templates', 'objections', 'activeCandidate']);
 
 let activeCategory = 'message';
 
@@ -657,6 +660,7 @@ export async function renderTemplatesView(container, ctx = {}) {
 
   function paint() {
     const scrollPos = ctx?.getScrollPosition?.(container);
+    const focusedInput = ctx?.captureInputFocus?.(container) || captureInputFocus(container);
     const filtered = templates.filter((t) => (t.type || 'message') === activeCategory);
 
     container.innerHTML = `
@@ -1095,7 +1099,37 @@ export async function renderTemplatesView(container, ctx = {}) {
         runObjectionTest();
       }
     });
+    ctx?.restoreScrollPosition?.(container, scrollPos);
+    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
   }
+
+  let storageDebounceTimer = null;
+  const storageListener = (changes, area) => {
+    if (area !== 'local') return;
+    const checkFn = ctx.isStorageChangeRelevant || isStorageChangeRelevant;
+    if (checkFn && !checkFn(changes, TEMPLATES_RELEVANT_KEYS)) return;
+    clearTimeout(storageDebounceTimer);
+    storageDebounceTimer = setTimeout(async () => {
+      if (!ctx.isActiveView || ctx.isActiveView()) {
+        const sRes = await new Promise((r) => chrome.storage.local.get(['messageTemplates'], r)).catch(() => ({}));
+        if (sRes && Array.isArray(sRes.messageTemplates)) {
+          templates = sRes.messageTemplates;
+        }
+        paint();
+      }
+    }, 400);
+  };
+
+  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.addListener(storageListener);
+  }
+
+  ctx.registerCleanup?.(() => {
+    clearTimeout(storageDebounceTimer);
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.removeListener(storageListener);
+    }
+  });
 
   paint();
 }

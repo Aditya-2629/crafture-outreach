@@ -40,6 +40,7 @@ beforeEach(async () => {
   // queue the writes they care about. Individual tests re-route these.
   net.route('messengerConversations', quietInbox()); // a quiet inbox
   net.route('sentInvitationViewsV2', { elements: [] }); // nothing pending
+  net.route('relationships/dash/connections', { elements: [] }); // no recent connections
   net.route('/identity/dash/profiles', profileView); // 2nd degree
   seen = [];
   events.setSink((f) => seen.push(f));

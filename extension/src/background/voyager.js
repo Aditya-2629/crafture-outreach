@@ -1856,6 +1856,68 @@ export async function domViewProfileInPage(publicId) {
 }
 
 /**
+ * In-page DOM execution to verify whether a profile is a 1st-degree connection.
+ * Checks if top profile card has a primary Message button + 1st badge (and no Connect or Pending button).
+ */
+export async function domCheckConnectionInPage() {
+  const waitFor = async (fn, timeoutMs = 8000, intervalMs = 250) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try { const res = fn(); if (res) return res; } catch {}
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
+  };
+
+  const h1 = await waitFor(() => document.querySelector('main h1, .pv-top-card h1'));
+  if (!h1) {
+    return { ok: false, connected: false, reason: 'Profile top card failed to load' };
+  }
+
+  const mainCard =
+    document.querySelector(
+      'main .pv-top-card, main [data-view-name="profile-card"], main section:first-of-type, main',
+    ) || document.querySelector('main');
+
+  if (!mainCard) return { ok: false, connected: false, reason: 'Main card not found' };
+
+  const actionElements = Array.from(mainCard.querySelectorAll('button, a.artdeco-button, div[role="button"]'));
+  const elementLabels = actionElements.map((el) =>
+    ((el.getAttribute('aria-label') || '') + ' ' + (el.textContent || '')).trim().toLowerCase(),
+  );
+
+  const hasConnect = elementLabels.some((label) =>
+    /(?:^|\s)connect(?:\s|$)/i.test(label) && !/connect with premium/i.test(label),
+  );
+  const hasPending = elementLabels.some((label) =>
+    /(?:^|\s)(?:pending|invite sent|invitation sent|withdraw(?:\s+invitation)?)(?:\s|$)/i.test(label),
+  );
+  const hasMessage = elementLabels.some((label) =>
+    /(?:^|\s)(?:direct\s+)?message(?:\s|$)/i.test(label),
+  );
+
+  const cardText = mainCard.textContent || '';
+  const has1stBadge =
+    /\b1st\b/i.test(cardText) ||
+    Boolean(
+      mainCard.querySelector(
+        '.dist-value, [class*="dist-value"], [class*="degree-icon"], [aria-label*="1st degree"], [aria-label*="1st"], span.badge--degree',
+      ),
+    );
+
+  const isConnected = hasMessage && has1stBadge && !hasConnect && !hasPending;
+
+  return {
+    ok: true,
+    connected: Boolean(isConnected),
+    hasMessage,
+    has1stBadge,
+    hasConnect,
+    hasPending,
+  };
+}
+
+/**
  * In-page DOM execution to send a connection request from a profile page.
  *
  * @param {{ note?: string } | string} [args]

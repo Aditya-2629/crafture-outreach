@@ -21,6 +21,7 @@ import * as lists from './lists.js';
 import * as queue from './queue.js';
 import { enrichLead } from './enrich.js';
 import * as voyager from './voyager.js';
+import { meteredConnectionStatus } from './visits.js';
 
 // network.status must be registered for the 'accepted' branch to resolve.
 import './extract.js';
@@ -65,9 +66,15 @@ export function setProspectCooldownMs(ms) {
 export const activeProspectLocks = new Set();
 export const lastProspectActionAt = new Map();
 
+export function clearRecentConnectionsCache() {
+  cachedRecentConnections = null;
+  cachedRecentConnectionsAt = 0;
+}
+
 export function clearProspectLocks() {
   activeProspectLocks.clear();
   lastProspectActionAt.clear();
+  clearRecentConnectionsCache();
 }
 
 export const CAMPAIGN_TICK_ALARM_NAME = 'outfox-campaign-tick';
@@ -313,6 +320,7 @@ export function stepsAt(campaign, path = []) {
 /** Move one step on, climbing out of any branch arms that just finished. */
 function advance(campaign, enrollment, completedStep = null) {
   enrollment.stepIndex += 1;
+  delete enrollment.parkReason;
   while (enrollment.path.length >= 2 && enrollment.stepIndex >= stepsAt(campaign, enrollment.path).length) {
     const branchIndex = enrollment.path[enrollment.path.length - 2];
     enrollment.path = enrollment.path.slice(0, -2);
@@ -696,26 +704,180 @@ export async function getCampaignLiveStatus(campaignId) {
 /*  Step execution                                                    */
 /* ================================================================== */
 
-async function isConnected(publicId, enrollment = null) {
+let cachedRecentConnections = null;
+let cachedRecentConnectionsAt = 0;
+const CONNECTIONS_CACHE_TTL_MS = 30 * 1000;
+
+export async function getRecentConnections(forceFresh = false) {
+  const now = Date.now();
+  if (!forceFresh && cachedRecentConnections && now - cachedRecentConnectionsAt < CONNECTIONS_CACHE_TTL_MS) {
+    return cachedRecentConnections;
+  }
+  try {
+    const res = await voyager.getConnections({ count: 100 });
+    cachedRecentConnections = res?.profiles || [];
+    cachedRecentConnectionsAt = now;
+    return cachedRecentConnections;
+  } catch (err) {
+    logDebug('warn', 'Runner', `[isConnected] getRecentConnections error: ${err?.message}`);
+    return cachedRecentConnections || [];
+  }
+}
+
+function matchesConnection(conn, normPublicId, targetMemberId, targetUrn) {
+  if (!conn) return false;
+  const connPublicId = String(conn.publicId || '').trim().toLowerCase();
+  if (connPublicId && normPublicId && connPublicId === normPublicId) return true;
+
+  if (targetMemberId) {
+    const normTargetMem = String(targetMemberId).trim();
+    if (conn.memberId && String(conn.memberId).trim() === normTargetMem) return true;
+    if (conn.objectUrn && String(conn.objectUrn).replace(/^urn:li:member:/, '').trim() === normTargetMem) return true;
+  }
+
+  if (targetUrn) {
+    const normTargetUrn = String(targetUrn).trim().toLowerCase();
+    if (conn.urn && String(conn.urn).trim().toLowerCase() === normTargetUrn) return true;
+    if (conn.objectUrn && String(conn.objectUrn).trim().toLowerCase() === normTargetUrn) return true;
+  }
+
+  return false;
+}
+
+export async function isConnected(publicId, enrollment = null) {
   if (enrollment && enrollment.accepted === true) {
     return true;
   }
   try {
-    const profile = await getStoredProfile(publicId);
+    const profile = await getStoredProfile(publicId).catch(() => null);
     // 1. If stored profile has connectionDegree === 1 or was imported as 1st connection
-    if (profile && (profile.connectionDegree === 1 || profile.isConnected === true)) {
+    if (
+      profile &&
+      (profile.connectionDegree === 1 ||
+       profile.isConnected === true ||
+       profile.degree === 1 ||
+       profile.distance === 'DISTANCE_1' ||
+       profile.networkDistance === 'DISTANCE_1' ||
+       profile.connected === true)
+    ) {
+      if (enrollment) {
+        enrollment.accepted = true;
+        delete enrollment.parkReason;
+      }
       return true;
     }
-    // 2. Fallback to network status check
-    const res = await handle(ACTIONS.NETWORK_STATUS, { publicIds: [publicId] }, 'campaign');
-    if (res?.ok) {
-      const isConn = res.data?.statuses?.[publicId] === 'connected';
-      if (isConn && profile) {
-        profile.connectionDegree = 1;
-        profile.isConnected = true;
-        await putProfile(profile).catch(() => {});
+
+    const normPublicId = String(publicId || '').trim().toLowerCase();
+    const targetMemberId =
+      profile?.memberId ||
+      enrollment?.memberId ||
+      (normPublicId.match(/^\d+$/) ? normPublicId : null);
+    const targetUrn =
+      profile?.urn ||
+      profile?.objectUrn ||
+      enrollment?.profileUrn ||
+      enrollment?.urn;
+
+    // 2. Case-insensitive matching against getConnections({ count: 100 })
+    try {
+      const recentConnections = await getRecentConnections();
+      const matched = recentConnections.some((conn) =>
+        matchesConnection(conn, normPublicId, targetMemberId, targetUrn),
+      );
+      if (matched) {
+        if (profile) {
+          profile.connectionDegree = 1;
+          profile.isConnected = true;
+          await putProfile(profile).catch(() => {});
+        }
+        if (enrollment) {
+          enrollment.accepted = true;
+          delete enrollment.parkReason;
+        }
+        return true;
       }
-      return isConn;
+    } catch (err) {
+      logDebug('warn', 'Runner', `[isConnected] getConnections matching error: ${err?.message}`);
+    }
+
+    // 3. Fallback to getProfileNormalized(publicId) via meteredConnectionStatus
+    try {
+      const since = enrollment?.lastActionAt || enrollment?.enrolledAt || 0;
+      const status = await meteredConnectionStatus(publicId, { after: since, positiveOnly: true });
+      const normProfile = await getStoredProfile(publicId).catch(() => null);
+      const deg = status?.degree ?? normProfile?.connectionDegree;
+      const dist = normProfile?.distance || normProfile?.networkDistance;
+      const isConn =
+        status?.connected === true ||
+        deg === 1 ||
+        dist === 'DISTANCE_1' ||
+        normProfile?.connected === true ||
+        normProfile?.isConnected === true;
+      if (isConn) {
+        if (normProfile) {
+          normProfile.connectionDegree = 1;
+          normProfile.isConnected = true;
+          await putProfile(normProfile).catch(() => {});
+        }
+        if (enrollment) {
+          enrollment.accepted = true;
+          delete enrollment.parkReason;
+        }
+        return true;
+      }
+    } catch (err) {
+      logDebug('warn', 'Runner', `[isConnected] meteredConnectionStatus error for ${publicId}: ${err?.message}`);
+      // If meteredConnectionStatus threw, attempt direct unmetered profile read as fallback
+      try {
+        const normProfile = await voyager.getProfileNormalized(publicId);
+        if (normProfile) {
+          const deg = normProfile.connectionDegree ?? normProfile.degree;
+          const dist = normProfile.distance || normProfile.networkDistance;
+          const isConn =
+            deg === 1 ||
+            dist === 'DISTANCE_1' ||
+            normProfile.connected === true ||
+            normProfile.isConnected === true;
+          if (isConn) {
+            if (profile) {
+              profile.connectionDegree = 1;
+              profile.isConnected = true;
+              await putProfile(profile).catch(() => {});
+            }
+            if (enrollment) {
+              enrollment.accepted = true;
+              delete enrollment.parkReason;
+            }
+            return true;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 5. If API checks are inconclusive/failing, use runDomActionInTab
+    if (typeof chrome !== 'undefined' && chrome.tabs?.create && voyager.runDomActionInTab) {
+      try {
+        const domRes = await voyager.runDomActionInTab(
+          `https://www.linkedin.com/in/${encodeURIComponent(publicId)}/`,
+          voyager.domCheckConnectionInPage,
+          [],
+          'checkConnection',
+        );
+        if (domRes?.connected) {
+          if (profile) {
+            profile.connectionDegree = 1;
+            profile.isConnected = true;
+            await putProfile(profile).catch(() => {});
+          }
+          if (enrollment) {
+            enrollment.accepted = true;
+            delete enrollment.parkReason;
+          }
+          return true;
+        }
+      } catch (domErr) {
+        logDebug('warn', 'Runner', `[isConnected] DOM fallback check error for ${publicId}: ${domErr?.message}`);
+      }
     }
   } catch (err) {
     console.warn('[isConnected check error]', err);
@@ -967,6 +1129,12 @@ export async function unparkNonInviteEnrollments(now = Date.now()) {
 
       for (const enrollment of enrollments) {
         if (enrollment.status !== 'active') continue;
+        if (
+          enrollment.parkReason === 'waiting_acceptance' ||
+          enrollment.lastError === 'Waiting for invite acceptance'
+        ) {
+          continue;
+        }
         const steps = stepsAt(campaign, enrollment.path);
         const step = steps[enrollment.stepIndex];
         if (
@@ -998,6 +1166,129 @@ export async function unparkNonInviteEnrollments(now = Date.now()) {
     return unparkedCount;
   } catch (err) {
     logDebug('warn', 'Runner', `[Un-park] Error during un-parking check: ${err.message}`);
+    return 0;
+  }
+}
+
+/**
+ * Wakes up enrollments that were parked waiting for invite acceptance as soon as
+ * their connection has been accepted on LinkedIn.
+ * Compares recently accepted connections from getConnections({ count: 50 })
+ * against enrollments with parkReason === 'waiting_acceptance'.
+ * Sets nextAt = now so their message step executes immediately on that exact tick.
+ * @returns {Promise<number>} number of enrollments woken up
+ */
+export async function wakeAcceptedEnrollments(now = Date.now()) {
+  try {
+    const campaigns = await readCampaigns();
+    const activeCampaigns = campaigns.filter((c) => c.status === 'active');
+    if (!activeCampaigns.length) return 0;
+
+    const waitingByCampaign = new Map();
+    let totalWaiting = 0;
+
+    for (const campaign of activeCampaigns) {
+      const enrollments = await readEnrollments(campaign.campaignId);
+      const waiting = enrollments.filter(
+        (e) =>
+          e.status === 'active' &&
+          (e.parkReason === 'waiting_acceptance' || e.lastError === 'Waiting for invite acceptance'),
+      );
+      if (waiting.length > 0) {
+        waitingByCampaign.set(campaign.campaignId, { enrollments, waiting });
+        totalWaiting += waiting.length;
+      }
+    }
+
+    if (totalWaiting === 0) return 0;
+
+    let recentConnections = [];
+    try {
+      const res = await voyager.getConnections({ count: 50 });
+      recentConnections = res?.profiles || [];
+    } catch (err) {
+      logDebug('warn', 'Runner', `[wakeAcceptedEnrollments] getConnections failed: ${err?.message}`);
+      return 0;
+    }
+
+    if (!recentConnections.length) return 0;
+
+    const recentPublicIds = new Set();
+    const recentMemberIds = new Set();
+    const recentUrns = new Set();
+
+    for (const conn of recentConnections) {
+      if (conn.publicId) recentPublicIds.add(String(conn.publicId).trim().toLowerCase());
+      if (conn.memberId) recentMemberIds.add(String(conn.memberId).trim());
+      if (conn.urn) recentUrns.add(String(conn.urn).trim().toLowerCase());
+      if (conn.objectUrn) {
+        recentUrns.add(String(conn.objectUrn).trim().toLowerCase());
+        const stripped = String(conn.objectUrn).replace(/^urn:li:member:/, '').trim();
+        if (stripped) recentMemberIds.add(stripped);
+      }
+    }
+
+    let wokenCount = 0;
+
+    for (const [campaignId, { enrollments, waiting }] of waitingByCampaign.entries()) {
+      let dirty = false;
+
+      for (const enrollment of waiting) {
+        const normId = String(enrollment.publicId || '').trim().toLowerCase();
+        let isAccepted = recentPublicIds.has(normId);
+
+        if (!isAccepted) {
+          const stored = await getStoredProfile(enrollment.publicId).catch(() => null);
+          const storedMemberId = stored?.memberId || enrollment.memberId;
+          const storedUrn = stored?.urn || stored?.objectUrn || enrollment.profileUrn;
+
+          if (storedMemberId && recentMemberIds.has(String(storedMemberId).trim())) {
+            isAccepted = true;
+          } else if (storedUrn && recentUrns.has(String(storedUrn).trim().toLowerCase())) {
+            isAccepted = true;
+          }
+        }
+
+        if (isAccepted) {
+          enrollment.accepted = true;
+          delete enrollment.parkReason;
+          enrollment.lastError = null;
+          enrollment.nextAt = now;
+          enrollment.updatedAt = now;
+          recordHistory(enrollment, {
+            step: 'connection',
+            label: 'Connection accepted by prospect',
+            status: 'accepted',
+          });
+
+          try {
+            const profile = await getStoredProfile(enrollment.publicId);
+            if (profile) {
+              profile.connectionDegree = 1;
+              profile.isConnected = true;
+              await putProfile(profile).catch(() => {});
+            }
+          } catch (_) {}
+
+          dirty = true;
+          wokenCount += 1;
+          logDebug(
+            'good',
+            'Runner',
+            `[Runner] Connection accepted for prospect ${enrollment.publicId}. Waking up enrollment for immediate message step.`,
+          );
+        }
+      }
+
+      if (dirty) {
+        await writeEnrollments(campaignId, enrollments);
+        emit(EVENTS.CAMPAIGN_LIVE_UPDATE, { campaignId }).catch(() => {});
+      }
+    }
+
+    return wokenCount;
+  } catch (err) {
+    logDebug('warn', 'Runner', `[wakeAcceptedEnrollments] Error: ${err?.message}`);
     return 0;
   }
 }
@@ -1042,6 +1333,9 @@ export async function tick() {
   // Un-park mistakenly postponed non-invite steps on every tick run
   await unparkNonInviteEnrollments(now);
 
+  // Instant wake-up for enrollments whose connection invite was accepted on LinkedIn
+  await wakeAcceptedEnrollments(now);
+
   const bucketCooldowns = await getBucketCooldowns();
 
   // Populate haltedBuckets from persistent cooldowns
@@ -1077,27 +1371,34 @@ export async function tick() {
 
       if (enrollment.status !== 'active') continue;
 
+      const pendingSteps = stepsAt(campaign, enrollment.path);
+      const nextPendingStep = pendingSteps[enrollment.stepIndex];
+
       // Un-park mistakenly postponed non-invite steps (e.g. view, visit, follow, like, message, email):
       // If an active enrollment's current step is a healthy non-invite step mistakenly parked > 2h in the future,
       // reset nextAt = now so it executes immediately in this tick.
-      const pendingSteps = stepsAt(campaign, enrollment.path);
-      const nextPendingStep = pendingSteps[enrollment.stepIndex];
+      // NEVER reset enrollments with parkReason === 'waiting_acceptance' or 'Waiting for invite acceptance'.
       if (
-        nextPendingStep &&
-        nextPendingStep.type !== 'invite' &&
-        nextPendingStep.type !== 'wait' &&
-        ['view', 'visit', 'follow', 'like', 'comment', 'endorse', 'message', 'inmail', 'email'].includes(nextPendingStep.type) &&
-        (enrollment.nextAt || 0) > now + 2 * 3600 * 1000
+        enrollment.parkReason !== 'waiting_acceptance' &&
+        enrollment.lastError !== 'Waiting for invite acceptance'
       ) {
-        const stepBucket = normalizeBucket(nextPendingStep.type);
-        const isResting = (bucketCooldowns[stepBucket] || 0) > now || haltedBuckets.has(stepBucket);
-        if (!isResting) {
-          logDebug('good', 'Runner', `[Un-park] Resetting mistakenly postponed ${nextPendingStep.type} step for ${enrollment.publicId} to execute immediately.`);
-          enrollment.nextAt = now;
-          if (enrollment.lastError?.includes('Daily quota reached') || enrollment.lastError?.includes('Postponed')) {
-            enrollment.lastError = null;
+        if (
+          nextPendingStep &&
+          nextPendingStep.type !== 'invite' &&
+          nextPendingStep.type !== 'wait' &&
+          ['view', 'visit', 'follow', 'like', 'comment', 'endorse', 'message', 'inmail', 'email'].includes(nextPendingStep.type) &&
+          (enrollment.nextAt || 0) > now + 2 * 3600 * 1000
+        ) {
+          const stepBucket = normalizeBucket(nextPendingStep.type);
+          const isResting = (bucketCooldowns[stepBucket] || 0) > now || haltedBuckets.has(stepBucket);
+          if (!isResting) {
+            logDebug('good', 'Runner', `[Un-park] Resetting mistakenly postponed ${nextPendingStep.type} step for ${enrollment.publicId} to execute immediately.`);
+            enrollment.nextAt = now;
+            if (enrollment.lastError?.includes('Daily quota reached') || enrollment.lastError?.includes('Postponed')) {
+              enrollment.lastError = null;
+            }
+            dirty = true;
           }
-          dirty = true;
         }
       }
 
@@ -1303,9 +1604,13 @@ export async function tick() {
 
         // Inviting someone we are already connected to is an error at
         // LinkedIn's end and a wasted invite at ours. Treat it as accepted.
-        if (step.type === 'invite' && (await isConnected(enrollment.publicId))) {
+        if (step.type === 'invite' && (await isConnected(enrollment.publicId, enrollment))) {
           logDebug('info', 'Runner', `[Runner] Prospect ${enrollment.publicId} is already connected. Auto-advancing to message step.`);
           enrollment.accepted = true;
+          delete enrollment.parkReason;
+          if (enrollment.lastError === 'Waiting for invite acceptance') {
+            enrollment.lastError = null;
+          }
           const skippedIndex = enrollment.stepIndex;
           recordHistory(enrollment, {
             step: 'invite',
@@ -1342,6 +1647,7 @@ export async function tick() {
             if (!connected) {
               const wait12h = 12 * 60 * 60 * 1000;
               enrollment.nextAt = Date.now() + wait12h;
+              enrollment.parkReason = 'waiting_acceptance';
               enrollment.lastError = 'Waiting for invite acceptance';
               enrollment.updatedAt = Date.now();
               recordHistory(enrollment, {
@@ -1360,6 +1666,10 @@ export async function tick() {
               break;
             }
             enrollment.accepted = true;
+            delete enrollment.parkReason;
+            if (enrollment.lastError === 'Waiting for invite acceptance') {
+              enrollment.lastError = null;
+            }
           }
         }
 
@@ -1471,6 +1781,7 @@ export async function tick() {
           if (step.type === 'message' && /not a connection|cannot be messaged because/i.test(errorMsg)) {
             const wait12h = 12 * 60 * 60 * 1000;
             enrollment.nextAt = Date.now() + wait12h;
+            enrollment.parkReason = 'waiting_acceptance';
             enrollment.lastError = 'Waiting for invite acceptance';
             enrollment.updatedAt = Date.now();
             recordHistory(enrollment, {

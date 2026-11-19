@@ -8,7 +8,8 @@
   "license": "Proprietary",
   "scripts": {
     "test": "vitest run",
-    "package": "node scripts/build-extension-zip.js"
+    "package": "node scripts/build-extension-zip.js",
+    "package:store": "node scripts/build-store-zip.mjs"
   },
   "devDependencies": {
     "jsdom": "^29.1.1",

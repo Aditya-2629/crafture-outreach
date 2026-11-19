@@ -116,7 +116,7 @@ describe('isConnected() detection pipeline', () => {
     expect(stored.isConnected).toBe(true);
   });
 
-  it('falls back to background tab DOM inspection when API checks are inconclusive', async () => {
+  it('never opens a background DOM tab in isConnected and relies solely on API/cache', async () => {
     await storage.putProfile({
       publicId: 'dom-only-lead',
       firstName: 'DOM Lead',
@@ -126,23 +126,11 @@ describe('isConnected() detection pipeline', () => {
     net.route('/identity/dash/profiles', profileView); // 2nd degree on API
 
     // Spy on runDomActionInTab
-    const domSpy = vi.spyOn(voyager, 'runDomActionInTab').mockResolvedValueOnce({
-      ok: true,
-      connected: true,
-      hasMessage: true,
-      has1stBadge: true,
-      hasConnect: false,
-      hasPending: false,
-    });
+    const domSpy = vi.spyOn(voyager, 'runDomActionInTab');
 
     const isConn = await campaigns.isConnected('dom-only-lead');
-    expect(isConn).toBe(true);
-    expect(domSpy).toHaveBeenCalledWith(
-      'https://www.linkedin.com/in/dom-only-lead/',
-      voyager.domCheckConnectionInPage,
-      [],
-      'checkConnection',
-    );
+    expect(isConn).toBe(false);
+    expect(domSpy).not.toHaveBeenCalled();
   });
 
   it('domCheckConnectionInPage accurately detects 1st degree DOM structure', async () => {

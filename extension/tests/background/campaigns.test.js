@@ -930,6 +930,19 @@ describe('v1 migration', () => {
     await campaigns.releaseTickLock();
   });
 
+  it('skips concurrent overlapping tick executions via single-flight isTickRunning lock', async () => {
+    const logSpy = vi.spyOn(console, 'log');
+
+    const [res1, res2] = await Promise.all([
+      campaigns.tick(),
+      campaigns.tick(),
+    ]);
+
+    expect([res1, res2]).toContainEqual({ executed: 0, queued: 0 });
+    expect(logSpy).toHaveBeenCalledWith('[Runner] Tick already in progress; skipping overlap.');
+    expect(await campaigns.isTickActive()).toBe(false);
+  });
+
   it('strips duplicate greetings from AI opener when template starts with greeting', async () => {
     expect(campaigns.hasLeadingGreeting('Hi {{firstName}} — {{ai_opener}}')).toBe(true);
     expect(campaigns.hasLeadingGreeting('Hey {{first_name}},\n\n{{ai_opener}}')).toBe(true);

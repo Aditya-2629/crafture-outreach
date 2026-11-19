@@ -149,20 +149,17 @@ export async function isTickActive() {
   return isTickRunning;
 }
 
-/** Acquire persistent tick lock with 5-minute TTL */
+/** Acquire persistent tick lock with 60s TTL */
 export async function acquireTickLock() {
   const now = Date.now();
   try {
     const lock = await get(TICK_LOCK_KEY, null);
     if (lock && typeof lock.lockedAt === 'number' && now - lock.lockedAt < TICK_LOCK_TTL_MS) {
-      return false; // Still locked within 5 min TTL
+      return false; // Still locked within TTL
     }
     await set(TICK_LOCK_KEY, { lockedAt: now });
-    isTickRunning = true;
     return true;
   } catch {
-    if (isTickRunning) return false;
-    isTickRunning = true;
     return true;
   }
 }
@@ -853,32 +850,6 @@ export async function isConnected(publicId, enrollment = null) {
         }
       } catch (_) {}
     }
-
-    // 5. If API checks are inconclusive/failing, use runDomActionInTab
-    if (typeof chrome !== 'undefined' && chrome.tabs?.create && voyager.runDomActionInTab) {
-      try {
-        const domRes = await voyager.runDomActionInTab(
-          `https://www.linkedin.com/in/${encodeURIComponent(publicId)}/`,
-          voyager.domCheckConnectionInPage,
-          [],
-          'checkConnection',
-        );
-        if (domRes?.connected) {
-          if (profile) {
-            profile.connectionDegree = 1;
-            profile.isConnected = true;
-            await putProfile(profile).catch(() => {});
-          }
-          if (enrollment) {
-            enrollment.accepted = true;
-            delete enrollment.parkReason;
-          }
-          return true;
-        }
-      } catch (domErr) {
-        logDebug('warn', 'Runner', `[isConnected] DOM fallback check error for ${publicId}: ${domErr?.message}`);
-      }
-    }
   } catch (err) {
     console.warn('[isConnected check error]', err);
   }
@@ -1131,7 +1102,9 @@ export async function unparkNonInviteEnrollments(now = Date.now()) {
         if (enrollment.status !== 'active') continue;
         if (
           enrollment.parkReason === 'waiting_acceptance' ||
-          enrollment.lastError === 'Waiting for invite acceptance'
+          enrollment.parkReason?.includes?.('waiting_acceptance') ||
+          enrollment.lastError === 'Waiting for invite acceptance' ||
+          enrollment.lastError?.includes?.('Waiting for invite acceptance')
         ) {
           continue;
         }
@@ -1334,15 +1307,21 @@ export async function wakeAcceptedEnrollments(now = Date.now()) {
  * @returns {Promise<{executed: number, queued: number}>}
  */
 export async function tick() {
-  const acquired = await acquireTickLock();
-  if (!acquired) {
-    console.log('[Runner] Previous tick still executing (storage lock active). Skipping duplicate tick.');
+  if (isTickRunning) {
+    console.log('[Runner] Tick already in progress; skipping overlap.');
     return { executed: 0, queued: 0 };
   }
-
-  let hasMoreDueEnrollments = false;
+  isTickRunning = true;
   try {
-    logDebug('info', 'Runner', 'Sequence tick started. Checking active campaigns...');
+    const acquired = await acquireTickLock();
+    if (!acquired) {
+      console.log('[Runner] Previous tick still executing (storage lock active). Skipping duplicate tick.');
+      return { executed: 0, queued: 0 };
+    }
+
+    let hasMoreDueEnrollments = false;
+    try {
+      logDebug('info', 'Runner', 'Sequence tick started. Checking active campaigns...');
 
   // Look at the inbox first, so stopOnReply and the 'replied' branch see the
   // replies that arrived since the last tick rather than the ones before it.
@@ -1416,7 +1395,9 @@ export async function tick() {
       // NEVER reset enrollments with parkReason === 'waiting_acceptance' or 'Waiting for invite acceptance'.
       if (
         enrollment.parkReason !== 'waiting_acceptance' &&
-        enrollment.lastError !== 'Waiting for invite acceptance'
+        !enrollment.parkReason?.includes?.('waiting_acceptance') &&
+        enrollment.lastError !== 'Waiting for invite acceptance' &&
+        !enrollment.lastError?.includes?.('Waiting for invite acceptance')
       ) {
         if (
           nextPendingStep &&
@@ -1694,6 +1675,7 @@ export async function tick() {
               });
               dirty = true;
               queued += 1;
+              await writeEnrollments(campaign.campaignId, enrollments);
               logDebug(
                 'info',
                 'Runner',
@@ -1828,6 +1810,7 @@ export async function tick() {
             });
             dirty = true;
             queued += 1;
+            await writeEnrollments(campaign.campaignId, enrollments);
             logDebug(
               'info',
               'Runner',
@@ -2093,15 +2076,18 @@ export async function tick() {
   }
 
     return { executed, queued };
-  } finally {
-    await releaseTickLock();
-    if (hasMoreDueEnrollments) {
-      const humanSpacing = 1 + Math.random() * 1.5; // 1 to 2.5 minutes randomized human spacing
-      logDebug('info', 'Runner', `[Human Spacing] Next due action scheduled via alarm in ${humanSpacing.toFixed(1)}m`);
-      scheduleNextTickAlarm(humanSpacing);
-    } else {
-      scheduleNextTickAlarm(2);
+    } finally {
+      await releaseTickLock();
+      if (hasMoreDueEnrollments) {
+        const humanSpacing = 1 + Math.random() * 1.5; // 1 to 2.5 minutes randomized human spacing
+        logDebug('info', 'Runner', `[Human Spacing] Next due action scheduled via alarm in ${humanSpacing.toFixed(1)}m`);
+        scheduleNextTickAlarm(humanSpacing);
+      } else {
+        scheduleNextTickAlarm(2);
+      }
     }
+  } finally {
+    isTickRunning = false;
   }
 }
 

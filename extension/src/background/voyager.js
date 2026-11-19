@@ -543,6 +543,9 @@ export async function viewProfile(publicId) {
 
 /** Resolve a profile urn from a public identifier when the caller has none. */
 export async function resolveProfileUrn(publicId) {
+  const stored = await getStoredProfile(publicId).catch(() => null);
+  const fromStored = toFsdProfileUrn(stored?.urn);
+  if (fromStored) return fromStored;
   const profile = await getProfileNormalized(publicId);
   const urn = toFsdProfileUrn(profile?.urn);
   if (!urn) throw new EngineError(ERROR.NOT_FOUND, `Could not resolve a profile urn for ${publicId}.`);

@@ -334,7 +334,7 @@ export const DEFAULT_CONFIG = {
   dedupeAcrossCampaigns: true,
   ai: { provider: 'none' },
   enrichment: { provider: 'none' },
-  bridge: { enabled: true, port: 47829, token: '8824d1f6b5220b57550a33f124e346f8' },
+  bridge: { enabled: false, port: 47829 },
   mailbox: { connected: false, email: '', mode: 'workspace' },
   googleWorkspace: {
     connected: false,

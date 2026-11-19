@@ -251,7 +251,7 @@ describe('the send path', () => {
         'mcp',
       );
 
-      expect((await quota.snapshot('visit')).dailyUsed).toBe(1);
+      expect((await quota.snapshot('visit')).dailyUsed).toBe(0);
       const payload = net.calls[net.calls.length - 1].json;
       expect(payload.hostRecipientUrns[0]).not.toContain('HANDED_IN');
     });

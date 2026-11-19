@@ -79,9 +79,18 @@ export function isFresh(record, maxAgeMs = PROFILE_CACHE_MS, after = 0) {
  * @param {string} publicId
  * @param {{maxAgeMs?: number, source?: string}} [options]
  */
-export async function cachedProfile(publicId, { maxAgeMs = PROFILE_CACHE_MS, after = 0, source } = {}) {
+export async function cachedProfile(publicId, { maxAgeMs = PROFILE_CACHE_MS, after = 0, source, meter = true } = {}) {
   const stored = await getStoredProfile(publicId);
   if (isFresh(stored, maxAgeMs, after)) return stored;
+  if (!meter) {
+    if (stored?.urn && voyager.toFsdProfileUrn(stored.urn)) return stored;
+    const profile = await voyager.getProfileNormalized(publicId, source).catch(() => null);
+    if (profile) {
+      await putProfile(profile).catch(() => {});
+      return profile;
+    }
+    return stored || { publicId };
+  }
   if (stored?.urn && voyager.toFsdProfileUrn(stored.urn)) {
     await quota.reserve('visit');
     await quota.humanDelay();
@@ -93,10 +102,14 @@ export async function cachedProfile(publicId, { maxAgeMs = PROFILE_CACHE_MS, aft
 }
 
 /** Resolve a urn, or throw. An empty urn is a missing urn, not an answer. */
-export async function requireProfileUrn(publicId) {
-  const cached = await cachedProfile(publicId, { source: 'urn' });
-  const fromCache = voyager.toFsdProfileUrn(cached.urn);
+export async function requireProfileUrn(publicId, { meter = true } = {}) {
+  const cached = await cachedProfile(publicId, { source: 'urn', meter });
+  const fromCache = voyager.toFsdProfileUrn(cached?.urn);
   if (fromCache) return fromCache;
+
+  if (!meter) {
+    return voyager.resolveProfileUrn(publicId);
+  }
 
   // What we had on file has no urn, so pay for a fresh look rather than
   // falling through to an unmetered fetch somewhere downstream.
@@ -112,8 +125,8 @@ export async function requireProfileUrn(publicId) {
 }
 
 /** Resolve a profile urn, reusing today's read rather than making another. */
-export async function meteredProfileUrn(publicId) {
-  return requireProfileUrn(publicId);
+export async function meteredProfileUrn(publicId, options = {}) {
+  return requireProfileUrn(publicId, options);
 }
 
 /**

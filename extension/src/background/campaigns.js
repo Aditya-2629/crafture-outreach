@@ -742,7 +742,7 @@ function matchesConnection(conn, normPublicId, targetMemberId, targetUrn) {
   return false;
 }
 
-export async function isConnected(publicId, enrollment = null) {
+export async function isConnected(publicId, enrollment = null, { forceFresh = false } = {}) {
   if (enrollment && enrollment.accepted === true) {
     return true;
   }
@@ -799,39 +799,44 @@ export async function isConnected(publicId, enrollment = null) {
     }
 
     // 3. Fallback to unmetered getProfileNormalized(publicId) DISTANCE_1 check (zero quota burn)
-    try {
-      const normProfile = await voyager.getProfileNormalized(publicId);
-      if (normProfile) {
-        const deg = normProfile.connectionDegree ?? normProfile.degree;
-        const dist = normProfile.distance || normProfile.networkDistance;
-        const isConn =
-          deg === 1 ||
-          dist === 'DISTANCE_1' ||
-          normProfile.connected === true ||
-          normProfile.isConnected === true;
-        const baseProfile = profile || { publicId };
-        const updatedProfile = {
-          ...normProfile,
-          ...baseProfile,
-          publicId,
-          ...(isConn ? { connectionDegree: 1, isConnected: true } : {}),
-        };
-        if (baseProfile.firstName) updatedProfile.firstName = baseProfile.firstName;
-        if (baseProfile.lastName) updatedProfile.lastName = baseProfile.lastName;
-        if (normProfile.urn && !updatedProfile.urn) {
-          updatedProfile.urn = normProfile.urn;
-        }
-        await putProfile(updatedProfile).catch(() => {});
-        if (isConn) {
-          if (enrollment) {
-            enrollment.accepted = true;
-            delete enrollment.parkReason;
+    const lastChecked = profileCheckedCache.get(normPublicId) || 0;
+    const now = Date.now();
+    if (forceFresh || now - lastChecked > 60 * 1000) {
+      profileCheckedCache.set(normPublicId, now);
+      try {
+        const normProfile = await voyager.getProfileNormalized(publicId);
+        if (normProfile) {
+          const deg = normProfile.connectionDegree ?? normProfile.degree;
+          const dist = normProfile.distance || normProfile.networkDistance;
+          const isConn =
+            deg === 1 ||
+            dist === 'DISTANCE_1' ||
+            normProfile.connected === true ||
+            normProfile.isConnected === true;
+          const baseProfile = profile || { publicId };
+          const updatedProfile = {
+            ...normProfile,
+            ...baseProfile,
+            publicId,
+            ...(isConn ? { connectionDegree: 1, isConnected: true } : {}),
+          };
+          if (baseProfile.firstName) updatedProfile.firstName = baseProfile.firstName;
+          if (baseProfile.lastName) updatedProfile.lastName = baseProfile.lastName;
+          if (normProfile.urn && !updatedProfile.urn) {
+            updatedProfile.urn = normProfile.urn;
           }
-          return true;
+          await putProfile(updatedProfile).catch(() => {});
+          if (isConn) {
+            if (enrollment) {
+              enrollment.accepted = true;
+              delete enrollment.parkReason;
+            }
+            return true;
+          }
         }
+      } catch (err) {
+        logDebug('warn', 'Runner', `[isConnected] getProfileNormalized error for ${publicId}: ${err?.message}`);
       }
-    } catch (err) {
-      logDebug('warn', 'Runner', `[isConnected] getProfileNormalized error for ${publicId}: ${err?.message}`);
     }
 
     if (enrollment && !enrollment.accepted) {
@@ -847,7 +852,7 @@ export async function isConnected(publicId, enrollment = null) {
 /** Which arm of a branch this person takes. */
 export async function chooseBranch(branch, enrollment) {
   const since = enrollment.lastActionAt || enrollment.enrolledAt || 0;
-  if (branch.on === 'accepted') return (await isConnected(enrollment.publicId)) ? 0 : 1;
+  if (branch.on === 'accepted') return (await isConnected(enrollment.publicId, enrollment, { forceFresh: true })) ? 0 : 1;
   if (branch.on === 'replied') {
     return (await inbox.repliedSince(enrollment.publicId, since)) ? 0 : 1;
   }
@@ -1833,6 +1838,43 @@ export async function tick() {
 
           // 1. Quota Exceeded on any step: cooldown until next day's active window start
           if (isQuota) {
+            const isHourly = /hourly/i.test(errorMsg);
+            const failedBucketMatch = errorMsg.match(/(?:for|reached for)\s+(invite|message|visit|view|email|search)/i);
+            const failedBucket = failedBucketMatch ? normalizeBucket(failedBucketMatch[1]) : bucket;
+
+            // If message step failed due to a secondary bucket (like visit), NEVER exhaust message daily quota
+            if (bucket === 'message' && failedBucket !== 'message') {
+              logDebug('warn', 'Runner', `[Runner] Message step hit secondary ${failedBucket} limit (${errorMsg}). Skipping message daily exhaustion.`);
+              const retryAfter = res.error?.extra?.retryAfter || 15 * 60 * 1000;
+              enrollment.nextAt = Date.now() + retryAfter;
+              enrollment.lastError = `Temporary ${failedBucket} cooldown. Resuming in ~${Math.ceil(retryAfter / 60000)}m`;
+              dirty = true;
+              continue enrollmentLoop;
+            }
+
+            // If hourly cap was reached, only pause until the hour resets, NOT until tomorrow
+            if (isHourly) {
+              const retryAfter = res.error?.extra?.retryAfter || 60 * 60 * 1000;
+              const cooldownUntil = Date.now() + retryAfter;
+              await setBucketCooldown(bucket, cooldownUntil);
+              haltedBuckets.add(bucket);
+              bucketCooldowns[bucket] = cooldownUntil;
+
+              const mins = Math.max(1, Math.round(retryAfter / 60000));
+              enrollment.nextAt = cooldownUntil;
+              enrollment.lastError = `Hourly cap reached for ${bucket}. Resuming in ~${mins}m`;
+              enrollment.updatedAt = Date.now();
+              recordHistory(enrollment, {
+                step: step.type,
+                label: `Postponed: Hourly ${bucket} quota reached`,
+                status: 'quota_postponed',
+                error: enrollment.lastError,
+              });
+              dirty = true;
+              logDebug('info', 'Runner', `${bucketTitle} hourly quota reached. Resting for ~${mins}m.`);
+              continue enrollmentLoop;
+            }
+
             const nextActiveStart = getNextActiveWindowStart(config);
             await setBucketCooldown(bucket, nextActiveStart);
             haltedBuckets.add(bucket);

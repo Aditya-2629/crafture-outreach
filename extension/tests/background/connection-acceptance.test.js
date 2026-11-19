@@ -116,7 +116,7 @@ describe('isConnected() detection pipeline', () => {
     expect(stored.isConnected).toBe(true);
   });
 
-  it('never opens a background DOM tab in isConnected and relies solely on API/cache', async () => {
+  it('never opens a background DOM tab or deducts quota in isConnected and relies solely on API/cache', async () => {
     await storage.putProfile({
       publicId: 'dom-only-lead',
       firstName: 'DOM Lead',
@@ -125,12 +125,17 @@ describe('isConnected() detection pipeline', () => {
     vi.spyOn(voyager, 'getConnections').mockResolvedValueOnce({ profiles: [], total: 0 });
     net.route('/identity/dash/profiles', profileView); // 2nd degree on API
 
-    // Spy on runDomActionInTab
+    // Spy on runDomActionInTab & quota reserve
     const domSpy = vi.spyOn(voyager, 'runDomActionInTab');
+    const reserveSpy = vi.spyOn(quota, 'reserve');
 
-    const isConn = await campaigns.isConnected('dom-only-lead');
+    const enrollment = { publicId: 'dom-only-lead', stepIndex: 1 };
+    const isConn = await campaigns.isConnected('dom-only-lead', enrollment);
     expect(isConn).toBe(false);
     expect(domSpy).not.toHaveBeenCalled();
+    expect(reserveSpy).not.toHaveBeenCalled();
+    expect(enrollment.parkReason).toBe('waiting_acceptance');
+    expect(enrollment.nextAt).toBeGreaterThan(Date.now() + 10 * 3600 * 1000);
   });
 
   it('domCheckConnectionInPage accurately detects 1st degree DOM structure', async () => {

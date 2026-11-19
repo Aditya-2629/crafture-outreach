@@ -21,7 +21,6 @@ import * as lists from './lists.js';
 import * as queue from './queue.js';
 import { enrichLead } from './enrich.js';
 import * as voyager from './voyager.js';
-import { meteredConnectionStatus } from './visits.js';
 
 // network.status must be registered for the 'accepted' branch to resolve.
 import './extract.js';
@@ -69,6 +68,7 @@ export const lastProspectActionAt = new Map();
 export function clearRecentConnectionsCache() {
   cachedRecentConnections = null;
   cachedRecentConnectionsAt = 0;
+  profileCheckedCache.clear();
 }
 
 export function clearProspectLocks() {
@@ -704,6 +704,7 @@ export async function getCampaignLiveStatus(campaignId) {
 let cachedRecentConnections = null;
 let cachedRecentConnectionsAt = 0;
 const CONNECTIONS_CACHE_TTL_MS = 30 * 1000;
+export const profileCheckedCache = new Map();
 
 export async function getRecentConnections(forceFresh = false) {
   const now = Date.now();
@@ -797,58 +798,45 @@ export async function isConnected(publicId, enrollment = null) {
       logDebug('warn', 'Runner', `[isConnected] getConnections matching error: ${err?.message}`);
     }
 
-    // 3. Fallback to getProfileNormalized(publicId) via meteredConnectionStatus
+    // 3. Fallback to unmetered getProfileNormalized(publicId) DISTANCE_1 check (zero quota burn)
     try {
-      const since = enrollment?.lastActionAt || enrollment?.enrolledAt || 0;
-      const status = await meteredConnectionStatus(publicId, { after: since, positiveOnly: true });
-      const normProfile = await getStoredProfile(publicId).catch(() => null);
-      const deg = status?.degree ?? normProfile?.connectionDegree;
-      const dist = normProfile?.distance || normProfile?.networkDistance;
-      const isConn =
-        status?.connected === true ||
-        deg === 1 ||
-        dist === 'DISTANCE_1' ||
-        normProfile?.connected === true ||
-        normProfile?.isConnected === true;
-      if (isConn) {
-        if (normProfile) {
-          normProfile.connectionDegree = 1;
-          normProfile.isConnected = true;
-          await putProfile(normProfile).catch(() => {});
+      const normProfile = await voyager.getProfileNormalized(publicId);
+      if (normProfile) {
+        const deg = normProfile.connectionDegree ?? normProfile.degree;
+        const dist = normProfile.distance || normProfile.networkDistance;
+        const isConn =
+          deg === 1 ||
+          dist === 'DISTANCE_1' ||
+          normProfile.connected === true ||
+          normProfile.isConnected === true;
+        const baseProfile = profile || { publicId };
+        const updatedProfile = {
+          ...normProfile,
+          ...baseProfile,
+          publicId,
+          ...(isConn ? { connectionDegree: 1, isConnected: true } : {}),
+        };
+        if (baseProfile.firstName) updatedProfile.firstName = baseProfile.firstName;
+        if (baseProfile.lastName) updatedProfile.lastName = baseProfile.lastName;
+        if (normProfile.urn && !updatedProfile.urn) {
+          updatedProfile.urn = normProfile.urn;
         }
-        if (enrollment) {
-          enrollment.accepted = true;
-          delete enrollment.parkReason;
+        await putProfile(updatedProfile).catch(() => {});
+        if (isConn) {
+          if (enrollment) {
+            enrollment.accepted = true;
+            delete enrollment.parkReason;
+          }
+          return true;
         }
-        return true;
       }
     } catch (err) {
-      logDebug('warn', 'Runner', `[isConnected] meteredConnectionStatus error for ${publicId}: ${err?.message}`);
-      // If meteredConnectionStatus threw, attempt direct unmetered profile read as fallback
-      try {
-        const normProfile = await voyager.getProfileNormalized(publicId);
-        if (normProfile) {
-          const deg = normProfile.connectionDegree ?? normProfile.degree;
-          const dist = normProfile.distance || normProfile.networkDistance;
-          const isConn =
-            deg === 1 ||
-            dist === 'DISTANCE_1' ||
-            normProfile.connected === true ||
-            normProfile.isConnected === true;
-          if (isConn) {
-            if (profile) {
-              profile.connectionDegree = 1;
-              profile.isConnected = true;
-              await putProfile(profile).catch(() => {});
-            }
-            if (enrollment) {
-              enrollment.accepted = true;
-              delete enrollment.parkReason;
-            }
-            return true;
-          }
-        }
-      } catch (_) {}
+      logDebug('warn', 'Runner', `[isConnected] getProfileNormalized error for ${publicId}: ${err?.message}`);
+    }
+
+    if (enrollment && !enrollment.accepted) {
+      enrollment.parkReason = 'waiting_acceptance';
+      enrollment.nextAt = Date.now() + 12 * 3600 * 1000;
     }
   } catch (err) {
     console.warn('[isConnected check error]', err);
@@ -1621,7 +1609,7 @@ export async function tick() {
 
         // Inviting someone we are already connected to is an error at
         // LinkedIn's end and a wasted invite at ours. Treat it as accepted.
-        if (step.type === 'invite' && (await isConnected(enrollment.publicId, enrollment))) {
+        if (step.type === 'invite' && (await isConnected(enrollment.publicId))) {
           logDebug('info', 'Runner', `[Runner] Prospect ${enrollment.publicId} is already connected. Auto-advancing to message step.`);
           enrollment.accepted = true;
           delete enrollment.parkReason;

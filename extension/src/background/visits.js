@@ -82,6 +82,13 @@ export function isFresh(record, maxAgeMs = PROFILE_CACHE_MS, after = 0) {
 export async function cachedProfile(publicId, { maxAgeMs = PROFILE_CACHE_MS, after = 0, source } = {}) {
   const stored = await getStoredProfile(publicId);
   if (isFresh(stored, maxAgeMs, after)) return stored;
+  if (stored?.urn && voyager.toFsdProfileUrn(stored.urn)) {
+    await quota.reserve('visit');
+    await quota.humanDelay();
+    stored.profileViewedAt = Date.now();
+    await putProfile(stored).catch(() => {});
+    return stored;
+  }
   return meteredProfile(publicId, source);
 }
 

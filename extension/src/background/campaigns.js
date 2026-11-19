@@ -694,6 +694,8 @@ export async function getCampaignLiveStatus(campaignId) {
     totalSteps,
     summary,
     leads,
+    abStats: campaign.abStats || null,
+    steps: campaign.steps || [],
   };
 }
 
@@ -925,16 +927,139 @@ export async function resolveAiOpener(profile, templateText = '') {
   return '';
 }
 
-async function stepParams(campaign, step, enrollment, routed = null) {
+/* ================================================================== */
+/*  A/B Testing Support                                               */
+/* ================================================================== */
+
+export function recordAbStat(campaign, stepKey, variantId, metric) {
+  if (!campaign || !stepKey || !variantId || !metric) return;
+  campaign.abStats = campaign.abStats || {};
+  if (!campaign.abStats[stepKey]) {
+    campaign.abStats[stepKey] = {
+      A: { sent: 0, accepted: 0, replied: 0 },
+      B: { sent: 0, accepted: 0, replied: 0 },
+    };
+  }
+  const normId = (variantId || '').toUpperCase() === 'B' ? 'B' : 'A';
+  if (!campaign.abStats[stepKey][normId]) {
+    campaign.abStats[stepKey][normId] = { sent: 0, accepted: 0, replied: 0 };
+  }
+  campaign.abStats[stepKey][normId][metric] = (campaign.abStats[stepKey][normId][metric] || 0) + 1;
+  campaign._abStatsChanged = true;
+}
+
+export function getOrAssignVariant(campaign, step, enrollment) {
+  const stepKey = step.id || String(enrollment.stepIndex);
+  enrollment.assignedVariants = enrollment.assignedVariants || {};
+  let assigned = enrollment.assignedVariants[stepKey];
+  if (!assigned) {
+    campaign.abCounters = campaign.abCounters || {};
+    const count = campaign.abCounters[stepKey] || 0;
+    assigned = count % 2 === 0 ? 'A' : 'B';
+    campaign.abCounters[stepKey] = count + 1;
+    campaign._abStatsChanged = true;
+    enrollment.assignedVariants[stepKey] = assigned;
+  }
+  const variants = Array.isArray(step.variants) ? step.variants : [];
+  const variantObj = variants.find((v) => (v && (v.id || '').toUpperCase() === assigned.toUpperCase())) || variants[0] || null;
+  return { variantId: assigned, variantObj, stepKey };
+}
+
+export function recordInviteAccepted(campaign, enrollment) {
+  if (!campaign || !enrollment || enrollment.abInviteAttributed) return;
+  let stepKey = enrollment.lastInviteStepKey;
+  if (!stepKey && Array.isArray(campaign.steps)) {
+    const inviteStep = campaign.steps.find((s) => s.type === 'invite');
+    if (inviteStep) {
+      stepKey = inviteStep.id || String(campaign.steps.indexOf(inviteStep));
+    }
+  }
+  if (!stepKey) return;
+  const assigned = enrollment.assignedVariants?.[stepKey];
+  if (!assigned) return;
+
+  recordAbStat(campaign, stepKey, assigned, 'accepted');
+  enrollment.abInviteAttributed = true;
+  campaign._abStatsChanged = true;
+}
+
+export function recordReplyAttribution(campaign, enrollment) {
+  if (!campaign || !enrollment || enrollment.abReplyAttributed) return;
+  let stepKey = enrollment.lastMessageStepKey;
+  if (!stepKey && Array.isArray(campaign.steps)) {
+    const lastMsgStep = [...campaign.steps].reverse().find((s) => ['message', 'inmail', 'email'].includes(s.type));
+    if (lastMsgStep) {
+      stepKey = lastMsgStep.id || String(campaign.steps.indexOf(lastMsgStep));
+    }
+  }
+  if (!stepKey) return;
+  const assigned = enrollment.assignedVariants?.[stepKey];
+  if (!assigned) return;
+
+  recordAbStat(campaign, stepKey, assigned, 'replied');
+  enrollment.abReplyAttributed = true;
+  campaign._abStatsChanged = true;
+}
+
+export async function declareWinner(campaignId, stepKey, winnerId) {
+  if (!campaignId || !stepKey || !winnerId) {
+    throw new EngineError(ERROR.INVALID_PARAMS, 'campaignId, stepKey, and winnerId are required');
+  }
+  const campaigns = await readCampaigns();
+  const campaign = campaigns.find((c) => c.campaignId === campaignId);
+  if (!campaign) {
+    throw new EngineError(ERROR.NOT_FOUND, `Campaign ${campaignId} not found`);
+  }
+  const steps = campaign.steps || [];
+  const stepIndex = steps.findIndex((s, idx) => s.id === stepKey || String(idx) === String(stepKey));
+  if (stepIndex === -1) {
+    throw new EngineError(ERROR.NOT_FOUND, `Step ${stepKey} not found in campaign ${campaignId}`);
+  }
+  const step = steps[stepIndex];
+  const variants = step.variants || [];
+  const winningVariant = variants.find((v) => (v && (v.id || '').toUpperCase() === String(winnerId).toUpperCase())) || variants[0];
+
+  if (winningVariant) {
+    if (winningVariant.note !== undefined) step.note = winningVariant.note;
+    if (winningVariant.body !== undefined) step.body = winningVariant.body;
+    if (winningVariant.subject !== undefined) step.subject = winningVariant.subject;
+  }
+  step.abEnabled = false;
+  step.winningVariant = String(winnerId).toUpperCase();
+  campaign.updatedAt = Date.now();
+  await writeCampaigns(campaigns);
+  await emit(EVENTS.CAMPAIGN_LIVE_UPDATE, { campaignId });
+  return withStats(campaign);
+}
+
+export async function stepParams(campaign, step, enrollment, routed = null) {
   const profile = (await getStoredProfile(enrollment.publicId)) || {
     publicId: enrollment.publicId,
   };
-  // A step may carry `variants` with no `note`/`body` at all — the shipped
-  // sequence templates do exactly that — so the variant is the text, and a
-  // literal `note`/`body` is only the fallback. The cursor only moves once the
-  // write has actually happened, so a refused step does not burn a variant.
-  const variant = pickVariant(step.variants, campaign.variantCursor || 0);
-  const variantUsed = !!(step.variants && step.variants.length);
+
+  let variant = undefined;
+  let variantUsed = false;
+  let assignedVariant = null;
+  const stepKey = step.id || String(enrollment.stepIndex);
+  let abNote, abBody, abSubject;
+
+  if (step.abEnabled && Array.isArray(step.variants) && step.variants.length > 0) {
+    const ab = getOrAssignVariant(campaign, step, enrollment);
+    assignedVariant = ab.variantId;
+    if (ab.variantObj) {
+      abNote = ab.variantObj.note;
+      abBody = ab.variantObj.body;
+      abSubject = ab.variantObj.subject;
+    }
+    variantUsed = false;
+  } else {
+    // A step may carry `variants` with no `note`/`body` at all — the shipped
+    // sequence templates do exactly that — so the variant is the text, and a
+    // literal `note`/`body` is only the fallback. The cursor only moves once the
+    // write has actually happened, so a refused step does not burn a variant.
+    variant = pickVariant(step.variants, campaign.variantCursor || 0);
+    variantUsed = !!(step.variants && step.variants.length);
+  }
 
   const params = {
     publicId: enrollment.publicId,
@@ -947,8 +1072,10 @@ async function stepParams(campaign, step, enrollment, routed = null) {
   };
 
   if (routed === 'routed_free_inmail') {
-    const rawBody = step.inmailBody || step.body || step.note || variant || '';
-    let bodyText = variant || rawBody;
+    const rawBody = (step.abEnabled && abBody !== undefined)
+      ? abBody
+      : (step.inmailBody || step.body || step.note || variant || '');
+    let bodyText = rawBody;
     if (bodyText.includes('{{ai_opener') || step.useAi === true) {
       const opener = await resolveAiOpener(profile, bodyText);
       bodyText = bodyText.replace(
@@ -958,13 +1085,16 @@ async function stepParams(campaign, step, enrollment, routed = null) {
       if (step.useAi && !bodyText.trim()) bodyText = opener;
     }
     params.body = renderTemplate(bodyText, profile);
-    params.subject = renderTemplate(step.inmailSubject || step.subject || 'Introduction', profile);
+    const rawSubject = (step.abEnabled && abSubject !== undefined)
+      ? abSubject
+      : (step.inmailSubject || step.subject || 'Introduction');
+    params.subject = renderTemplate(rawSubject, profile);
     params.routing = 'routed_free_inmail';
-    return { params, variantUsed };
+    return { params, variantUsed, assignedVariant, stepKey };
   }
 
   if (step.type === 'invite') {
-    let noteText = variant || step.note || '';
+    let noteText = (step.abEnabled && abNote !== undefined) ? abNote : (variant || step.note || '');
     if (await isNoteLimitActive()) {
       params.note = '';
     } else {
@@ -991,7 +1121,7 @@ async function stepParams(campaign, step, enrollment, routed = null) {
     }
   }
   if (step.type === 'message') {
-    let msgBody = variant || step.body || '';
+    let msgBody = (step.abEnabled && abBody !== undefined) ? abBody : (variant || step.body || '');
     if (msgBody.includes('{{ai_opener') || step.useAi === true) {
       const opener = await resolveAiOpener(profile, msgBody);
       msgBody = msgBody.replace(
@@ -1003,11 +1133,13 @@ async function stepParams(campaign, step, enrollment, routed = null) {
     params.body = renderTemplate(msgBody, profile);
   }
   if (step.type === 'inmail') {
-    params.body = renderTemplate(variant || step.body, profile);
-    params.subject = renderTemplate(step.subject, profile);
+    const rawBody = (step.abEnabled && abBody !== undefined) ? abBody : (variant || step.body || '');
+    const rawSubject = (step.abEnabled && abSubject !== undefined) ? abSubject : (step.subject || 'Introduction');
+    params.body = renderTemplate(rawBody, profile);
+    params.subject = renderTemplate(rawSubject, profile);
   }
   if (step.type === 'email') {
-    let rawBody = variant || step.body || '';
+    let rawBody = (step.abEnabled && abBody !== undefined) ? abBody : (variant || step.body || '');
     if (rawBody.includes('{{ai_opener') || step.useAi === true) {
       const opener = await resolveAiOpener(profile, rawBody);
       rawBody = rawBody.replace(
@@ -1017,7 +1149,10 @@ async function stepParams(campaign, step, enrollment, routed = null) {
       if (step.useAi && !rawBody.trim()) rawBody = opener;
     }
     params.body = renderTemplate(rawBody, profile);
-    params.subject = renderTemplate(step.subject || enrollment.gmailSubject || 'Reaching out', profile);
+    const rawSubject = (step.abEnabled && abSubject !== undefined)
+      ? abSubject
+      : (step.subject || enrollment.gmailSubject || 'Reaching out');
+    params.subject = renderTemplate(rawSubject, profile);
     params.email =
       step.email ||
       profile.email ||
@@ -1067,7 +1202,7 @@ async function stepParams(campaign, step, enrollment, routed = null) {
     }
     if (step.type === 'comment') params.body = renderTemplate(variant || step.body, profile);
   }
-  return { params, variantUsed };
+  return { params, variantUsed, assignedVariant, stepKey };
 }
 
 /* ================================================================== */
@@ -1236,6 +1371,10 @@ export async function checkNewAcceptancesAndWakeUp({ triggerTick = true, now = D
 
         if (isAccepted) {
           enrollment.accepted = true;
+          const camp = campaigns.find((c) => c.campaignId === campaignId);
+          if (camp) {
+            recordInviteAccepted(camp, enrollment);
+          }
           delete enrollment.parkReason;
           enrollment.lastError = null;
           enrollment.nextAt = now;
@@ -1268,6 +1407,9 @@ export async function checkNewAcceptancesAndWakeUp({ triggerTick = true, now = D
       if (dirty) {
         await writeEnrollments(campaignId, enrollments);
         emit(EVENTS.CAMPAIGN_LIVE_UPDATE, { campaignId }).catch(() => {});
+        if (campaigns.some((c) => c._abStatsChanged)) {
+          await writeCampaigns(campaigns);
+        }
       }
     }
 
@@ -1494,6 +1636,7 @@ export async function tick() {
         if (await inbox.repliedSince(enrollment.publicId, watermark)) {
           enrollment.status = 'replied';
           enrollment.updatedAt = now;
+          recordReplyAttribution(campaign, enrollment);
           recordHistory(enrollment, {
             step: 'replied',
             label: 'Prospect replied to outreach',
@@ -1597,7 +1740,13 @@ export async function tick() {
             queued += 1;
             break;
           }
-          if (arm === 0 && step.branch.on === 'accepted') enrollment.accepted = true;
+          if (arm === 0 && step.branch.on === 'accepted') {
+            enrollment.accepted = true;
+            recordInviteAccepted(campaign, enrollment);
+          }
+          if (arm === 0 && step.branch.on === 'replied') {
+            recordReplyAttribution(campaign, enrollment);
+          }
           enrollment.path = [...enrollment.path, enrollment.stepIndex, arm];
           enrollment.stepIndex = 0;
           enrollment.updatedAt = Date.now();
@@ -1617,6 +1766,7 @@ export async function tick() {
         if (step.type === 'invite' && (await isConnected(enrollment.publicId))) {
           logDebug('info', 'Runner', `[Runner] Prospect ${enrollment.publicId} is already connected. Auto-advancing to message step.`);
           enrollment.accepted = true;
+          recordInviteAccepted(campaign, enrollment);
           delete enrollment.parkReason;
           if (enrollment.lastError === 'Waiting for invite acceptance') {
             enrollment.lastError = null;
@@ -1677,6 +1827,7 @@ export async function tick() {
               break;
             }
             enrollment.accepted = true;
+            recordInviteAccepted(campaign, enrollment);
             delete enrollment.parkReason;
             if (enrollment.lastError === 'Waiting for invite acceptance') {
               enrollment.lastError = null;
@@ -1764,7 +1915,7 @@ export async function tick() {
           continue enrollmentLoop;
         }
 
-        const { params, variantUsed } = await stepParams(campaign, step, enrollment, routed);
+        const { params, variantUsed, assignedVariant, stepKey } = await stepParams(campaign, step, enrollment, routed);
 
         activeProspectLocks.add(enrollment.publicId);
         lastProspectActionAt.set(enrollment.publicId, Date.now());
@@ -1993,6 +2144,17 @@ export async function tick() {
         } else {
           executed += 1;
           enrollment.lastActionAt = Date.now();
+          if (step.abEnabled && assignedVariant) {
+            recordAbStat(campaign, stepKey, assignedVariant, 'sent');
+            campaign._abStatsChanged = true;
+            dirty = true;
+          }
+          if (step.type === 'invite') {
+            enrollment.lastInviteStepKey = stepKey;
+          }
+          if (['message', 'inmail', 'email'].includes(step.type)) {
+            enrollment.lastMessageStepKey = stepKey;
+          }
           if (routed) {
             enrollment.lastRoutedAction = routed;
             console.log(`[Campaign] ${routed} for ${enrollment.publicId}`);
@@ -2036,11 +2198,13 @@ export async function tick() {
 
     // stepParams advances variantCursor in memory; without this the rotation
     // restarts at A on every tick and everyone gets the same variant.
-    if ((campaign.variantCursor || 0) !== cursorBefore) {
+    if ((campaign.variantCursor || 0) !== cursorBefore || campaign._abStatsChanged) {
       const freshCampaigns = await readCampaigns();
       const target = freshCampaigns.find((c) => c.campaignId === campaign.campaignId);
       if (target) {
-        target.variantCursor = campaign.variantCursor;
+        if (campaign.variantCursor !== undefined) target.variantCursor = campaign.variantCursor;
+        if (campaign.abStats) target.abStats = campaign.abStats;
+        if (campaign.abCounters) target.abCounters = campaign.abCounters;
         target.updatedAt = Date.now();
         await writeCampaigns(freshCampaigns);
       }
@@ -2135,6 +2299,9 @@ register(ACTIONS.CAMPAIGN_START, ({ campaignId }) => setStatus(campaignId, 'acti
 register(ACTIONS.CAMPAIGN_DELETE, ({ campaignId }) => del(campaignId));
 register(ACTIONS.CAMPAIGN_TICK, () => tick());
 register(ACTIONS.CAMPAIGN_LIVE_STATUS, async ({ campaignId }) => getCampaignLiveStatus(campaignId));
+register(ACTIONS.CAMPAIGN_DECLARE_AB_WINNER, async ({ campaignId, stepKey, winnerId }) =>
+  declareWinner(campaignId, stepKey, winnerId)
+);
 
 register(ACTIONS.BLACKLIST_GET, async () => ({ blacklist: await getBlacklist() }));
 register(ACTIONS.BLACKLIST_ADD, async ({ publicId }) => ({ blacklist: await addToBlacklist(publicId) }));

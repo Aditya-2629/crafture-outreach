@@ -7,6 +7,9 @@ import {
   computeCampaignStats,
   computeAutoPilotStatus,
   renderMiniStepFlow,
+  contractToPipeline,
+  pipelineStepsToContract,
+  ensureStepVariants,
 } from '../../src/dashboard/campaigns-view.js';
 import { ACTIONS } from '../../src/lib/actions.js';
 import { stubEngine, flush, mountPoint, statusFixture, configFixture } from './helpers.js';
@@ -386,6 +389,72 @@ describe('CampaignsView — Full Layout & Tab Switching', () => {
       const status = computeAutoPilotStatus(activeCamps, storage, {}, alarm, t0);
       expect(status.state).toBe('upcoming');
       expect(status.text).toBe('Auto-Pilot Active · Next action in 45s');
+    });
+  });
+
+  describe('A/B Testing Contract Conversion & Pipeline State', () => {
+    it('preserves abEnabled and variants through contractToPipeline and pipelineStepsToContract', () => {
+      const contractSteps = [
+        {
+          id: 'step_invite',
+          type: 'invite',
+          note: 'Note A',
+          abEnabled: true,
+          variants: [
+            { id: 'A', note: 'Note A' },
+            { id: 'B', note: 'Note B' },
+          ],
+        },
+        {
+          type: 'wait',
+          waitMs: 86400000,
+        },
+        {
+          id: 'step_msg',
+          type: 'message',
+          body: 'Msg A',
+          abEnabled: true,
+          variants: [
+            { id: 'A', body: 'Msg A' },
+            { id: 'B', body: 'Msg B' },
+          ],
+        },
+      ];
+
+      const pipeline = contractToPipeline(contractSteps);
+      expect(pipeline.length).toBe(2);
+      expect(pipeline[0].abEnabled).toBe(true);
+      expect(pipeline[0].variants).toHaveLength(2);
+      expect(pipeline[0].id).toBe('step_invite');
+
+      expect(pipeline[1].abEnabled).toBe(true);
+      expect(pipeline[1].variants).toHaveLength(2);
+      expect(pipeline[1].delayMs).toBe(86400000);
+
+      const converted = pipelineStepsToContract(pipeline);
+      const inviteStep = converted.find((s) => s.type === 'invite');
+      expect(inviteStep.abEnabled).toBe(true);
+      expect(inviteStep.variants).toHaveLength(2);
+
+      const msgStep = converted.find((s) => s.type === 'message') ||
+        converted.find((s) => s.type === 'branch')?.branch?.then?.find((s) => s.type === 'message');
+      expect(msgStep).toBeDefined();
+      expect(msgStep.abEnabled).toBe(true);
+      expect(msgStep.variants).toHaveLength(2);
+    });
+
+    it('ensureStepVariants initializes Variant A and Variant B with active state', () => {
+      const step = {
+        type: 'invite',
+        note: 'Initial Note',
+      };
+      ensureStepVariants(step, 'Fallback Note');
+      expect(step.variants).toHaveLength(2);
+      expect(step.variants[0].id).toBe('A');
+      expect(step.variants[0].note).toBe('Initial Note');
+      expect(step.variants[1].id).toBe('B');
+      expect(step.variants[1].note).toBe('Initial Note');
+      expect(step._activeVariant).toBe('A');
     });
   });
 });

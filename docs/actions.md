@@ -51,6 +51,7 @@ This file is the source of truth for the LinkedIn Toolkit v2 contract. Every lay
 | `campaign.enroll` | `{ campaignId, publicIds }` | `{ enrolled, skipped }` |
 | `campaign.pause` / `campaign.resume` / `campaign.delete` | `{ campaignId }` | `Campaign` |
 | `campaign.tick` | `{}` | `{ executed: number, queued: number }` |
+| `campaign.declareAbWinner` | `{ campaignId, stepKey, winnerId: 'A'\|'B' }` | `Campaign` |
 | `queue.list` | `{ status?: 'pending'\|'approved'\|'rejected'\|'sent'\|'failed' }` | `{ items: QueueItem[] }` — a `failed` item carries `result.error` |
 | `queue.approve` | `{ ids: string[], edits?: Record<id, {note?, body?, subject?}> }` | `{ approved: number }` — **returns immediately**: `approved` is how many were *marked* approved, not how many sent. The extension then sends them one at a time at human pace, on a one-minute alarm plus an immediate kick, emitting `queue_item_sent` per success and marking the rest `failed` with their error; watch those events or poll `queue.list`. Edits are validated against the action's own params first, so an over-long note is refused with `INVALID_PARAMS` and *nothing* is approved. Origin `mcp` is refused with `UNAUTHORIZED` unless `autopilot` is on; `popup` and `cli` are a human deciding and always pass |
 | `queue.reject` | `{ ids: string[] }` | `{ rejected: number }` — same origin rule as `queue.approve` |

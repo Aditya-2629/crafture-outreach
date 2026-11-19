@@ -84,6 +84,7 @@ export const ACTIONS = Object.freeze({
   CAMPAIGN_DELETE: 'campaign.delete',
   CAMPAIGN_TICK: 'campaign.tick',
   CAMPAIGN_LIVE_STATUS: 'campaign.liveStatus',
+  CAMPAIGN_DECLARE_AB_WINNER: 'campaign.declareAbWinner',
 
   QUEUE_LIST: 'queue.list',
   QUEUE_APPROVE: 'queue.approve',
@@ -612,6 +613,10 @@ const PARAM_SPECS = {
   [ACTIONS.CAMPAIGN_DELETE]: { required: { campaignId: 'string' } },
   [ACTIONS.CAMPAIGN_TICK]: {},
   [ACTIONS.CAMPAIGN_LIVE_STATUS]: { optional: { campaignId: 'string' } },
+  [ACTIONS.CAMPAIGN_DECLARE_AB_WINNER]: {
+    required: { campaignId: 'string', stepKey: 'string', winnerId: 'string' },
+    enums: { winnerId: ['A', 'B'] },
+  },
 
   [ACTIONS.QUEUE_LIST]: {
     optional: { status: 'string' },

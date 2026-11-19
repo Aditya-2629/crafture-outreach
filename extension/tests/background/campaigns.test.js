@@ -1262,4 +1262,170 @@ describe('v1 migration', () => {
       expect(createAlarmSpy).toHaveBeenCalledWith(campaigns.CAMPAIGN_TICK_ALARM_NAME, expect.any(Object));
     });
   });
+
+  describe('A/B Testing for Outreach Steps', () => {
+    it('alternates variants 50/50 across prospects and preserves retry consistency', async () => {
+      const step = {
+        id: 'ab_invite_1',
+        type: 'invite',
+        abEnabled: true,
+        variants: [
+          { id: 'A', note: 'Hi {{firstName|there}}, this is variant A' },
+          { id: 'B', note: 'Hi {{firstName|there}}, this is variant B' },
+        ],
+      };
+      const camp = {
+        campaignId: 'camp_ab_1',
+        variantCursor: 0,
+        abCounters: {},
+        steps: [step],
+      };
+
+      const enr1 = { publicId: 'lead_1', stepIndex: 0 };
+      const enr2 = { publicId: 'lead_2', stepIndex: 0 };
+      const enr3 = { publicId: 'lead_3', stepIndex: 0 };
+      const enr4 = { publicId: 'lead_4', stepIndex: 0 };
+
+      // 1. Prospect 1 -> Variant A
+      const res1 = await campaigns.stepParams(camp, step, enr1);
+      expect(res1.assignedVariant).toBe('A');
+      expect(res1.params.note).toBe('Hi there, this is variant A');
+      expect(enr1.assignedVariants['ab_invite_1']).toBe('A');
+
+      // 2. Prospect 2 -> Variant B
+      const res2 = await campaigns.stepParams(camp, step, enr2);
+      expect(res2.assignedVariant).toBe('B');
+      expect(res2.params.note).toBe('Hi there, this is variant B');
+      expect(enr2.assignedVariants['ab_invite_1']).toBe('B');
+
+      // 3. Prospect 3 -> Variant A
+      const res3 = await campaigns.stepParams(camp, step, enr3);
+      expect(res3.assignedVariant).toBe('A');
+      expect(enr3.assignedVariants['ab_invite_1']).toBe('A');
+
+      // 4. Prospect 4 -> Variant B
+      const res4 = await campaigns.stepParams(camp, step, enr4);
+      expect(res4.assignedVariant).toBe('B');
+      expect(enr4.assignedVariants['ab_invite_1']).toBe('B');
+
+      // 5. Retry consistency: Prospect 1 retries -> MUST still get Variant A, counter must NOT advance
+      const counterBefore = camp.abCounters['ab_invite_1'];
+      const retry1 = await campaigns.stepParams(camp, step, enr1);
+      expect(retry1.assignedVariant).toBe('A');
+      expect(camp.abCounters['ab_invite_1']).toBe(counterBefore);
+    });
+
+    it('records sent, accepted, and replied attribution idempotently', async () => {
+      const camp = {
+        campaignId: 'camp_ab_stats',
+        steps: [
+          {
+            id: 'invite_step',
+            type: 'invite',
+            abEnabled: true,
+            variants: [
+              { id: 'A', note: 'Invite A' },
+              { id: 'B', note: 'Invite B' },
+            ],
+          },
+          {
+            id: 'msg_step',
+            type: 'message',
+            abEnabled: true,
+            variants: [
+              { id: 'A', body: 'Msg A' },
+              { id: 'B', body: 'Msg B' },
+            ],
+          },
+        ],
+        abStats: {},
+        abCounters: {},
+      };
+
+      // Record sent for variant A and B
+      campaigns.recordAbStat(camp, 'invite_step', 'A', 'sent');
+      campaigns.recordAbStat(camp, 'invite_step', 'B', 'sent');
+      expect(camp.abStats.invite_step.A.sent).toBe(1);
+      expect(camp.abStats.invite_step.B.sent).toBe(1);
+
+      // Attribution for accepted
+      const enrA = {
+        publicId: 'lead_a',
+        lastInviteStepKey: 'invite_step',
+        assignedVariants: { invite_step: 'A', msg_step: 'A' },
+      };
+      campaigns.recordInviteAccepted(camp, enrA);
+      expect(camp.abStats.invite_step.A.accepted).toBe(1);
+      expect(enrA.abInviteAttributed).toBe(true);
+
+      // Duplicate acceptance call must not double count
+      campaigns.recordInviteAccepted(camp, enrA);
+      expect(camp.abStats.invite_step.A.accepted).toBe(1);
+
+      // Attribution for reply
+      enrA.lastMessageStepKey = 'msg_step';
+      campaigns.recordReplyAttribution(camp, enrA);
+      expect(camp.abStats.msg_step.A.replied).toBe(1);
+      expect(enrA.abReplyAttributed).toBe(true);
+
+      // Duplicate reply call must not double count
+      campaigns.recordReplyAttribution(camp, enrA);
+      expect(camp.abStats.msg_step.A.replied).toBe(1);
+    });
+
+    it('declareWinner turns off abEnabled, promotes winning copy, and persists changes', async () => {
+      const c = (await handle(ACTIONS.CAMPAIGN_CREATE, {
+        name: 'AB_Test_Campaign',
+        steps: [
+          {
+            id: 'test_step',
+            type: 'invite',
+            abEnabled: true,
+            variants: [
+              { id: 'A', note: 'Old variant A' },
+              { id: 'B', note: 'Winning variant B' },
+            ],
+          },
+        ],
+        publicIds: ['p1'],
+        settings: { autopilot: true },
+      })).data;
+
+      // Declare variant B winner
+      const updated = await campaigns.declareWinner(c.campaignId, 'test_step', 'B');
+      expect(updated.steps[0].abEnabled).toBe(false);
+      expect(updated.steps[0].winningVariant).toBe('B');
+      expect(updated.steps[0].note).toBe('Winning variant B');
+
+      // Verify CAMPAIGN_DECLARE_AB_WINNER action handler
+      const res = await handle(ACTIONS.CAMPAIGN_DECLARE_AB_WINNER, {
+        campaignId: c.campaignId,
+        stepKey: 'test_step',
+        winnerId: 'A',
+      });
+      expect(res.ok).toBe(true);
+      expect(res.data.steps[0].abEnabled).toBe(false);
+      expect(res.data.steps[0].winningVariant).toBe('A');
+      expect(res.data.steps[0].note).toBe('Old variant A');
+    });
+
+    it('stays backward compatible for campaigns without abEnabled', async () => {
+      const legacyStep = {
+        type: 'invite',
+        note: 'Default note',
+        variants: ['Legacy variant 1', 'Legacy variant 2'],
+      };
+      const camp = {
+        campaignId: 'legacy_camp',
+        variantCursor: 1,
+        steps: [legacyStep],
+      };
+      const enr = { publicId: 'lead_legacy', stepIndex: 0 };
+
+      const res = await campaigns.stepParams(camp, legacyStep, enr);
+      expect(res.variantUsed).toBe(true);
+      expect(res.assignedVariant).toBe(null);
+      expect(res.params.note).toBe('Legacy variant 2');
+    });
+  });
 });

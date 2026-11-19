@@ -347,12 +347,15 @@ export function contractToPipeline(steps = []) {
       };
       result.push({
         ...opt,
-        id: 's_' + Math.random().toString(36).substr(2, 6),
+        id: s.id || 's_' + Math.random().toString(36).substr(2, 6),
         delayMs: pendingDelay,
         note: s.note,
         body: s.body,
         subject: s.subject,
         useAi: s.useAi,
+        abEnabled: Boolean(s.abEnabled),
+        variants: s.variants || null,
+        winningVariant: s.winningVariant || null,
       });
       pendingDelay = 0;
     }
@@ -360,6 +363,22 @@ export function contractToPipeline(steps = []) {
 
   processStepList(steps);
   return result;
+}
+
+export function ensureStepVariants(step, fallbackNote = '') {
+  if (!step) return;
+  if (!Array.isArray(step.variants) || step.variants.length < 2) {
+    const baseNote = step.note !== undefined ? step.note : fallbackNote;
+    const baseBody = step.body || '';
+    const baseSub = step.subject || '';
+    step.variants = [
+      { id: 'A', note: baseNote, body: baseBody, subject: baseSub },
+      { id: 'B', note: baseNote, body: baseBody, subject: baseSub },
+    ];
+  }
+  if (!step._activeVariant) {
+    step._activeVariant = 'A';
+  }
 }
 
 export function pipelineStepsToContract(pipelineSteps = [], customNote = '', useAi = true) {
@@ -380,15 +399,45 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
       else if (step.type === 'follow') steps.push({ type: 'follow' });
       else if (step.type === 'like') steps.push({ type: 'like' });
       else if (step.type === 'endorse') steps.push({ type: 'endorse' });
-      else if (step.type === 'message') steps.push({ type: 'message', body: step.body || 'Hi {{firstName|there}}!' });
-      else if (step.type === 'email') steps.push({
-        type: 'email',
-        subject: step.subject || 'Quick question',
-        body: step.body || 'Hi {{firstName|there}}...',
-        replyInThread: step.replyInThread !== false,
-        useAi: step.useAi ?? useAi,
-      });
-      else if (step.type === 'wait') steps.push({ type: 'wait', waitMs: step.delayMs || 86400000 });
+      else if (step.type === 'message') {
+        const item = { type: 'message', id: step.id, body: step.body || 'Hi {{firstName|there}}!' };
+        if (step.abEnabled) {
+          item.abEnabled = true;
+          item.variants = step.variants;
+          if (step.winningVariant) item.winningVariant = step.winningVariant;
+        }
+        steps.push(item);
+      } else if (step.type === 'inmail') {
+        const item = {
+          type: 'inmail',
+          id: step.id,
+          subject: step.subject || 'Introduction',
+          body: step.body || 'Hi {{firstName|there}}!',
+        };
+        if (step.abEnabled) {
+          item.abEnabled = true;
+          item.variants = step.variants;
+          if (step.winningVariant) item.winningVariant = step.winningVariant;
+        }
+        steps.push(item);
+      } else if (step.type === 'email') {
+        const item = {
+          type: 'email',
+          id: step.id,
+          subject: step.subject || 'Quick question',
+          body: step.body || 'Hi {{firstName|there}}...',
+          replyInThread: step.replyInThread !== false,
+          useAi: step.useAi ?? useAi,
+        };
+        if (step.abEnabled) {
+          item.abEnabled = true;
+          item.variants = step.variants;
+          if (step.winningVariant) item.winningVariant = step.winningVariant;
+        }
+        steps.push(item);
+      } else if (step.type === 'wait') {
+        steps.push({ type: 'wait', waitMs: step.delayMs || 86400000 });
+      }
     }
     steps.push({ type: 'crm_sync' });
     return steps;
@@ -414,6 +463,7 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
       if (step.sendBlank) {
         steps.push({
           type: 'invite',
+          id: step.id,
           note: '',
           sendBlank: true,
           useAi: false,
@@ -425,11 +475,18 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
             finalNote = `${finalNote} {{ai_opener}}`.trim();
           }
         }
-        steps.push({
+        const item = {
           type: 'invite',
+          id: step.id,
           note: finalNote,
           useAi: Boolean(useAi),
-        });
+        };
+        if (step.abEnabled) {
+          item.abEnabled = true;
+          item.variants = step.variants;
+          if (step.winningVariant) item.winningVariant = step.winningVariant;
+        }
+        steps.push(item);
       }
     } else if (step.type === 'wait') {
       steps.push({ type: 'wait', waitMs: step.delayMs || 86400000 });
@@ -454,10 +511,17 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
     if (messageStep.delayMs && messageStep.delayMs > 0) {
       thenBranch.push({ type: 'wait', waitMs: messageStep.delayMs, delayLabel: formatDelayBadge(messageStep.delayMs) });
     }
-    thenBranch.push({
+    const item = {
       type: 'message',
+      id: messageStep.id,
       body: messageStep.body || 'Thanks for connecting, {{firstName|there}}! What is taking up most of your focus this quarter?',
-    });
+    };
+    if (messageStep.abEnabled) {
+      item.abEnabled = true;
+      item.variants = messageStep.variants;
+      if (messageStep.winningVariant) item.winningVariant = messageStep.winningVariant;
+    }
+    thenBranch.push(item);
     thenBranch.push({ type: 'crm_sync' });
   }
 
@@ -465,13 +529,20 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
     if (emailStep.delayMs && emailStep.delayMs > 0) {
       elseBranch.push({ type: 'wait', waitMs: emailStep.delayMs, delayLabel: formatDelayBadge(emailStep.delayMs) });
     }
-    elseBranch.push({
+    const item = {
       type: 'email',
+      id: emailStep.id,
       subject: emailStep.subject || 'Quick question for {{firstName|there}} regarding {{company|your team}}',
       body: emailStep.body || 'Hi {{firstName|there}},\n\nI sent you a quick connection request on LinkedIn earlier. Wanted to follow up directly to see if you had 5 minutes this week to chat?\n\nBest,\nAditya',
       replyInThread: emailStep.replyInThread !== false,
       useAi: emailStep.useAi ?? useAi,
-    });
+    };
+    if (emailStep.abEnabled) {
+      item.abEnabled = true;
+      item.variants = emailStep.variants;
+      if (emailStep.winningVariant) item.winningVariant = emailStep.winningVariant;
+    }
+    elseBranch.push(item);
     elseBranch.push({ type: 'crm_sync' });
   }
 
@@ -483,6 +554,15 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
     else if (s.type === 'follow') thenBranch.push({ type: 'follow' });
     else if (s.type === 'like') thenBranch.push({ type: 'like' });
     else if (s.type === 'endorse') thenBranch.push({ type: 'endorse' });
+    else {
+      const item = { type: s.type, id: s.id, note: s.note, body: s.body, subject: s.subject };
+      if (s.abEnabled) {
+        item.abEnabled = true;
+        item.variants = s.variants;
+        if (s.winningVariant) item.winningVariant = s.winningVariant;
+      }
+      thenBranch.push(item);
+    }
   }
 
   if (thenBranch.length === 0 && elseBranch.length === 0) {
@@ -2062,6 +2142,7 @@ export async function renderCampaignsView(container, ctx = {}) {
               <button type="button" class="btn-drawer-close" id="btn-drawer-close">${ICONS.x}</button>
             </div>
           </div>
+          <div id="drawer-ab-section-mount" style="padding: 0 20px;"></div>
           <div class="camp-drawer-toolbar">
             <div class="drawer-pills-bar" id="drawer-filter-pills">
               <!-- Filter pills dynamically populated -->
@@ -2511,6 +2592,114 @@ export async function renderCampaignsView(container, ctx = {}) {
       }
 
       renderFilteredLeadsTable(data.leads || []);
+
+      // A/B Test Comparison Strip
+      const abMount = container.querySelector('#drawer-ab-section-mount');
+      if (abMount) {
+        if (data.abStats && typeof data.abStats === 'object' && Object.keys(data.abStats).length > 0) {
+          const abKeys = Object.keys(data.abStats);
+          abMount.innerHTML = `
+            <div class="drawer-ab-section" style="margin-top: 10px; margin-bottom: 12px; padding: 14px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                <span style="font-size: 13px; font-weight: 700; color: #9a3412; display: flex; align-items: center; gap: 6px;">
+                  ${ICONS.sparkles} A/B Test Performance Comparison
+                </span>
+                <span style="font-size: 11.5px; color: #c2410c;">Live Outreach Variant Tracking</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                ${abKeys
+                  .map((stepKey) => {
+                    const step = (data.steps || []).find((s, idx) => s.id === stepKey || String(idx) === String(stepKey));
+                    const stepLabel = step
+                      ? (step.title || (step.type ? step.type.charAt(0).toUpperCase() + step.type.slice(1) : '') || `Step ${stepKey}`)
+                      : `Step ${stepKey}`;
+                    const stats = data.abStats[stepKey] || {};
+                    const aSent = stats.A?.sent || 0;
+                    const aAccepted = stats.A?.accepted || 0;
+                    const aReplied = stats.A?.replied || 0;
+                    const aAcceptRate = aSent > 0 ? ((aAccepted / aSent) * 100).toFixed(1) : '0.0';
+                    const aReplyRate = aSent > 0 ? ((aReplied / aSent) * 100).toFixed(1) : '0.0';
+
+                    const bSent = stats.B?.sent || 0;
+                    const bAccepted = stats.B?.accepted || 0;
+                    const bReplied = stats.B?.replied || 0;
+                    const bAcceptRate = bSent > 0 ? ((bAccepted / bSent) * 100).toFixed(1) : '0.0';
+                    const bReplyRate = bSent > 0 ? ((bReplied / bSent) * 100).toFixed(1) : '0.0';
+
+                    const isInvite = step?.type === 'invite';
+
+                    return `
+                      <div class="ab-card-row" style="background: #ffffff; border: 1px solid #fed7aa; border-radius: 10px; padding: 12px;">
+                        <div style="font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                          <span>${stepLabel}</span>
+                          ${step?.winningVariant ? `<span class="badge-status badge-status-completed" style="font-size: 11px;">🏆 Winner: Variant ${step.winningVariant}</span>` : ''}
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                          <!-- Variant A -->
+                          <div style="padding: 10px 12px; background: #fafafb; border: 1px solid #e2e8f0; border-radius: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                              <strong style="font-size: 12.5px; color: #1e293b;">Variant A ${step?.winningVariant === 'A' ? '🏆' : ''}</strong>
+                              ${!step?.winningVariant ? `
+                                <button type="button" class="btn-pill btn-secondary btn-declare-winner" data-camp-id="${data.campaignId}" data-step-key="${stepKey}" data-winner="A" style="font-size: 11px; padding: 2px 8px; height: 24px;">
+                                  Declare Winner
+                                </button>
+                              ` : ''}
+                            </div>
+                            <div style="font-size: 12px; color: #64748b; line-height: 1.6;">
+                              <div>Sent: <strong style="color: #0f172a;">${aSent}</strong></div>
+                              ${isInvite ? `<div>Accepted: <strong style="color: #16a34a;">${aAccepted} (${aAcceptRate}%)</strong></div>` : ''}
+                              <div>Replied: <strong style="color: #2563eb;">${aReplied} (${aReplyRate}%)</strong></div>
+                            </div>
+                          </div>
+
+                          <!-- Variant B -->
+                          <div style="padding: 10px 12px; background: #fafafb; border: 1px solid #e2e8f0; border-radius: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                              <strong style="font-size: 12.5px; color: #1e293b;">Variant B ${step?.winningVariant === 'B' ? '🏆' : ''}</strong>
+                              ${!step?.winningVariant ? `
+                                <button type="button" class="btn-pill btn-secondary btn-declare-winner" data-camp-id="${data.campaignId}" data-step-key="${stepKey}" data-winner="B" style="font-size: 11px; padding: 2px 8px; height: 24px;">
+                                  Declare Winner
+                                </button>
+                              ` : ''}
+                            </div>
+                            <div style="font-size: 12px; color: #64748b; line-height: 1.6;">
+                              <div>Sent: <strong style="color: #0f172a;">${bSent}</strong></div>
+                              ${isInvite ? `<div>Accepted: <strong style="color: #16a34a;">${bAccepted} (${bAcceptRate}%)</strong></div>` : ''}
+                              <div>Replied: <strong style="color: #2563eb;">${bReplied} (${bReplyRate}%)</strong></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    `;
+                  })
+                  .join('')}
+              </div>
+            </div>
+          `;
+
+          abMount.querySelectorAll('.btn-declare-winner').forEach((btn) => {
+            btn.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              const campId = btn.dataset.campId;
+              const sKey = btn.dataset.stepKey;
+              const winner = btn.dataset.winner;
+              btn.disabled = true;
+              btn.textContent = 'Saving...';
+              try {
+                await call(ACTIONS.CAMPAIGN_DECLARE_AB_WINNER, { campaignId: campId, stepKey: sKey, winnerId: winner });
+                ctx.showToast?.(`Variant ${winner} declared as winner!`, 'success');
+                fetchLiveStatus(true);
+              } catch (err) {
+                ctx.showToast?.(`Failed to declare winner: ${err?.message || err}`, 'error');
+                btn.disabled = false;
+                btn.textContent = 'Declare Winner';
+              }
+            });
+          });
+        } else {
+          abMount.innerHTML = '';
+        }
+      }
     }
 
     function renderFilteredLeadsTable(allLeads = []) {
@@ -3026,8 +3215,43 @@ export async function renderCampaignsView(container, ctx = {}) {
                   `;
                 }
 
+                if (curStep.abEnabled) {
+                  ensureStepVariants(curStep, customNote);
+                }
+                const curVariant = curStep.abEnabled
+                  ? (curStep.variants?.find((v) => v.id === curStep._activeVariant) || curStep.variants?.[0] || null)
+                  : null;
+
+                const renderAbHeader = () => `
+                  <div class="ab-toggle-box" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px; margin-bottom: 14px;">
+                    <div>
+                      <strong style="font-size: 13px; color: #9a3412; display: flex; align-items: center; gap: 6px;">
+                        ${ICONS.sparkles} A/B Test (Variant A / B)
+                      </strong>
+                      <span style="font-size: 11.5px; color: #7c2d12;">Split outreach 50/50 across prospects to compare real-world acceptance & reply rates.</span>
+                    </div>
+                    <label class="toggle-switch">
+                      <input type="checkbox" id="wizard-ab-toggle" class="wizard-ab-toggle" ${curStep.abEnabled ? 'checked' : ''} />
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+
+                  ${curStep.abEnabled ? `
+                    <div class="ab-variant-tabs" style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; background: #f8fafc; padding: 4px; border-radius: 8px; border: 1px solid #e2e8f0; width: fit-content;">
+                      <button type="button" class="btn-pill btn-variant-tab ${curStep._activeVariant === 'A' ? 'btn-primary' : 'btn-secondary'}" data-variant="A" style="font-size: 12px; padding: 4px 14px; height: 30px;">
+                        Variant A ${curStep.winningVariant === 'A' ? '🏆 Winner' : ''}
+                      </button>
+                      <button type="button" class="btn-pill btn-variant-tab ${curStep._activeVariant === 'B' ? 'btn-primary' : 'btn-secondary'}" data-variant="B" style="font-size: 12px; padding: 4px 14px; height: 30px;">
+                        Variant B ${curStep.winningVariant === 'B' ? '🏆 Winner' : ''}
+                      </button>
+                    </div>
+                  ` : ''}
+                `;
+
                 // Cold Email Step
                 if (curStep.type === 'email') {
+                  const subjectValue = curStep.abEnabled ? (curVariant?.subject || '') : (curStep.subject || '');
+                  const bodyValue = curStep.abEnabled ? (curVariant?.body || '') : (curStep.body || '');
                   return `
                     <div class="OutFox-card message-editor-card" style="margin-top: 20px;">
                       <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
@@ -3043,6 +3267,8 @@ export async function renderCampaignsView(container, ctx = {}) {
                           <strong>${activeSenderEmail || 'Google Workspace / Gmail'}</strong>
                         </div>
                       </div>
+
+                      ${renderAbHeader()}
 
                       <!-- Template Picker & Live Preview Toggle Bar -->
                       <div class="template-picker-row" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; background: #f8fafc; padding: 10px 14px; border-radius: 12px; border: 1px solid #e2e8f0;">
@@ -3070,9 +3296,9 @@ export async function renderCampaignsView(container, ctx = {}) {
                             <span style="font-size: 11px; color: #9a3412;">Variables & Spintax dynamically resolved</span>
                           </div>
                           <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">
-                            <span style="color: #64748b; font-weight: 600;">Subject:</span> ${renderTemplate(curStep.subject || '', sampleLead)}
+                            <span style="color: #64748b; font-weight: 600;">Subject:</span> ${renderTemplate(subjectValue, sampleLead)}
                           </div>
-                          <div style="font-size: 13.5px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${renderTemplate(curStep.body || '', sampleLead)}</div>
+                          <div style="font-size: 13.5px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${renderTemplate(bodyValue, sampleLead)}</div>
                         </div>
                       ` : `
                         <div class="form-group" style="margin-bottom: 14px;">
@@ -3080,7 +3306,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                             <span>Subject Line</span>
                             <span style="font-size: 11.5px; color: var(--text-muted); font-weight: normal;">Supports {{variables}} & Spintax</span>
                           </label>
-                          <input type="text" id="wizard-email-subject" class="form-input" value="${curStep.subject || ''}" placeholder="e.g. Quick question regarding {{company|your company}}" />
+                          <input type="text" id="wizard-email-subject" class="form-input" value="${subjectValue}" placeholder="e.g. Quick question regarding {{company|your company}}" />
                         </div>
 
                         <div class="variable-chips-row" style="flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
@@ -3099,7 +3325,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                           <label style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: block;">
                             Email Body
                           </label>
-                          <textarea id="wizard-email-body" class="form-input editor-textarea" rows="7" placeholder="Hi {{firstName|there}},&#10;&#10;...">${curStep.body || ''}</textarea>
+                          <textarea id="wizard-email-body" class="form-input editor-textarea" rows="7" placeholder="Hi {{firstName|there}},&#10;&#10;...">${bodyValue}</textarea>
                         </div>
 
                         <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 14px; padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;">
@@ -3145,6 +3371,7 @@ export async function renderCampaignsView(container, ctx = {}) {
 
                 // LinkedIn Message Step
                 if (curStep.type === 'message') {
+                  const bodyValue = curStep.abEnabled ? (curVariant?.body || '') : (curStep.body || '');
                   return `
                     <div class="OutFox-card message-editor-card" style="margin-top: 20px;">
                       <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
@@ -3164,6 +3391,8 @@ export async function renderCampaignsView(container, ctx = {}) {
                           <strong>Auto-parks 12h until connection accepted:</strong> OutFox automatically monitors acceptance before sending direct messages.
                         </div>
                       </div>
+
+                      ${renderAbHeader()}
 
                       <!-- Template Picker & Live Preview Toggle Bar -->
                       <div class="template-picker-row" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; background: #f8fafc; padding: 10px 14px; border-radius: 12px; border: 1px solid #e2e8f0;">
@@ -3190,7 +3419,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                             </span>
                             <span style="font-size: 11px; color: #9a3412;">Variables & Spintax dynamically resolved</span>
                           </div>
-                          <div style="font-size: 13.5px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${renderTemplate(curStep.body || '', sampleLead)}</div>
+                          <div style="font-size: 13.5px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${renderTemplate(bodyValue, sampleLead)}</div>
                         </div>
                       ` : `
                         <div class="variable-chips-row" style="flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
@@ -3208,7 +3437,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                           <label style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: block;">
                             Message Body
                           </label>
-                          <textarea id="wizard-message-body" class="form-input editor-textarea" rows="5" placeholder="Hi {{firstName|there}},&#10;&#10;...">${curStep.body || ''}</textarea>
+                          <textarea id="wizard-message-body" class="form-input editor-textarea" rows="5" placeholder="Hi {{firstName|there}},&#10;&#10;...">${bodyValue}</textarea>
                         </div>
                       `}
 
@@ -3229,7 +3458,9 @@ export async function renderCampaignsView(container, ctx = {}) {
                 }
 
                 // Invite step
-                const noteValue = curStep.note !== undefined ? curStep.note : customNote;
+                const noteValue = curStep.abEnabled
+                  ? (curVariant?.note !== undefined ? curVariant.note : (curStep.note !== undefined ? curStep.note : customNote))
+                  : (curStep.note !== undefined ? curStep.note : customNote);
                 return `
                   <div class="OutFox-card message-editor-card" style="margin-top: 20px;">
                     <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
@@ -3240,7 +3471,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                           <span style="font-size: 12px; color: var(--text-muted); display: block;">Step ${activeStepIdx + 1} of ${pipelineSteps.length} (Click any node above to edit that step)</span>
                         </div>
                       </div>
-                      ${!curStep.sendBlank ? `<span class="char-counter" id="note-char-counter">${noteValue.length} / 200</span>` : ''}
+                      ${!curStep.sendBlank ? `<span class="char-counter" id="note-char-counter">${(noteValue || '').length} / 200</span>` : ''}
                     </div>
 
                     <!-- Send Blank Invite Toggle -->
@@ -3263,6 +3494,8 @@ export async function renderCampaignsView(container, ctx = {}) {
                         </div>
                       </div>
                     ` : `
+                      ${renderAbHeader()}
+
                       <!-- Template Picker & Live Preview Toggle Bar -->
                       <div class="template-picker-row" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; background: #f8fafc; padding: 10px 14px; border-radius: 12px; border: 1px solid #e2e8f0;">
                         <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
@@ -3454,15 +3687,66 @@ export async function renderCampaignsView(container, ctx = {}) {
             customNote = found.content || '';
             curStep.note = customNote;
             curStep.sendBlank = false;
+            if (curStep.abEnabled) {
+              ensureStepVariants(curStep, customNote);
+              const v = curStep.variants.find((v) => v.id === curStep._activeVariant) || curStep.variants[0];
+              v.note = customNote;
+            }
           } else if (curStep.type === 'message') {
             curStep.body = found.content || '';
+            if (curStep.abEnabled) {
+              ensureStepVariants(curStep);
+              const v = curStep.variants.find((v) => v.id === curStep._activeVariant) || curStep.variants[0];
+              v.body = curStep.body;
+            }
           } else if (curStep.type === 'email') {
             curStep.body = found.content || '';
             if (found.subject) curStep.subject = found.subject;
+            if (curStep.abEnabled) {
+              ensureStepVariants(curStep);
+              const v = curStep.variants.find((v) => v.id === curStep._activeVariant) || curStep.variants[0];
+              v.body = curStep.body;
+              if (found.subject) v.subject = found.subject;
+            }
           }
           renderWizard();
           ctx.showToast?.(`Loaded "${found.name}" template!`, 'success');
         }
+      });
+
+      // A/B Test Toggle
+      container.querySelector('#wizard-ab-toggle')?.addEventListener('change', (e) => {
+        const step = pipelineSteps[activeStepIdx];
+        if (step) {
+          step.abEnabled = Boolean(e.target.checked);
+          if (step.abEnabled) {
+            ensureStepVariants(step, customNote);
+          }
+          renderWizard();
+        }
+      });
+
+      // A/B Variant Tab Switch
+      container.querySelectorAll('.btn-variant-tab').forEach((tabBtn) => {
+        tabBtn.addEventListener('click', () => {
+          const step = pipelineSteps[activeStepIdx];
+          if (step && step.abEnabled) {
+            ensureStepVariants(step, customNote);
+            const curV = step.variants.find((v) => v.id === step._activeVariant) || step.variants[0];
+            const noteEl = container.querySelector('#wizard-note-textarea');
+            if (noteEl) {
+              curV.note = noteEl.value;
+              customNote = noteEl.value;
+            }
+            const bodyEl = container.querySelector('#wizard-message-body') || container.querySelector('#wizard-email-body');
+            if (bodyEl) curV.body = bodyEl.value;
+            const subEl = container.querySelector('#wizard-email-subject');
+            if (subEl) curV.subject = subEl.value;
+
+            step._activeVariant = tabBtn.dataset.variant;
+            renderWizard();
+          }
+        });
       });
 
       // Live Preview Toggle
@@ -3517,13 +3801,25 @@ export async function renderCampaignsView(container, ctx = {}) {
       // Email Step Inputs
       container.querySelector('#wizard-email-subject')?.addEventListener('input', (e) => {
         if (pipelineSteps[activeStepIdx]) {
-          pipelineSteps[activeStepIdx].subject = e.target.value;
+          const step = pipelineSteps[activeStepIdx];
+          step.subject = e.target.value;
+          if (step.abEnabled) {
+            ensureStepVariants(step);
+            const v = step.variants.find((v) => v.id === step._activeVariant) || step.variants[0];
+            v.subject = e.target.value;
+          }
         }
       });
 
       container.querySelector('#wizard-email-body')?.addEventListener('input', (e) => {
         if (pipelineSteps[activeStepIdx]) {
-          pipelineSteps[activeStepIdx].body = e.target.value;
+          const step = pipelineSteps[activeStepIdx];
+          step.body = e.target.value;
+          if (step.abEnabled) {
+            ensureStepVariants(step);
+            const v = step.variants.find((v) => v.id === step._activeVariant) || step.variants[0];
+            v.body = e.target.value;
+          }
         }
       });
 
@@ -3536,7 +3832,13 @@ export async function renderCampaignsView(container, ctx = {}) {
       // Message Step Inputs
       container.querySelector('#wizard-message-body')?.addEventListener('input', (e) => {
         if (pipelineSteps[activeStepIdx]) {
-          pipelineSteps[activeStepIdx].body = e.target.value;
+          const step = pipelineSteps[activeStepIdx];
+          step.body = e.target.value;
+          if (step.abEnabled) {
+            ensureStepVariants(step);
+            const v = step.variants.find((v) => v.id === step._activeVariant) || step.variants[0];
+            v.body = e.target.value;
+          }
         }
       });
 
@@ -3546,10 +3848,14 @@ export async function renderCampaignsView(container, ctx = {}) {
 
       textarea?.addEventListener('input', () => {
         customNote = textarea.value;
-        const inviteStep = pipelineSteps.find((s) => s.type === 'invite');
-        if (inviteStep) inviteStep.note = customNote;
-        if (pipelineSteps[activeStepIdx] && pipelineSteps[activeStepIdx].type === 'invite') {
-          pipelineSteps[activeStepIdx].note = customNote;
+        const step = pipelineSteps[activeStepIdx];
+        if (step && step.type === 'invite') {
+          step.note = customNote;
+          if (step.abEnabled) {
+            ensureStepVariants(step, customNote);
+            const v = step.variants.find((v) => v.id === step._activeVariant) || step.variants[0];
+            v.note = customNote;
+          }
         }
 
         if (counter) {
@@ -3571,11 +3877,25 @@ export async function renderCampaignsView(container, ctx = {}) {
             const end = target.selectionEnd || target.value.length;
             target.value = target.value.substring(0, start) + tag + target.value.substring(end);
             if (pipelineSteps[activeStepIdx]) {
-              if (pipelineSteps[activeStepIdx].type === 'email') pipelineSteps[activeStepIdx].body = target.value;
-              else if (pipelineSteps[activeStepIdx].type === 'invite') {
-                customNote = target.value;
-                pipelineSteps[activeStepIdx].note = target.value;
-              } else if (pipelineSteps[activeStepIdx].type === 'message') pipelineSteps[activeStepIdx].body = target.value;
+              const curStep = pipelineSteps[activeStepIdx];
+              if (curStep.abEnabled) {
+                ensureStepVariants(curStep, customNote);
+                const v = curStep.variants.find((v) => v.id === curStep._activeVariant) || curStep.variants[0];
+                if (curStep.type === 'email') {
+                  curStep.body = v.body = target.value;
+                } else if (curStep.type === 'invite') {
+                  customNote = target.value;
+                  curStep.note = v.note = target.value;
+                } else if (curStep.type === 'message') {
+                  curStep.body = v.body = target.value;
+                }
+              } else {
+                if (curStep.type === 'email') curStep.body = target.value;
+                else if (curStep.type === 'invite') {
+                  customNote = target.value;
+                  curStep.note = target.value;
+                } else if (curStep.type === 'message') curStep.body = target.value;
+              }
             }
             target.focus();
             target.selectionStart = target.selectionEnd = start + tag.length;

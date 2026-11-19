@@ -100,10 +100,11 @@ const manifest = JSON.parse(readFileSync(stagedManifestPath, 'utf8'));
 // 3a. Remove the "key" field
 delete manifest.key;
 
-// 3b. Remove "https://*/*" and "http://*/*" from optional_host_permissions
+// 3b. Remove redundant permissions already in host_permissions, as well as wildcards from optional_host_permissions
 if (Array.isArray(manifest.optional_host_permissions)) {
+  const hostSet = new Set(manifest.host_permissions || []);
   manifest.optional_host_permissions = manifest.optional_host_permissions.filter(
-    (perm) => perm !== 'https://*/*' && perm !== 'http://*/*',
+    (perm) => !hostSet.has(perm) && perm !== 'https://*/*' && perm !== 'http://*/*',
   );
 }
 

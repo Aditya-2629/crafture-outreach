@@ -33,14 +33,7 @@
     "https://outfox-auth.crafture.workers.dev/*"
   ],
   "optional_host_permissions": [
-    "https://www.googleapis.com/*",
-    "https://gmail.googleapis.com/*",
-    "https://api.groq.com/*",
-    "https://api.anthropic.com/*",
-    "https://api.openai.com/*",
-    "https://generativelanguage.googleapis.com/*",
     "https://script.google.com/*",
-    "https://api.hunter.io/*",
     "http://127.0.0.1/*",
     "http://localhost/*",
     "https://*/*",

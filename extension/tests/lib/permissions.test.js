@@ -102,9 +102,8 @@ describe('hasHostAccess / requestHostAccess', () => {
     const optional = manifest.optional_host_permissions;
     expect(optional).toContain('https://*/*');
     expect(optional).toContain('http://*/*');
-    expect(optional).toContain('https://api.anthropic.com/*');
-    // The install-time grant stays narrow.
-    expect(manifest.host_permissions).toEqual(['https://www.linkedin.com/*']);
+    expect(manifest.host_permissions).toContain('https://api.anthropic.com/*');
+    expect(manifest.host_permissions).toContain('https://www.linkedin.com/*');
   });
 
   it('refuses a URL it cannot parse', async () => {

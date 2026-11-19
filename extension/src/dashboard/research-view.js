@@ -558,6 +558,8 @@ export async function renderResearchView(container, ctx = {}) {
     `;
 
     wireEvents();
+    ctx?.restoreScrollPosition?.(container, scrollPos);
+    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
   }
 
   function wireEvents() {
@@ -849,9 +851,6 @@ export async function renderResearchView(container, ctx = {}) {
         }
       });
     }
-
-    ctx?.restoreScrollPosition?.(container, scrollPos);
-    ctx?.restoreInputFocus?.(container, focusedInput) || restoreInputFocus(container, focusedInput);
   }
 
   let storageDebounceTimer = null;

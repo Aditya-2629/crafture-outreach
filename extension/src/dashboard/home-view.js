@@ -803,6 +803,7 @@ export async function renderHomeView(container, ctx = {}) {
     `;
 
     wireHomeEvents(timeline);
+    ctx?.restoreScrollPosition?.(container, scrollPos);
   }
 
   function wireHomeEvents(currentTimeline) {
@@ -906,8 +907,6 @@ export async function renderHomeView(container, ctx = {}) {
         });
       });
     }
-
-    ctx?.restoreScrollPosition?.(container, scrollPos);
   }
 
   let storageDebounceTimer = null;

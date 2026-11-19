@@ -37,7 +37,7 @@ export async function renderProspectsView(container, ctx = {}) {
   }
 
   // 1. Fetch 100% Real Storage Data
-  const allData = await new Promise((resolve) => {
+  let allData = await new Promise((resolve) => {
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       chrome.storage.local.get(null, (res) => resolve(res || {}));
     } else {
@@ -45,13 +45,13 @@ export async function renderProspectsView(container, ctx = {}) {
     }
   });
 
-  const rawLists = allData.lists || [];
-  const rawProfiles = allData.profiles || {};
-  const rawCampaigns = allData.campaigns || [];
-  const rawActions = allData.actions || [];
-  const blacklist = new Set(allData.blacklist || []);
-  let companyBlacklist = Array.isArray(allData.company_blacklist) ? allData.company_blacklist : [];
-  const storedColumns = allData.crm_column_preferences || {
+  let rawLists = [];
+  let rawProfiles = {};
+  let rawCampaigns = [];
+  let rawActions = [];
+  let blacklist = new Set();
+  let companyBlacklist = [];
+  let storedColumns = {
     job: true,
     company: true,
     campaign: true,
@@ -60,89 +60,67 @@ export async function renderProspectsView(container, ctx = {}) {
     tags: true,
     importDate: false
   };
-
-  // Map campaign names and enrollment statuses
-  const campaignNames = {};
-  const enrollmentStatus = {};
-  rawCampaigns.forEach((c) => {
-    const cid = c.campaignId || c.id;
-    if (cid) {
-      campaignNames[cid] = c.name;
-      const enrollments = allData[`enrollments:${cid}`] || [];
-      enrollments.forEach((e) => {
-        if (e.publicId) {
-          enrollmentStatus[e.publicId] = e.status || e.state;
-        }
-      });
-    }
-  });
-
-  // Map visit and invite actions by publicId
-  const actionHistory = {};
-  rawActions.forEach((act) => {
-    if (!act.publicId) return;
-    if (!actionHistory[act.publicId]) actionHistory[act.publicId] = {};
-    if (act.action === 'outreach.view' && act.result?.status === 'sent') {
-      actionHistory[act.publicId].visited = true;
-    }
-    if (act.action === 'outreach.invite' && act.result?.status === 'sent') {
-      actionHistory[act.publicId].invited = true;
-    }
-    if (act.action === 'outreach.message' && act.result?.status === 'sent') {
-      actionHistory[act.publicId].messaged = true;
-    }
-  });
-
-  // 2. Build Unified Real Prospects Repository
+  let campaignNames = {};
+  let enrollmentStatus = {};
+  let actionHistory = {};
   let masterProspects = [];
-  const seenIds = new Set();
+  let seenIds = new Set();
 
-  // A. Ingest all members from all saved lists
-  rawLists.forEach((list) => {
-    const lid = list.listId || list.id;
-    const members = allData[`listMembers:${lid}`] || allData[`list_members_${lid}`] || [];
-    members.forEach((m) => {
-      const pid = m.publicId || m.profile?.publicId;
-      if (!pid || seenIds.has(pid)) return;
-      seenIds.add(pid);
+  function initData() {
+    rawLists = allData.lists || [];
+    rawProfiles = allData.profiles || {};
+    rawCampaigns = allData.campaigns || [];
+    rawActions = allData.actions || [];
+    blacklist = new Set(allData.blacklist || []);
+    companyBlacklist = Array.isArray(allData.company_blacklist) ? allData.company_blacklist : [];
+    storedColumns = allData.crm_column_preferences || {
+      job: true,
+      company: true,
+      campaign: true,
+      email: true,
+      status: true,
+      tags: true,
+      importDate: false
+    };
 
-      const hist = actionHistory[pid] || {};
-      const enrollState = enrollmentStatus[pid];
-      let status = 'Enrolled';
-      if (blacklist.has(pid)) status = 'Blacklisted';
-      else if (enrollState === 'blocked_not_connected') status = 'Needs Connection';
-      else if (m.connected || m.connectionDegree === 1) status = 'Connected';
-      else if (hist.invited) status = 'Invite Sent';
-      else if (hist.visited) status = 'Visited';
-
-      const prof = m.profile || {};
-      masterProspects.push({
-        publicId: pid,
-        fullName: m.name || m.fullName || prof.fullName || prof.name || pid,
-        headline: m.headline || m.title || prof.headline || prof.title || '-',
-        company: m.company || prof.company || '-',
-        listId: lid,
-        listName: list.name,
-        campaign: campaignNames[m.campaignId] || (hist.invited ? 'Active Campaign' : '-'),
-        status: status,
-        visited: Boolean(hist.visited),
-        email: m.email || prof.email || '',
-        tags: Array.isArray(m.tags) ? m.tags : (Array.isArray(prof.tags) ? prof.tags : []),
-        profileUrl: m.url || prof.url || `https://www.linkedin.com/in/${encodeURIComponent(pid)}/`,
-        addedAt: m.addedAt || prof.updatedAt || Date.now()
-      });
+    campaignNames = {};
+    enrollmentStatus = {};
+    rawCampaigns.forEach((c) => {
+      const cid = c.campaignId || c.id;
+      if (cid) {
+        campaignNames[cid] = c.name;
+        const enrollments = allData[`enrollments:${cid}`] || [];
+        enrollments.forEach((e) => {
+          if (e.publicId) {
+            enrollmentStatus[e.publicId] = e.status || e.state;
+          }
+        });
+      }
     });
-  });
 
-  // B. Scan any un-nested listMembers keys in storage
-  Object.keys(allData).forEach((key) => {
-    if (key.startsWith('listMembers:') || key.startsWith('list_members_')) {
-      const lid = key.replace('listMembers:', '').replace('list_members_', '');
-      const listMembers = allData[key] || [];
-      const list = rawLists.find((l) => (l.listId || l.id) === lid);
-      const listName = list?.name || 'Imported List';
+    actionHistory = {};
+    rawActions.forEach((act) => {
+      if (!act.publicId) return;
+      if (!actionHistory[act.publicId]) actionHistory[act.publicId] = {};
+      if (act.action === 'outreach.view' && act.result?.status === 'sent') {
+        actionHistory[act.publicId].visited = true;
+      }
+      if (act.action === 'outreach.invite' && act.result?.status === 'sent') {
+        actionHistory[act.publicId].invited = true;
+      }
+      if (act.action === 'outreach.message' && act.result?.status === 'sent') {
+        actionHistory[act.publicId].messaged = true;
+      }
+    });
 
-      listMembers.forEach((m) => {
+    masterProspects = [];
+    seenIds = new Set();
+
+    // A. Ingest all members from all saved lists
+    rawLists.forEach((list) => {
+      const lid = list.listId || list.id;
+      const members = allData[`listMembers:${lid}`] || allData[`list_members_${lid}`] || [];
+      members.forEach((m) => {
         const pid = m.publicId || m.profile?.publicId;
         if (!pid || seenIds.has(pid)) return;
         seenIds.add(pid);
@@ -163,7 +141,7 @@ export async function renderProspectsView(container, ctx = {}) {
           headline: m.headline || m.title || prof.headline || prof.title || '-',
           company: m.company || prof.company || '-',
           listId: lid,
-          listName: listName,
+          listName: list.name,
           campaign: campaignNames[m.campaignId] || (hist.invited ? 'Active Campaign' : '-'),
           status: status,
           visited: Boolean(hist.visited),
@@ -173,39 +151,83 @@ export async function renderProspectsView(container, ctx = {}) {
           addedAt: m.addedAt || prof.updatedAt || Date.now()
         });
       });
-    }
-  });
-
-  // C. Ingest any remaining stored profiles (e.g. from direct visits)
-  Object.values(rawProfiles).forEach((p) => {
-    if (!p || !p.publicId || seenIds.has(p.publicId)) return;
-    seenIds.add(p.publicId);
-
-    const hist = actionHistory[p.publicId] || {};
-    const enrollState = enrollmentStatus[p.publicId];
-    let status = 'Enrolled';
-    if (blacklist.has(p.publicId)) status = 'Blacklisted';
-    else if (enrollState === 'blocked_not_connected') status = 'Needs Connection';
-    else if (p.connected || p.connectionDegree === 1) status = 'Connected';
-    else if (hist.invited) status = 'Invite Sent';
-    else if (hist.visited) status = 'Visited';
-
-    masterProspects.push({
-      publicId: p.publicId,
-      fullName: p.fullName || p.name || p.publicId,
-      headline: p.headline || p.title || '-',
-      company: p.company || '-',
-      listId: 'unassigned',
-      listName: 'Direct Discovered',
-      campaign: hist.invited ? 'Direct Outreach' : '-',
-      status: status,
-      visited: Boolean(hist.visited),
-      email: p.email || '',
-      tags: Array.isArray(p.tags) ? p.tags : [],
-      profileUrl: p.url || `https://www.linkedin.com/in/${encodeURIComponent(p.publicId)}/`,
-      addedAt: p.updatedAt || Date.now()
     });
-  });
+
+    // B. Scan any un-nested listMembers keys in storage
+    Object.keys(allData).forEach((key) => {
+      if (key.startsWith('listMembers:') || key.startsWith('list_members_')) {
+        const lid = key.replace('listMembers:', '').replace('list_members_', '');
+        const listMembers = allData[key] || [];
+        const list = rawLists.find((l) => (l.listId || l.id) === lid);
+        const listName = list?.name || 'Imported List';
+
+        listMembers.forEach((m) => {
+          const pid = m.publicId || m.profile?.publicId;
+          if (!pid || seenIds.has(pid)) return;
+          seenIds.add(pid);
+
+          const hist = actionHistory[pid] || {};
+          const enrollState = enrollmentStatus[pid];
+          let status = 'Enrolled';
+          if (blacklist.has(pid)) status = 'Blacklisted';
+          else if (enrollState === 'blocked_not_connected') status = 'Needs Connection';
+          else if (m.connected || m.connectionDegree === 1) status = 'Connected';
+          else if (hist.invited) status = 'Invite Sent';
+          else if (hist.visited) status = 'Visited';
+
+          const prof = m.profile || {};
+          masterProspects.push({
+            publicId: pid,
+            fullName: m.name || m.fullName || prof.fullName || prof.name || pid,
+            headline: m.headline || m.title || prof.headline || prof.title || '-',
+            company: m.company || prof.company || '-',
+            listId: lid,
+            listName: listName,
+            campaign: campaignNames[m.campaignId] || (hist.invited ? 'Active Campaign' : '-'),
+            status: status,
+            visited: Boolean(hist.visited),
+            email: m.email || prof.email || '',
+            tags: Array.isArray(m.tags) ? m.tags : (Array.isArray(prof.tags) ? prof.tags : []),
+            profileUrl: m.url || prof.url || `https://www.linkedin.com/in/${encodeURIComponent(pid)}/`,
+            addedAt: m.addedAt || prof.updatedAt || Date.now()
+          });
+        });
+      }
+    });
+
+    // C. Ingest any remaining stored profiles (e.g. from direct visits)
+    Object.values(rawProfiles).forEach((p) => {
+      if (!p || !p.publicId || seenIds.has(p.publicId)) return;
+      seenIds.add(p.publicId);
+
+      const hist = actionHistory[p.publicId] || {};
+      const enrollState = enrollmentStatus[p.publicId];
+      let status = 'Enrolled';
+      if (blacklist.has(p.publicId)) status = 'Blacklisted';
+      else if (enrollState === 'blocked_not_connected') status = 'Needs Connection';
+      else if (p.connected || p.connectionDegree === 1) status = 'Connected';
+      else if (hist.invited) status = 'Invite Sent';
+      else if (hist.visited) status = 'Visited';
+
+      masterProspects.push({
+        publicId: p.publicId,
+        fullName: p.fullName || p.name || p.publicId,
+        headline: p.headline || p.title || '-',
+        company: p.company || '-',
+        listId: 'unassigned',
+        listName: 'Direct Discovered',
+        campaign: hist.invited ? 'Direct Outreach' : '-',
+        status: status,
+        visited: Boolean(hist.visited),
+        email: p.email || '',
+        tags: Array.isArray(p.tags) ? p.tags : [],
+        profileUrl: p.url || `https://www.linkedin.com/in/${encodeURIComponent(p.publicId)}/`,
+        addedAt: p.updatedAt || Date.now()
+      });
+    });
+  }
+
+  initData();
 
   // 3. Component State
   const savedProspectsState = ctx.getSavedState?.() || {};

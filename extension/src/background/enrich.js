@@ -8,6 +8,7 @@ import { ACTIONS, ERROR, EngineError } from '../lib/actions.js';
 import { register } from './engine.js';
 import { getStoredProfile, putProfile } from '../lib/storage.js';
 import * as voyager from './voyager.js';
+import { hasHostAccess } from '../lib/permissions.js';
 
 export const HUNTER_BASE = 'https://api.hunter.io/v2/email-finder';
 export const APOLLO_BASE = 'https://api.apollo.io/v1/people/match';
@@ -238,6 +239,9 @@ export async function lookupEmail(profile, company) {
   }
   if (settings.provider === 'hunter') {
     const hunterKey = settings.hunterApiKey || settings.apiKey;
+    if (!(await hasHostAccess(HUNTER_BASE))) {
+      return { provider: 'hunter', reason: 'permission-missing' };
+    }
     const domain = domainFor(profile, company);
     const first = profile.firstName || String(profile.fullName || '').split(' ')[0] || '';
     const last = profile.lastName || String(profile.fullName || '').split(' ').slice(1).join(' ') || '';
@@ -251,6 +255,13 @@ export async function lookupEmail(profile, company) {
     return res || { provider: 'hunter' };
   }
   return lookupEmailWaterfall(profile, company);
+}
+
+/** True when a provider other than none is configured with a key and has host access. */
+export async function isEnrichmentConfigured() {
+  const { enrichment } = await getConfig();
+  if (!enrichment || enrichment.provider === 'none' || !enrichment.apiKey) return false;
+  return hasHostAccess(HUNTER_BASE);
 }
 
 /**

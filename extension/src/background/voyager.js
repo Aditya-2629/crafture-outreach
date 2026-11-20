@@ -58,6 +58,7 @@ import {
   sectionToSkills,
   threadIdFromUrn,
   vectorImageUrl,
+  concatVectorUrl,
 } from './voyager-normalize.js';
 
 export * from './voyager-core.js';
@@ -406,9 +407,7 @@ export function extractAvatarFromMini(mini, included = []) {
       const target = sorted.find((a) => a && a.width === 200) || sorted[0];
       const segment = target?.fileIdentifyingUrlPathSegment || '';
       if (segment) {
-        return rootUrl && segment
-          ? `${rootUrl.replace(/\/+$/, '')}/${segment.replace(/^\/+/, '')}`
-          : `${rootUrl}${segment}`;
+        return concatVectorUrl(rootUrl, segment);
       }
     }
     if (rootUrl && rootUrl.startsWith('http')) return rootUrl;

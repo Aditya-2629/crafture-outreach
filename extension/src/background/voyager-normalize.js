@@ -74,6 +74,22 @@ export function fsdProfileUrnIn(urn) {
  * guarantee worth relying on for the one field a CSV shows as a face, so the
  * widest is picked explicitly.
  */
+/**
+ * Concat vector image rootUrl and artifact path segment adhering to LinkedIn formatting:
+ * Only insert '/' if rootUrl does not end with '-' or '/' and segment does not start with '/'.
+ */
+export function concatVectorUrl(rootUrl, segment) {
+  if (!rootUrl) return segment || '';
+  if (!segment) return rootUrl || '';
+  if (rootUrl.endsWith('/') && segment.startsWith('/')) {
+    return `${rootUrl}${segment.slice(1)}`;
+  }
+  if (!rootUrl.endsWith('-') && !rootUrl.endsWith('/') && !segment.startsWith('/')) {
+    return `${rootUrl}/${segment}`;
+  }
+  return `${rootUrl}${segment}`;
+}
+
 export function vectorImageUrl(image) {
   if (!image) return '';
   const vector =
@@ -88,11 +104,7 @@ export function vectorImageUrl(image) {
     null,
   );
   if (widest && widest.fileIdentifyingUrlPathSegment) {
-    const rootUrl = vector?.rootUrl || '';
-    const seg = widest.fileIdentifyingUrlPathSegment;
-    return rootUrl && seg
-      ? `${rootUrl.replace(/\/+$/, '')}/${seg.replace(/^\/+/, '')}`
-      : `${rootUrl}${seg}`;
+    return concatVectorUrl(vector?.rootUrl || '', widest.fileIdentifyingUrlPathSegment);
   }
   if (typeof vector?.rootUrl === 'string' && vector.rootUrl.startsWith('http')) {
     return vector.rootUrl;

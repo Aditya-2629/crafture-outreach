@@ -219,6 +219,34 @@ describe('selfTest', () => {
     expect(url).toBe('https://media.licdn.com/dms/image/v2/test/500.jpg');
   });
 
+  it('concatenates rootUrl ending with dash directly with no extra slash', () => {
+    const mini = {
+      picture: {
+        'com.linkedin.common.VectorImage': {
+          rootUrl: 'https://media.licdn.com/dms/image/v2/D4D03AQ/profile-displayphoto-',
+          artifacts: [
+            { width: 200, fileIdentifyingUrlPathSegment: 'scale_200_200/B4D123.jpg' },
+          ],
+        },
+      },
+    };
+    const url = v.extractAvatarFromMini(mini);
+    expect(url).toBe('https://media.licdn.com/dms/image/v2/D4D03AQ/profile-displayphoto-scale_200_200/B4D123.jpg');
+  });
+
+  it('concatVectorUrl only inserts slash when needed', () => {
+    expect(v.concatVectorUrl('https://example.com/profile-displayphoto-', 'shrink_200_200/abc.jpg'))
+      .toBe('https://example.com/profile-displayphoto-shrink_200_200/abc.jpg');
+    expect(v.concatVectorUrl('https://example.com/path/', 'abc.jpg'))
+      .toBe('https://example.com/path/abc.jpg');
+    expect(v.concatVectorUrl('https://example.com/path', '/abc.jpg'))
+      .toBe('https://example.com/path/abc.jpg');
+    expect(v.concatVectorUrl('https://example.com/path/', '/abc.jpg'))
+      .toBe('https://example.com/path/abc.jpg');
+    expect(v.concatVectorUrl('https://example.com/path', 'abc.jpg'))
+      .toBe('https://example.com/path/abc.jpg');
+  });
+
   it('handles string avatarUrl or pictureUrl directly', () => {
     expect(v.extractAvatarFromMini({ avatarUrl: 'https://example.com/avatar.png' })).toBe('https://example.com/avatar.png');
     expect(v.extractAvatarFromMini({ pictureUrl: 'https://example.com/pic.png' })).toBe('https://example.com/pic.png');

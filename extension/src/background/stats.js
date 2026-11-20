@@ -8,10 +8,43 @@ import { allActions, allProfiles, get, set, K } from '../lib/storage.js';
 import { getConfig } from '../lib/config.js';
 import { readCampaigns, readEnrollments, ensureCampaignAlarmWatchdog } from './campaigns.js';
 import { storedThreads } from './inbox.js';
-import { getNetworkStats, getProfileViewsCount, selfTest, me } from './voyager.js';
+import { getNetworkStats, getProfileViewsCount, selfTest, me, vectorImageUrl } from './voyager.js';
 import { isWithinBusinessHours } from './quota.js';
 import { register } from './engine.js';
 import { ACTIONS } from '../lib/actions.js';
+
+/**
+ * Extract profile picture URL from LinkedIn miniProfile or included entities
+ */
+export function extractAvatarUrl(mini, included = []) {
+  if (!mini) return '';
+  if (typeof mini.avatarUrl === 'string' && mini.avatarUrl.startsWith('http')) return mini.avatarUrl;
+  if (typeof mini.photoUrl === 'string' && mini.photoUrl.startsWith('http')) return mini.photoUrl;
+  if (typeof mini.picture === 'string' && mini.picture.startsWith('http')) return mini.picture;
+
+  const direct = vectorImageUrl(mini.picture || mini.profilePicture || mini.displayPicture);
+  if (direct) return direct;
+
+  const picUrn = mini.picture || mini.profilePicture || mini['*picture'] || mini['*profilePicture'];
+  if (picUrn && typeof picUrn === 'string' && Array.isArray(included)) {
+    const found = included.find((e) => e && (e.entityUrn === picUrn || e.$id === picUrn || e.dashEntityUrn === picUrn));
+    if (found) {
+      const fromFound = vectorImageUrl(found.vectorImage || found.displayImageReference || found);
+      if (fromFound) return fromFound;
+    }
+  }
+
+  if (Array.isArray(included)) {
+    for (const item of included) {
+      if (item && String(item.$type || '').includes('Profile') && (item.picture || item.profilePicture)) {
+        const fromItem = vectorImageUrl(item.picture || item.profilePicture);
+        if (fromItem) return fromItem;
+      }
+    }
+  }
+
+  return '';
+}
 
 /**
  * Group all logged actions into 30 daily buckets (YYYY-MM-DD)
@@ -145,6 +178,7 @@ export async function getLiveDashboardStats() {
         const fullName = [firstName, lastName].filter(Boolean).join(' ') || (mini.publicIdentifier || '').trim();
         const publicId = (mini.publicIdentifier || '').trim();
         const initials = [firstName, lastName].filter(Boolean).map((n) => n[0]).join('').toUpperCase() || (fullName ? fullName[0].toUpperCase() : 'U');
+        const avatarUrl = extractAvatarUrl(mini, included);
 
         if (fullName || publicId) {
           linkedinConnected = true;
@@ -155,6 +189,7 @@ export async function getLiveDashboardStats() {
             lastName: lastName || '',
             initials: initials || 'U',
             publicId: publicId || '',
+            avatarUrl: avatarUrl || '',
             connections: networkStats.connectionsCount,
             pending: networkStats.pendingCount,
             views: profileViews,
@@ -172,6 +207,7 @@ export async function getLiveDashboardStats() {
             lastName: '',
             initials: self.publicId.slice(0, 2).toUpperCase(),
             publicId: self.publicId,
+            avatarUrl: '',
             connections: networkStats.connectionsCount,
             pending: networkStats.pendingCount,
             views: profileViews,

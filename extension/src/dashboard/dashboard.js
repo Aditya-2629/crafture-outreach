@@ -531,6 +531,35 @@ function renderLinkedInStatusBanner(connected) {
 }
 
 /**
+ * Render avatar image or fallback initials badge
+ */
+export function setAvatarElement(el, avatarUrl, initials, alt = '') {
+  if (!el) return;
+  el.style.position = 'relative';
+  el.style.overflow = 'hidden';
+  el.innerHTML = '';
+
+  if (avatarUrl && typeof avatarUrl === 'string' && avatarUrl.startsWith('http')) {
+    const img = document.createElement('img');
+    img.src = avatarUrl;
+    img.alt = alt || initials || 'User Avatar';
+    img.className = 'avatar-img-photo object-cover rounded-full';
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.borderRadius = '50%';
+    img.style.objectFit = 'cover';
+    img.style.display = 'block';
+    img.addEventListener('error', () => {
+      el.innerHTML = '';
+      el.textContent = initials || '?';
+    });
+    el.appendChild(img);
+  } else {
+    el.textContent = initials || '?';
+  }
+}
+
+/**
  * Synchronize actual logged-in user profile with topbar & sidebar UI
  */
 export async function syncUserProfile() {
@@ -557,13 +586,15 @@ export async function syncUserProfile() {
 
       const name = profile.name || profile.fullName || 'OutFox User';
       const initials = profile.initials || name.split(/[\s-_]+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase() || 'U';
+      const avatarUrl = profile.avatarUrl || '';
 
       const topTitle = document.getElementById('greeting-title');
       if (topTitle) topTitle.textContent = `Hello ${profile.firstName || name.split(/[\s-_]+/)[0] || 'Member'}`;
       if (topUser) topUser.textContent = name;
-      if (miniAv) miniAv.textContent = initials;
-      if (sideAv) sideAv.textContent = initials;
       if (sideName) sideName.textContent = name;
+
+      setAvatarElement(miniAv, avatarUrl, initials, name);
+      setAvatarElement(sideAv, avatarUrl, initials, name);
 
       renderLinkedInStatusBanner(true);
       return true;
@@ -574,9 +605,10 @@ export async function syncUserProfile() {
         accountStatusEl.style.color = 'var(--warning)';
       }
       if (topUser) topUser.textContent = 'Guest';
-      if (miniAv) miniAv.textContent = 'G';
-      if (sideAv) sideAv.textContent = 'G';
       if (sideName) sideName.textContent = 'Guest';
+
+      setAvatarElement(miniAv, '', 'G', 'Guest');
+      setAvatarElement(sideAv, '', 'G', 'Guest');
 
       renderLinkedInStatusBanner(false);
       return false;

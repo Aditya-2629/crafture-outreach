@@ -17,6 +17,15 @@ import { ICONS } from '../ui/icons.js';
 import { downloadCsv, today } from '../ui/download.js';
 import { isStorageChangeRelevant } from './dashboard.js';
 
+function escapeHtml(str = '') {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 const HOME_RELEVANT_KEYS = new Set([
   'campaigns',
   'prospects',
@@ -418,6 +427,7 @@ export async function renderHomeView(container, ctx = {}) {
   const avatarTxt = isConnected
     ? (profile?.initials || rawName.split(/[\s-_]+/).map((n) => n[0]).slice(0, 2).join('').toUpperCase() || 'U')
     : '?';
+  const avatarUrl = isConnected && profile?.avatarUrl ? String(profile.avatarUrl).trim() : '';
 
   const savedHomeState = ctx?.getSavedState?.() || {};
   if (savedHomeState.selectedDays) selectedDays = savedHomeState.selectedDays;
@@ -762,7 +772,10 @@ export async function renderHomeView(container, ctx = {}) {
         <aside class="home-side-col">
           <div class="side-card profile-card-OutFox">
             <div class="avatar-center-wrapper">
-              <div class="OutFox-alien-avatar">
+              <div class="OutFox-alien-avatar" id="home-profile-avatar-wrap">
+                ${avatarUrl ? `
+                  <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(profileName)}" class="avatar-img-photo object-cover rounded-full" />
+                ` : ''}
                 <span class="avatar-initials-txt">${avatarTxt}</span>
                 <span class="li-corner-badge">${ICONS.linkedin}</span>
               </div>
@@ -816,6 +829,13 @@ export async function renderHomeView(container, ctx = {}) {
   }
 
   function wireHomeEvents(currentTimeline) {
+    const homeAvatarImg = container.querySelector('#home-profile-avatar-wrap img');
+    if (homeAvatarImg) {
+      homeAvatarImg.addEventListener('error', () => {
+        homeAvatarImg.remove();
+      });
+    }
+
     // Background refresh of live network stats if missing or stale (>3 min)
     const cachedNet = storage.networkStats || null;
     const lastUpdated = cachedNet?.updatedAt || 0;

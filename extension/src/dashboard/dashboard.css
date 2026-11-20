@@ -8224,3 +8224,16 @@ button:active,
   color: #0F172A;
   border-color: rgba(15, 23, 42, 0.2);
 }
+
+/* Authentic Profile Avatar Photo */
+.avatar-img-photo {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  z-index: 1;
+}

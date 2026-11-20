@@ -244,4 +244,44 @@ describe('HomeView — Dynamic Profile & Disconnected Fallback Rendering', () =>
     expect(profileName?.textContent).toBe('Sarah Connor');
     expect(avatar?.textContent).toBe('SC');
   });
+
+  it('renders profile photo when avatarUrl is present and falls back cleanly to initials on error', async () => {
+    vi.spyOn(api, 'call').mockImplementation(async (action) => {
+      if (action === ACTIONS.DASHBOARD_LIVE_STATS || action === 'dashboard.live_stats') {
+        return {
+          linkedinConnected: true,
+          profile: {
+            name: 'Sarah Connor',
+            firstName: 'Sarah',
+            lastName: 'Connor',
+            initials: 'SC',
+            avatarUrl: 'https://media.licdn.com/dms/image/v2/test/profile.jpg',
+            connections: 1250,
+            pending: 14,
+          },
+          quotas: {},
+        };
+      }
+      return {};
+    });
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    await renderHomeView(container, {
+      getSavedState: () => ({}),
+      saveState: () => {},
+      isActiveView: () => true,
+    });
+
+    const img = container.querySelector('#home-profile-avatar-wrap img');
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('https://media.licdn.com/dms/image/v2/test/profile.jpg');
+    expect(img.getAttribute('alt')).toBe('Sarah Connor');
+
+    // Trigger image loading failure
+    img.dispatchEvent(new Event('error'));
+    expect(container.querySelector('#home-profile-avatar-wrap img')).toBeNull();
+    expect(container.querySelector('.avatar-initials-txt')?.textContent).toBe('SC');
+  });
 });

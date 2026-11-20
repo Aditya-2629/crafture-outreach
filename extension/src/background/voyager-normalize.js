@@ -74,18 +74,25 @@ export function fsdProfileUrnIn(urn) {
  * guarantee worth relying on for the one field a CSV shows as a face, so the
  * widest is picked explicitly.
  */
-function vectorImageUrl(image) {
+export function vectorImageUrl(image) {
   if (!image) return '';
   const vector =
     image.vectorImage ||
     (image.displayImageReference && image.displayImageReference.vectorImage) ||
+    image.displayImageReference ||
     image;
   const artifacts = Array.isArray(vector.artifacts) ? vector.artifacts : [];
   const widest = artifacts.reduce(
     (best, a) => (a && a.fileIdentifyingUrlPathSegment && (!best || (a.width || 0) > (best.width || 0)) ? a : best),
     null,
   );
-  return widest ? `${vector.rootUrl || ''}${widest.fileIdentifyingUrlPathSegment}` : '';
+  if (widest && widest.fileIdentifyingUrlPathSegment) {
+    return `${vector.rootUrl || ''}${widest.fileIdentifyingUrlPathSegment}`;
+  }
+  if (typeof vector.rootUrl === 'string' && vector.rootUrl.startsWith('http')) {
+    return vector.rootUrl;
+  }
+  return '';
 }
 
 /**

@@ -11,6 +11,7 @@ import {
   updateHash,
   getScrollPosition,
   restoreScrollPosition,
+  setAvatarElement,
 } from '../../src/dashboard/dashboard.js';
 import { renderSettingsView } from '../../src/dashboard/settings-view.js';
 import { renderCampaignsView } from '../../src/dashboard/campaigns-view.js';
@@ -250,5 +251,26 @@ describe('Vanilla Dashboard — State Persistence & Instant Reactive Updates', (
 
     expect(reportedSub).toBe('paused');
     expect(lastSavedState.activeSubTab).toBe('paused');
+  });
+
+  it('setAvatarElement renders image with error fallback to initials', () => {
+    const el = document.createElement('div');
+    setAvatarElement(el, 'https://media.licdn.com/dms/image/v2/test/pic.jpg', 'JD', 'Jane Doe');
+    const img = el.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('https://media.licdn.com/dms/image/v2/test/pic.jpg');
+    expect(img.getAttribute('alt')).toBe('Jane Doe');
+
+    // On image loading error, fallback smoothly to text initials
+    img.dispatchEvent(new Event('error'));
+    expect(el.querySelector('img')).toBeNull();
+    expect(el.textContent).toBe('JD');
+  });
+
+  it('setAvatarElement renders text initials when avatarUrl is missing', () => {
+    const el = document.createElement('div');
+    setAvatarElement(el, '', 'SC', 'Sarah Connor');
+    expect(el.querySelector('img')).toBeNull();
+    expect(el.textContent).toBe('SC');
   });
 });

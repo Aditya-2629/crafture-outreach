@@ -278,6 +278,9 @@ describe('HomeView — Dynamic Profile & Disconnected Fallback Rendering', () =>
     expect(img).not.toBeNull();
     expect(img.getAttribute('src')).toBe('https://media.licdn.com/dms/image/v2/test/profile.jpg');
     expect(img.getAttribute('alt')).toBe('Sarah Connor');
+    expect(img.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(img.getAttribute('style')).toContain('object-fit:cover');
+    expect(img.getAttribute('style')).toContain('border-radius:50%');
 
     // Trigger image loading failure
     img.dispatchEvent(new Event('error'));

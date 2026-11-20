@@ -260,6 +260,9 @@ describe('Vanilla Dashboard — State Persistence & Instant Reactive Updates', (
     expect(img).not.toBeNull();
     expect(img.getAttribute('src')).toBe('https://media.licdn.com/dms/image/v2/test/pic.jpg');
     expect(img.getAttribute('alt')).toBe('Jane Doe');
+    expect(img.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(img.style.objectFit).toBe('cover');
+    expect(img.style.borderRadius).toBe('50%');
 
     // On image loading error, fallback smoothly to text initials
     img.dispatchEvent(new Event('error'));

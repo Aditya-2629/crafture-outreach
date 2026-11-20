@@ -774,7 +774,7 @@ export async function renderHomeView(container, ctx = {}) {
             <div class="avatar-center-wrapper">
               <div class="OutFox-alien-avatar" id="home-profile-avatar-wrap">
                 ${avatarUrl ? `
-                  <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(profileName)}" class="avatar-img-photo object-cover rounded-full" />
+                  <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(profileName)}" referrerpolicy="no-referrer" class="avatar-img-photo object-cover rounded-full" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;" />
                 ` : ''}
                 <span class="avatar-initials-txt">${avatarTxt}</span>
                 <span class="li-corner-badge">${ICONS.linkedin}</span>
@@ -833,6 +833,8 @@ export async function renderHomeView(container, ctx = {}) {
     if (homeAvatarImg) {
       homeAvatarImg.addEventListener('error', () => {
         homeAvatarImg.remove();
+        const initialsEl = container.querySelector('#home-profile-avatar-wrap .avatar-initials-txt');
+        if (initialsEl) initialsEl.textContent = avatarTxt;
       });
     }
 

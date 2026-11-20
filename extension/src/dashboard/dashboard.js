@@ -539,10 +539,12 @@ export function setAvatarElement(el, avatarUrl, initials, alt = '') {
   el.style.overflow = 'hidden';
   el.innerHTML = '';
 
-  if (avatarUrl && typeof avatarUrl === 'string' && avatarUrl.startsWith('http')) {
+  if (avatarUrl && typeof avatarUrl === 'string' && (avatarUrl.startsWith('http') || avatarUrl.startsWith('data:'))) {
     const img = document.createElement('img');
     img.src = avatarUrl;
     img.alt = alt || initials || 'User Avatar';
+    img.referrerPolicy = 'no-referrer';
+    img.setAttribute('referrerpolicy', 'no-referrer');
     img.className = 'avatar-img-photo object-cover rounded-full';
     img.style.width = '100%';
     img.style.height = '100%';
@@ -574,8 +576,8 @@ export async function syncUserProfile() {
 
     const accountStatusEl = document.getElementById('sidebar-account-status');
     const topUser = document.getElementById('topbar-user-fullname') || document.querySelector('.user-pill span');
-    const miniAv = document.getElementById('topbar-user-avatar') || document.querySelector('.user-avatar-mini');
-    const sideAv = document.getElementById('sidebar-user-avatar') || document.querySelector('.profile-avatar');
+    const miniAvList = document.querySelectorAll('#topbar-user-avatar, .user-avatar-mini');
+    const sideAvList = document.querySelectorAll('#sidebar-user-avatar, .profile-avatar');
     const sideName = document.getElementById('sidebar-user-fullname') || document.querySelector('.profile-name');
 
     if (isConnected && profile) {
@@ -593,8 +595,8 @@ export async function syncUserProfile() {
       if (topUser) topUser.textContent = name;
       if (sideName) sideName.textContent = name;
 
-      setAvatarElement(miniAv, avatarUrl, initials, name);
-      setAvatarElement(sideAv, avatarUrl, initials, name);
+      miniAvList.forEach((el) => setAvatarElement(el, avatarUrl, initials, name));
+      sideAvList.forEach((el) => setAvatarElement(el, avatarUrl, initials, name));
 
       renderLinkedInStatusBanner(true);
       return true;
@@ -607,8 +609,8 @@ export async function syncUserProfile() {
       if (topUser) topUser.textContent = 'Guest';
       if (sideName) sideName.textContent = 'Guest';
 
-      setAvatarElement(miniAv, '', 'G', 'Guest');
-      setAvatarElement(sideAv, '', 'G', 'Guest');
+      miniAvList.forEach((el) => setAvatarElement(el, '', 'G', 'Guest'));
+      sideAvList.forEach((el) => setAvatarElement(el, '', 'G', 'Guest'));
 
       renderLinkedInStatusBanner(false);
       return false;

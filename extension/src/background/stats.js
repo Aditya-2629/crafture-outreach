@@ -4,11 +4,11 @@
  * and generates a 30-day activity timeline from local action logs.
  */
 
-import { allActions, allProfiles, get, K } from '../lib/storage.js';
+import { allActions, allProfiles, get, set, K } from '../lib/storage.js';
 import { getConfig } from '../lib/config.js';
 import { readCampaigns, readEnrollments, ensureCampaignAlarmWatchdog } from './campaigns.js';
 import { storedThreads } from './inbox.js';
-import { getNetworkStats, getProfileViewsCount, selfTest } from './voyager.js';
+import { getNetworkStats, getProfileViewsCount, selfTest, me } from './voyager.js';
 import { isWithinBusinessHours } from './quota.js';
 import { register } from './engine.js';
 import { ACTIONS } from '../lib/actions.js';
@@ -125,11 +125,65 @@ export async function getLiveDashboardStats() {
   // 4. Build 30-Day Activity History
   const activityTimeline = build30DayTimeline(actions);
 
-  let userName = 'aditya chaudhary';
+  // 5. LinkedIn Session Detection & Real Dynamic User Profile
+  let linkedinConnected = false;
+  let userProfile = null;
+
   try {
-    const self = await selfTest().catch(() => null);
-    if (self && self.publicId) userName = self.publicId;
-  } catch {}
+    let hasCookie = true;
+    if (typeof chrome !== 'undefined' && chrome?.cookies?.get) {
+      const liAtCookie = await chrome.cookies.get({ url: 'https://www.linkedin.com', name: 'li_at' }).catch(() => null);
+      hasCookie = !!(liAtCookie && liAtCookie.value);
+    }
+    if (hasCookie) {
+      const meRes = await me().catch(() => null);
+      if (meRes) {
+        const included = Array.isArray(meRes.included) ? meRes.included : [];
+        const mini = included.find((e) => String(e.entityUrn || '').includes('miniProfile') || String(e.$type || '').includes('MiniProfile')) || included[0] || {};
+        const firstName = (mini.firstName || '').trim();
+        const lastName = (mini.lastName || '').trim();
+        const fullName = [firstName, lastName].filter(Boolean).join(' ') || (mini.publicIdentifier || '').trim();
+        const publicId = (mini.publicIdentifier || '').trim();
+        const initials = [firstName, lastName].filter(Boolean).map((n) => n[0]).join('').toUpperCase() || (fullName ? fullName[0].toUpperCase() : 'U');
+
+        if (fullName || publicId) {
+          linkedinConnected = true;
+          userProfile = {
+            name: fullName || 'OutFox User',
+            fullName: fullName || 'OutFox User',
+            firstName: firstName || fullName || 'there',
+            lastName: lastName || '',
+            initials: initials || 'U',
+            publicId: publicId || '',
+            connections: networkStats.connectionsCount,
+            pending: networkStats.pendingCount,
+            views: profileViews,
+          };
+          await set('user_profile', userProfile).catch(() => {});
+        }
+      } else {
+        const self = await selfTest().catch(() => null);
+        if (self && self.loggedIn && self.publicId) {
+          linkedinConnected = true;
+          userProfile = {
+            name: self.publicId,
+            fullName: self.publicId,
+            firstName: self.publicId,
+            lastName: '',
+            initials: self.publicId.slice(0, 2).toUpperCase(),
+            publicId: self.publicId,
+            connections: networkStats.connectionsCount,
+            pending: networkStats.pendingCount,
+            views: profileViews,
+          };
+          await set('user_profile', userProfile).catch(() => {});
+        }
+      }
+    }
+  } catch {
+    linkedinConnected = false;
+    userProfile = null;
+  }
 
   // Cache networkStats in storage so dashboard never renders 0 on initial load
   if (networkStats && (networkStats.connectionsCount != null || networkStats.pendingCount != null)) {
@@ -143,12 +197,8 @@ export async function getLiveDashboardStats() {
   }
 
   return {
-    profile: {
-      name: userName,
-      connections: networkStats.connectionsCount,
-      pending: networkStats.pendingCount,
-      views: profileViews,
-    },
+    linkedinConnected,
+    profile: userProfile,
     prospectingStatus: {
       activeCampaignsCount: activeCampaigns.length,
       queuedActionsCount: queuedActions,

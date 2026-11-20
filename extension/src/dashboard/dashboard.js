@@ -480,35 +480,110 @@ export async function switchView(viewId, options = {}) {
 }
 
 /**
+ * Render or clear the "LinkedIn Not Logged In" banner
+ */
+function renderLinkedInStatusBanner(connected) {
+  const bannerContainer = document.getElementById('dashboard-not-logged-in-banner');
+  if (!bannerContainer) return;
+
+  if (connected) {
+    bannerContainer.innerHTML = '';
+    return;
+  }
+
+  // If already rendered, don't duplicate
+  if (bannerContainer.querySelector('.outfox-not-logged-in-banner')) return;
+
+  bannerContainer.innerHTML = `
+    <div class="outfox-not-logged-in-banner" id="not-logged-in-banner-card">
+      <div class="not-logged-in-banner-content">
+        <div class="not-logged-in-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div class="not-logged-in-text">
+          <strong>LinkedIn Not Connected</strong>
+          <p>LinkedIn is not logged in on this browser. Sign in to LinkedIn to sync your profile and run campaigns.</p>
+        </div>
+      </div>
+      <div class="not-logged-in-actions">
+        <button type="button" class="btn-open-linkedin-login" id="btn-banner-login">Open LinkedIn Login</button>
+        <button type="button" class="btn-check-again-login" id="btn-banner-check">Check Again</button>
+      </div>
+    </div>
+  `;
+
+  bannerContainer.querySelector('#btn-banner-login')?.addEventListener('click', () => {
+    window.open('https://www.linkedin.com/login', '_blank');
+  });
+
+  bannerContainer.querySelector('#btn-banner-check')?.addEventListener('click', async () => {
+    showToast('Checking LinkedIn connection...', 'info');
+    const isConn = await syncUserProfile();
+    if (isConn) {
+      showToast('LinkedIn connected successfully!', 'success');
+      if (currentViewId) {
+        switchView(currentViewId, currentViewContext?.subState ? { subState: currentViewContext.subState } : {});
+      }
+    } else {
+      showToast('LinkedIn is still not logged in. Please log in first.', 'warn');
+    }
+  });
+}
+
+/**
  * Synchronize actual logged-in user profile with topbar & sidebar UI
  */
-async function syncUserProfile() {
+export async function syncUserProfile() {
   try {
-    const stats = await call(ACTIONS.DASHBOARD_LIVE_STATS || 'dashboard.live_stats', {}).catch(() => ({}));
-    const profile = stats?.profile;
+    const [stats, status] = await Promise.all([
+      call(ACTIONS.DASHBOARD_LIVE_STATS || 'dashboard.live_stats', {}).catch(() => ({})),
+      call(ACTIONS.STATUS_GET, {}).catch(() => ({})),
+    ]);
+
+    const isConnected = stats?.linkedinConnected === true || (stats?.linkedinConnected !== false && Boolean(status?.loggedIn));
+    const profile = isConnected ? (stats?.profile || null) : null;
+
     const accountStatusEl = document.getElementById('sidebar-account-status');
-    if (profile && (profile.name || profile.connections != null)) {
+    const topUser = document.getElementById('topbar-user-fullname') || document.querySelector('.user-pill span');
+    const miniAv = document.getElementById('topbar-user-avatar') || document.querySelector('.user-avatar-mini');
+    const sideAv = document.getElementById('sidebar-user-avatar') || document.querySelector('.profile-avatar');
+    const sideName = document.getElementById('sidebar-user-fullname') || document.querySelector('.profile-name');
+
+    if (isConnected && profile) {
       if (accountStatusEl) {
         accountStatusEl.innerHTML = '<span class="status-dot-circle is-active"></span> LinkedIn Online';
         accountStatusEl.style.color = 'var(--success)';
       }
-      if (profile.name) {
-        const name = profile.name;
-        const initials = name.split(/[\s-_]+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
-        const topTitle = document.getElementById('greeting-title');
-        if (topTitle) topTitle.textContent = `Hello ${name.split(/[\s-_]+/)[0] || 'Member'}`;
-        const topUser = document.getElementById('topbar-user-fullname') || document.querySelector('.user-pill span');
-        if (topUser) topUser.textContent = name;
-        const miniAv = document.querySelector('.user-avatar-mini');
-        if (miniAv) miniAv.textContent = initials || 'LI';
-        const sideAv = document.querySelector('.profile-avatar');
-        if (sideAv) sideAv.textContent = initials || 'LI';
-        const sideName = document.querySelector('.profile-name');
-        if (sideName) sideName.textContent = name;
+
+      const name = profile.name || profile.fullName || 'OutFox User';
+      const initials = profile.initials || name.split(/[\s-_]+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase() || 'U';
+
+      const topTitle = document.getElementById('greeting-title');
+      if (topTitle) topTitle.textContent = `Hello ${profile.firstName || name.split(/[\s-_]+/)[0] || 'Member'}`;
+      if (topUser) topUser.textContent = name;
+      if (miniAv) miniAv.textContent = initials;
+      if (sideAv) sideAv.textContent = initials;
+      if (sideName) sideName.textContent = name;
+
+      renderLinkedInStatusBanner(true);
+      return true;
+    } else {
+      // Disconnected state
+      if (accountStatusEl) {
+        accountStatusEl.innerHTML = '<span class="status-dot-circle is-offline"></span> LinkedIn Not Logged In';
+        accountStatusEl.style.color = 'var(--warning)';
       }
+      if (topUser) topUser.textContent = 'Guest';
+      if (miniAv) miniAv.textContent = 'G';
+      if (sideAv) sideAv.textContent = 'G';
+      if (sideName) sideName.textContent = 'Guest';
+
+      renderLinkedInStatusBanner(false);
+      return false;
     }
   } catch (err) {
     console.warn('[Dashboard] Profile sync notice:', err);
+    return false;
   }
 }
 
@@ -586,21 +661,8 @@ async function initDashboard() {
     }
   });
 
-  // 3. Status sync (LinkedIn connection state)
-  try {
-    const status = await call(ACTIONS.STATUS_GET, {}).catch(() => ({}));
-    if (accountStatusEl) {
-      if (status.loggedIn) {
-        accountStatusEl.innerHTML = '<span class="status-dot-circle is-active"></span> LinkedIn Online';
-        accountStatusEl.style.color = 'var(--success)';
-      } else if (!accountStatusEl.textContent.includes('Online')) {
-        accountStatusEl.innerHTML = '<span class="status-dot-circle is-offline"></span> LinkedIn Offline';
-        accountStatusEl.style.color = 'var(--warning)';
-      }
-    }
-  } catch (e) {
-    console.warn('[Dashboard] status check warning', e);
-  }
+  // 3. Status sync (LinkedIn connection & user profile)
+  await syncUserProfile().catch(() => {});
 
   // 4. Initial view selection from URL hash or sessionStorage or default to 'home'
   const validViews = ['home', 'prospects', 'campaigns', 'queue', 'templates', 'inbox', 'research', 'settings'];

@@ -7,15 +7,15 @@ const ACTIVE_CANDIDATE_KEY = 'outfox_active_candidate';
 
 export const DEFAULT_CANDIDATES = [
   {
-    id: 'cand_aditya',
-    slug: 'aditya',
-    name: 'Aditya Chaudhary',
+    id: 'cand_default',
+    slug: 'default',
+    name: 'Default Persona',
     title: 'Data Analyst (OPT/STEM)',
     mode: 'reverse_recruiting', // Pitching Tech Hiring Managers
     targetRoles: ['Data Analyst', 'Business Analyst', 'BI Developer', 'Analytics Engineer'],
     targetLocations: ['Austin, Texas', 'Dallas, Texas', 'Remote USA'],
-    bookingLink: 'https://calendly.com/aditya-analyst/15min',
-    resumeUrl: 'https://drive.google.com/file/d/aditya-resume/view',
+    bookingLink: '',
+    resumeUrl: '',
     skills: ['SQL', 'Python', 'Tableau', 'Power BI', 'Snowflake'],
     pitchTemplate:
       'Hi {{firstName}}, noticed you lead analytics/engineering at {{company}}. I am a Data Analyst with experience in SQL, Python & Tableau open to roles in Austin/Remote. Would love to connect!',
@@ -26,15 +26,16 @@ export const DEFAULT_CANDIDATES = [
   {
     id: 'cand_agency',
     slug: 'agency',
-    name: 'Austin Career Placement',
-    title: 'Agency Lead Gen & OPT Sourcing',
+    name: 'Career Placement Partner',
+    title: 'Agency Lead Gen & Talent Sourcing',
     mode: 'sourcing', // Sourcing candidates looking for jobs
     targetRoles: ['Data Analyst', 'OPT', 'CPT', 'Looking for job', 'Open to work'],
     targetLocations: ['Austin, Texas', 'Texas', 'United States'],
-    bookingLink: 'https://calendly.com/outfox-career/consultation',
-    skills: ['Career Consulting', 'OPT/CPT Placement', 'Direct Hire'],
+    bookingLink: '',
+    resumeUrl: '',
+    skills: ['Career Consulting', 'Talent Placement', 'Direct Hire'],
     pitchTemplate:
-      'Hi {{firstName}}, saw your background in Data Analytics. We are actively placing Indian OPT/CPT analysts into direct tech client projects across Texas. Love to connect!',
+      'Hi {{firstName}}, saw your background in Data Analytics. We are actively placing talent into direct client projects across Texas. Love to connect!',
     followupTemplate:
       'Hey {{firstName}}, glad to connect! Are you currently exploring Data Analyst roles or open to new consulting projects in the US? Happy to share our open pipeline.',
     createdAt: Date.now(),
@@ -47,14 +48,42 @@ export async function getAllCandidates() {
     await set(CANDIDATES_KEY, DEFAULT_CANDIDATES);
     return DEFAULT_CANDIDATES;
   }
-  return list;
+  let changed = false;
+  const sanitized = list.map((c) => {
+    if (c.slug === 'aditya' || c.id === 'cand_aditya' || c.name === 'Aditya Chaudhary') {
+      changed = true;
+      return {
+        ...c,
+        id: 'cand_default',
+        slug: 'default',
+        name: c.name === 'Aditya Chaudhary' ? 'Default Persona' : c.name,
+        bookingLink: c.bookingLink?.includes('aditya') ? '' : (c.bookingLink || ''),
+        resumeUrl: c.resumeUrl?.includes('aditya') ? '' : (c.resumeUrl || ''),
+      };
+    }
+    return c;
+  });
+  if (changed) {
+    await set(CANDIDATES_KEY, sanitized).catch(() => {});
+  }
+  return sanitized;
 }
 
 export async function getActiveCandidate() {
-  const activeSlug = await get(ACTIVE_CANDIDATE_KEY, 'aditya');
+  let activeSlug = await get(ACTIVE_CANDIDATE_KEY, 'default');
+  if (activeSlug === 'aditya' || activeSlug === 'cand_aditya') activeSlug = 'default';
   const all = await getAllCandidates();
   const match = all.find((c) => c.slug === activeSlug || c.id === activeSlug);
-  return match || all[0] || DEFAULT_CANDIDATES[0];
+  const cand = match || all[0] || DEFAULT_CANDIDATES[0];
+  if (cand && (cand.id === 'cand_default' || cand.slug === 'default' || cand.name === 'Default Persona')) {
+    try {
+      const storedUser = await get('user_profile', null);
+      if (storedUser?.name && storedUser.name !== 'OutFox User') {
+        return { ...cand, name: storedUser.name };
+      }
+    } catch {}
+  }
+  return cand;
 }
 
 export async function setActiveCandidate(idOrSlug) {

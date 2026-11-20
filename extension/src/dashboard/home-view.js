@@ -403,14 +403,19 @@ export async function renderHomeView(container, ctx = {}) {
   const stats = statsRes || {};
   let storage = storageRes || {};
 
-  const profile = stats.profile || { name: 'Aditya Chaudhary' };
+  const profile = stats.profile || null;
   const quotas = stats.quotas || {};
   const isQuotaReached = (quotas.invite?.remaining === 0) || (quotas.invite?.usedToday >= (quotas.invite?.max || 25));
 
-  const rawName = (profile.name || 'aditya').trim();
-  const firstName = rawName.split(/[\s-_]+/)[0] || 'aditya';
-  const displayGreeting = firstName.toLowerCase();
-  const initials = rawName.split(/[\s-_]+/).map((n) => n[0]).slice(0, 2).join('').toUpperCase() || 'AC';
+  const isConnected = stats.linkedinConnected !== false && Boolean(profile && (profile.name || profile.firstName));
+  const rawName = (profile?.firstName || profile?.name || 'there').trim();
+  const firstName = rawName.split(/[\s-_]+/)[0] || 'there';
+  const displayGreeting = isConnected && firstName.toLowerCase() !== 'there' && firstName.toLowerCase() !== 'outfox'
+    ? (firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase())
+    : 'there';
+  const initials = isConnected
+    ? (profile?.initials || rawName.split(/[\s-_]+/).map((n) => n[0]).slice(0, 2).join('').toUpperCase() || 'U')
+    : 'G';
 
   const savedHomeState = ctx?.getSavedState?.() || {};
   if (savedHomeState.selectedDays) selectedDays = savedHomeState.selectedDays;
@@ -539,7 +544,7 @@ export async function renderHomeView(container, ctx = {}) {
           ? Number(stats.profile.pending).toLocaleString()
           : '—');
 
-    const cleanGreeting = firstName ? firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase() : 'Aditya';
+    const cleanGreeting = displayGreeting;
 
     container.innerHTML = `
       <div class="OutFox-home-grid">

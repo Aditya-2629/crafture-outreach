@@ -39,21 +39,21 @@ export const CAMPAIGN_TEMPLATES = [
       {
         type: 'email',
         subject: 'Quick question regarding {{company|your company}}',
-        body: "Hi {{firstName|there}},\n\nSaw what you're building at {{company|your team}} and wanted to reach out.\n\n{{ai_opener|We help teams streamline outreach and automate pipeline growth.}}\n\nDo you have 5 minutes this week for a brief chat?\n\nBest,\nAditya",
+        body: "Hi {{firstName|there}},\n\nSaw what you're building at {{company|your team}} and wanted to reach out.\n\n{{ai_opener|We help teams streamline outreach and automate pipeline growth.}}\n\nDo you have 5 minutes this week for a brief chat?\n\nBest,\n{{senderName}}",
         replyInThread: false,
       },
       { type: 'wait', waitMs: 259200000, delayLabel: 'Wait 3 days' },
       {
         type: 'email',
         subject: 'Re: Quick question regarding {{company|your company}}',
-        body: "Hi {{firstName|there}},\n\nJust bumping this in case it got buried under your inbox. Would love to share how similar teams are handling outreach this quarter.\n\nLet me know if Tuesday or Thursday works better for you.\n\nBest,\nAditya",
+        body: "Hi {{firstName|there}},\n\nJust bumping this in case it got buried under your inbox. Would love to share how similar teams are handling outreach this quarter.\n\nLet me know if Tuesday or Thursday works better for you.\n\nBest,\n{{senderName}}",
         replyInThread: true,
       },
       { type: 'wait', waitMs: 345600000, delayLabel: 'Wait 4 days' },
       {
         type: 'email',
         subject: 'Re: Quick question regarding {{company|your company}}',
-        body: "Hi {{firstName|there}},\n\nI realize you're super busy, so I'll stop following up here. If timing ever aligns down the road, feel free to reach back out.\n\nWishing you and {{company|your team}} all the best!\n\nBest,\nAditya",
+        body: "Hi {{firstName|there}},\n\nI realize you're super busy, so I'll stop following up here. If timing ever aligns down the road, feel free to reach back out.\n\nWishing you and {{company|your team}} all the best!\n\nBest,\n{{senderName}}",
         replyInThread: true,
       },
       { type: 'crm_sync' },
@@ -72,14 +72,14 @@ export const CAMPAIGN_TEMPLATES = [
       {
         type: 'email',
         subject: 'Exciting role opportunity for {{firstName|there}} at high-growth venture',
-        body: "Hi {{firstName|there}},\n\nI came across your profile and was impressed by your experience in {{headline|your domain}}.\n\nWe are currently sourcing key talent and thought your background would be an incredible fit for an upcoming leadership role.\n\nWould you be open to an exploratory 10-minute conversation this week?\n\nBest regards,\nAditya",
+        body: "Hi {{firstName|there}},\n\nI came across your profile and was impressed by your experience in {{headline|your domain}}.\n\nWe are currently sourcing key talent and thought your background would be an incredible fit for an upcoming leadership role.\n\nWould you be open to an exploratory 10-minute conversation this week?\n\nBest regards,\n{{senderName}}",
         replyInThread: false,
       },
       { type: 'wait', waitMs: 259200000, delayLabel: 'Wait 3 days' },
       {
         type: 'email',
         subject: 'Re: Exciting role opportunity for {{firstName|there}}',
-        body: "Hi {{firstName|there}},\n\nWanted to make sure you saw my note above. We're moving quickly to final rounds and I'd love to get your thoughts before closing the candidate pipeline.\n\nLet me know if you're available for a quick chat!\n\nBest,\nAditya",
+        body: "Hi {{firstName|there}},\n\nWanted to make sure you saw my note above. We're moving quickly to final rounds and I'd love to get your thoughts before closing the candidate pipeline.\n\nLet me know if you're available for a quick chat!\n\nBest,\n{{senderName}}",
         replyInThread: true,
       },
       { type: 'crm_sync' },
@@ -98,7 +98,7 @@ export const CAMPAIGN_TEMPLATES = [
       {
         type: 'email',
         subject: 'Hi {{firstName|there}}',
-        body: "Hi {{firstName|there}},\n\n{{ai_opener|Wanted to connect regarding {{company|your company}}.}}\n\nBest,\nAditya",
+        body: "Hi {{firstName|there}},\n\n{{ai_opener|Wanted to connect regarding {{company|your company}}.}}\n\nBest,\n{{senderName}}",
         replyInThread: false,
       },
     ],
@@ -207,7 +207,7 @@ export const CAMPAIGN_TEMPLATES = [
             {
               type: 'email',
               subject: 'Quick question for {{firstName|there}} regarding {{company|your team}}',
-              body: 'Hi {{firstName|there}},\n\nI sent you a quick connection request on LinkedIn earlier. Wanted to follow up directly to see if you had 5 minutes this week to chat?\n\nBest,\nAditya',
+              body: 'Hi {{firstName|there}},\n\nI sent you a quick connection request on LinkedIn earlier. Wanted to follow up directly to see if you had 5 minutes this week to chat?\n\nBest,\n{{senderName}}',
             },
             { type: 'crm_sync' },
           ],
@@ -251,7 +251,7 @@ export const INSERT_STEP_OPTIONS = [
   { type: 'endorse', title: 'Endorse Skill', sub: 'Auto-Warmup', icon: ICONS.sparkles, delayMs: 0 },
   { type: 'invite', title: 'Send Invite', sub: 'Connection Request', icon: ICONS.invitation, delayMs: 86400000, note: 'Hi {{firstName|there}} — would love to connect!' },
   { type: 'message', title: 'LinkedIn Message', sub: 'Direct Message', icon: ICONS.message, delayMs: 172800000, body: 'Thanks for connecting, {{firstName|there}}! What is taking up most of your focus this quarter?' },
-  { type: 'email', title: 'Cold Email', sub: 'Direct Email', icon: ICONS.email, delayMs: 172800000, subject: 'Quick question for {{firstName|there}}', body: 'Hi {{firstName|there}},\n\nWanted to follow up directly to see if you had 5 minutes this week to chat?\n\nBest,\nAditya' },
+  { type: 'email', title: 'Cold Email', sub: 'Direct Email', icon: ICONS.email, delayMs: 172800000, subject: 'Quick question for {{firstName|there}}', body: 'Hi {{firstName|there}},\n\nWanted to follow up directly to see if you had 5 minutes this week to chat?\n\nBest,\n{{senderName}}' },
   { type: 'wait', title: 'Delay Timer', sub: 'Wait Period', icon: ICONS.clock, delayMs: 86400000 },
 ];
 
@@ -267,20 +267,20 @@ export function templateToPipeline(tpl) {
   if (!tpl || tpl.id === 'custom') return [];
   if (tpl.id === 'gmail_drip') {
     return [
-      { id: 'p_1', type: 'email', title: 'Cold Intro Email', sub: 'Step 1', icon: ICONS.email, delayMs: 0, subject: 'Quick question regarding {{company|your company}}', body: "Hi {{firstName|there}},\n\nSaw what you're building at {{company|your team}} and wanted to reach out.\n\n{{ai_opener|We help teams streamline outreach and automate pipeline growth.}}\n\nDo you have 5 minutes this week for a brief chat?\n\nBest,\nAditya", replyInThread: false },
-      { id: 'p_2', type: 'email', title: 'Follow-up Email', sub: 'Threaded Follow-up', icon: ICONS.email, delayMs: 259200000, subject: 'Re: Quick question regarding {{company|your company}}', body: "Hi {{firstName|there}},\n\nJust bumping this in case it got buried under your inbox. Would love to share how similar teams are handling outreach this quarter.\n\nLet me know if Tuesday or Thursday works better for you.\n\nBest,\nAditya", replyInThread: true },
-      { id: 'p_3', type: 'email', title: 'Break-up Email', sub: 'Final Check-in', icon: ICONS.email, delayMs: 345600000, subject: 'Re: Quick question regarding {{company|your company}}', body: "Hi {{firstName|there}},\n\nI realize you're super busy, so I'll stop following up here. If timing ever aligns down the road, feel free to reach back out.\n\nWishing you and {{company|your team}} all the best!\n\nBest,\nAditya", replyInThread: true },
+      { id: 'p_1', type: 'email', title: 'Cold Intro Email', sub: 'Step 1', icon: ICONS.email, delayMs: 0, subject: 'Quick question regarding {{company|your company}}', body: "Hi {{firstName|there}},\n\nSaw what you're building at {{company|your team}} and wanted to reach out.\n\n{{ai_opener|We help teams streamline outreach and automate pipeline growth.}}\n\nDo you have 5 minutes this week for a brief chat?\n\nBest,\n{{senderName}}", replyInThread: false },
+      { id: 'p_2', type: 'email', title: 'Follow-up Email', sub: 'Threaded Follow-up', icon: ICONS.email, delayMs: 259200000, subject: 'Re: Quick question regarding {{company|your company}}', body: "Hi {{firstName|there}},\n\nJust bumping this in case it got buried under your inbox. Would love to share how similar teams are handling outreach this quarter.\n\nLet me know if Tuesday or Thursday works better for you.\n\nBest,\n{{senderName}}", replyInThread: true },
+      { id: 'p_3', type: 'email', title: 'Break-up Email', sub: 'Final Check-in', icon: ICONS.email, delayMs: 345600000, subject: 'Re: Quick question regarding {{company|your company}}', body: "Hi {{firstName|there}},\n\nI realize you're super busy, so I'll stop following up here. If timing ever aligns down the road, feel free to reach back out.\n\nWishing you and {{company|your team}} all the best!\n\nBest,\n{{senderName}}", replyInThread: true },
     ];
   }
   if (tpl.id === 'gmail_recruiter') {
     return [
-      { id: 'p_1', type: 'email', title: 'Role Opportunity Pitch', sub: 'Step 1', icon: ICONS.email, delayMs: 0, subject: 'Exciting role opportunity for {{firstName|there}} at high-growth venture', body: "Hi {{firstName|there}},\n\nI came across your profile and was impressed by your experience in {{headline|your domain}}.\n\nWe are currently sourcing key talent and thought your background would be an incredible fit for an upcoming leadership role.\n\nWould you be open to an exploratory 10-minute conversation this week?\n\nBest regards,\nAditya", replyInThread: false },
-      { id: 'p_2', type: 'email', title: 'Role Follow-up', sub: 'Threaded Follow-up', icon: ICONS.email, delayMs: 259200000, subject: 'Re: Exciting role opportunity for {{firstName|there}}', body: "Hi {{firstName|there}},\n\nWanted to make sure you saw my note above. We're moving quickly to final rounds and I'd love to get your thoughts before closing the candidate pipeline.\n\nLet me know if you're available for a quick chat!\n\nBest,\nAditya", replyInThread: true },
+      { id: 'p_1', type: 'email', title: 'Role Opportunity Pitch', sub: 'Step 1', icon: ICONS.email, delayMs: 0, subject: 'Exciting role opportunity for {{firstName|there}} at high-growth venture', body: "Hi {{firstName|there}},\n\nI came across your profile and was impressed by your experience in {{headline|your domain}}.\n\nWe are currently sourcing key talent and thought your background would be an incredible fit for an upcoming leadership role.\n\nWould you be open to an exploratory 10-minute conversation this week?\n\nBest regards,\n{{senderName}}", replyInThread: false },
+      { id: 'p_2', type: 'email', title: 'Role Follow-up', sub: 'Threaded Follow-up', icon: ICONS.email, delayMs: 259200000, subject: 'Re: Exciting role opportunity for {{firstName|there}}', body: "Hi {{firstName|there}},\n\nWanted to make sure you saw my note above. We're moving quickly to final rounds and I'd love to get your thoughts before closing the candidate pipeline.\n\nLet me know if you're available for a quick chat!\n\nBest,\n{{senderName}}", replyInThread: true },
     ];
   }
   if (tpl.id === 'gmail_blank') {
     return [
-      { id: 'p_1', type: 'email', title: 'Cold Email', sub: 'Step 1', icon: ICONS.email, delayMs: 0, subject: 'Hi {{firstName|there}}', body: "Hi {{firstName|there}},\n\n{{ai_opener|Wanted to connect regarding {{company|your company}}.}}\n\nBest,\nAditya", replyInThread: false },
+      { id: 'p_1', type: 'email', title: 'Cold Email', sub: 'Step 1', icon: ICONS.email, delayMs: 0, subject: 'Hi {{firstName|there}}', body: "Hi {{firstName|there}},\n\n{{ai_opener|Wanted to connect regarding {{company|your company}}.}}\n\nBest,\n{{senderName}}", replyInThread: false },
     ];
   }
   if (tpl.id === 'social_warmup') {
@@ -310,7 +310,7 @@ export function templateToPipeline(tpl) {
       { id: 'p_1', type: 'view', title: 'View Profile', sub: 'Warm Touch', icon: ICONS.visit, delayMs: 0 },
       { id: 'p_2', type: 'invite', title: 'Invitation', sub: 'Custom Note', icon: ICONS.invitation, delayMs: 86400000, note: 'Hi {{firstName|there}} — connecting here after seeing your work at {{company|your team}}.' },
       { id: 'p_3', type: 'message', title: 'LinkedIn Message', sub: 'If Accepted', icon: ICONS.message, delayMs: 172800000, body: 'Great to connect with you, {{firstName|there}}!' },
-      { id: 'p_4', type: 'email', title: 'Cold Email', sub: 'If Not Accepted', icon: ICONS.email, delayMs: 172800000, subject: 'Quick question for {{firstName|there}} regarding {{company|your team}}', body: 'Hi {{firstName|there}},\n\nI sent you a quick connection request on LinkedIn earlier. Wanted to follow up directly to see if you had 5 minutes this week to chat?\n\nBest,\nAditya' },
+      { id: 'p_4', type: 'email', title: 'Cold Email', sub: 'If Not Accepted', icon: ICONS.email, delayMs: 172800000, subject: 'Quick question for {{firstName|there}} regarding {{company|your team}}', body: 'Hi {{firstName|there}},\n\nI sent you a quick connection request on LinkedIn earlier. Wanted to follow up directly to see if you had 5 minutes this week to chat?\n\nBest,\n{{senderName}}' },
     ];
   }
   if (tpl.id === 'founder') {
@@ -533,7 +533,7 @@ export function pipelineStepsToContract(pipelineSteps = [], customNote = '', use
       type: 'email',
       id: emailStep.id,
       subject: emailStep.subject || 'Quick question for {{firstName|there}} regarding {{company|your team}}',
-      body: emailStep.body || 'Hi {{firstName|there}},\n\nI sent you a quick connection request on LinkedIn earlier. Wanted to follow up directly to see if you had 5 minutes this week to chat?\n\nBest,\nAditya',
+      body: emailStep.body || 'Hi {{firstName|there}},\n\nI sent you a quick connection request on LinkedIn earlier. Wanted to follow up directly to see if you had 5 minutes this week to chat?\n\nBest,\n{{senderName}}',
       replyInThread: emailStep.replyInThread !== false,
       useAi: emailStep.useAi ?? useAi,
     };
@@ -1783,9 +1783,9 @@ export async function renderCampaignsView(container, ctx = {}) {
       { id: 'p_msg_3', name: 'Casual Coffee Chat', content: 'Hi {{firstName|there}}, thanks for accepting my connection request. Would you be open to a quick 10-minute chat sometime next week?' },
     ],
     email: [
-      { id: 'p_eml_1', name: 'Quick Idea for {{company}}', subject: 'Quick question for {{firstName|there}} regarding {{company|your company}}', content: 'Hi {{firstName|there}},\n\nSaw what you\'re building at {{company|your team}} and wanted to reach out.\n\nDo you have 5 minutes this week for a brief chat?\n\nBest,\nAditya' },
-      { id: 'p_eml_2', name: 'Executive Follow-up', subject: 'Re: Quick question regarding {{company|your company}}', content: 'Hi {{firstName|there}},\n\nWanted to follow up on my previous note. Would love to share how similar teams are solving this.\n\nLet me know if Tuesday or Thursday works best for you.\n\nBest,\nAditya' },
-      { id: 'p_eml_3', name: 'Candidate / Recruiter Pitch', subject: 'Exciting leadership opportunity for {{firstName|there}}', content: 'Hi {{firstName|there}},\n\nCame across your profile and was thoroughly impressed by your track record in {{headline|your field}}.\n\nWould you be open to an exploratory 10-minute call this week?\n\nBest regards,\nAditya' },
+      { id: 'p_eml_1', name: 'Quick Idea for {{company}}', subject: 'Quick question for {{firstName|there}} regarding {{company|your company}}', content: 'Hi {{firstName|there}},\n\nSaw what you\'re building at {{company|your team}} and wanted to reach out.\n\nDo you have 5 minutes this week for a brief chat?\n\nBest,\n{{senderName}}' },
+      { id: 'p_eml_2', name: 'Executive Follow-up', subject: 'Re: Quick question regarding {{company|your company}}', content: 'Hi {{firstName|there}},\n\nWanted to follow up on my previous note. Would love to share how similar teams are solving this.\n\nLet me know if Tuesday or Thursday works best for you.\n\nBest,\n{{senderName}}' },
+      { id: 'p_eml_3', name: 'Candidate / Recruiter Pitch', subject: 'Exciting leadership opportunity for {{firstName|there}}', content: 'Hi {{firstName|there}},\n\nCame across your profile and was thoroughly impressed by your track record in {{headline|your field}}.\n\nWould you be open to an exploratory 10-minute call this week?\n\nBest regards,\n{{senderName}}' },
     ],
   };
 

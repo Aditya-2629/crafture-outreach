@@ -475,7 +475,7 @@ export async function testTelegram({ botToken, chatId }) {
   const testMsg =
     `🦊 *OutFox Mobile AI Copilot Connected!*\n\n` +
     `Bot: *${me.first_name || 'OutFox'}* (@${me.username || 'bot'})\n` +
-    `Active Candidate: *${activeCand?.name || 'Default'}* (\`${activeCand?.slug || 'aditya'}\`)\n` +
+    `Active Candidate: *${activeCand?.name || 'Default'}* (\`${activeCand?.slug || 'default'}\`)\n` +
     `Mode: *${activeCand?.mode === 'reverse_recruiting' ? 'Reverse Recruiting (Job Pitch)' : 'Agency Sourcing (Placements)'}*\n` +
     `Booking Link: *${activeCand?.bookingLink || 'https://calendly.com'}*\n` +
     `Latency: *${Date.now() - start}ms*\n\n` +
@@ -765,11 +765,11 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'switch_candidate_persona',
-      description: 'Switch active candidate persona workspace (e.g. "aditya" or "agency") to update targeting, pitch templates, and booking links.',
+      description: 'Switch active candidate persona workspace (e.g. "default" or "agency") to update targeting, pitch templates, and booking links.',
       parameters: {
         type: 'object',
         properties: {
-          slugOrName: { type: 'string', description: 'Name or slug of candidate to switch to, e.g. "aditya" or "agency"' },
+          slugOrName: { type: 'string', description: 'Name or slug of candidate to switch to, e.g. "default" or "agency"' },
         },
         required: ['slugOrName'],
       },
@@ -2095,7 +2095,7 @@ async function renderDailyStats(botToken, chatId) {
 
   const pulseMsg =
     `📊 *OUTFOX DAILY PULSE SCORECARD*\n\n` +
-    `👤 *Active Candidate:* *${activeCand?.name || 'Default'}* (\`${activeCand?.slug || 'aditya'}\`)\n` +
+    `👤 *Active Candidate:* *${activeCand?.name || 'Default'}* (\`${activeCand?.slug || 'default'}\`)\n` +
     `⚙️ *Mode:* ${activeCand?.mode === 'reverse_recruiting' ? 'Reverse Recruiting' : 'Agency Sourcing'}\n\n` +
     `⚡ *Campaigns:*\n` +
     `• Active: *${activeCount}* | Paused: *${pausedCount}* | Total: *${allCamp.length}*\n\n` +
@@ -2250,7 +2250,7 @@ async function handleUserCommand(botToken, chatId, text) {
     const activeCand = await getActiveCandidate().catch(() => null);
     const welcome =
       `🦊 *OutFox Mobile AI Copilot Ready!*\n\n` +
-      `Active Persona: *${activeCand?.name || 'Aditya'}* (\`${activeCand?.slug || 'aditya'}\`)\n\n` +
+      `Active Persona: *${activeCand?.name || 'Default'}* (\`${activeCand?.slug || 'default'}\`)\n\n` +
       `📌 *Conversation Memory:*\n` +
       `• \`/clear\` or \`/reset\` — Wipe memory buffer & start fresh\n\n` +
       `📌 *Campaign Blueprints & Editing:*\n` +
@@ -2258,7 +2258,7 @@ async function handleUserCommand(botToken, chatId, text) {
       `• _"Change step 3 follow up to: Hey {{firstName}}..."_\n` +
       `• _"Change invite note to: Hi {{firstName}}..."_\n\n` +
       `📌 *Candidate Workspace Switcher:*\n` +
-      `• \`/switch aditya\` or \`/switch agency\`\n` +
+      `• \`/switch default\` or \`/switch agency\`\n` +
       `• \`/candidates\` — List all personas & 1-tap switch\n\n` +
       `📌 *Email Waterfall Enrichment:*\n` +
       `• \`/enrich <publicId>\` — Discover email via Apollo & Hunter\n\n` +

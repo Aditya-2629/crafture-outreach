@@ -54,10 +54,13 @@ async function refreshPopup() {
         statusBadge.style.background = 'rgba(0, 186, 136, 0.12)';
         statusBadge.style.borderColor = 'rgba(0, 186, 136, 0.2)';
       } else {
-        statusBadge.innerHTML = '<span class="status-dot is-pending"></span> Connect LinkedIn';
+        statusBadge.innerHTML = '<span class="status-dot is-pending"></span> LinkedIn Not Logged In';
         statusBadge.style.color = '#F4B740';
         statusBadge.style.background = 'rgba(244, 183, 64, 0.15)';
         statusBadge.style.borderColor = 'rgba(244, 183, 64, 0.25)';
+        statusBadge.style.cursor = 'pointer';
+        statusBadge.title = 'Open LinkedIn Login';
+        statusBadge.onclick = () => window.open('https://www.linkedin.com/login', '_blank');
       }
     }
 

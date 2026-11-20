@@ -443,6 +443,7 @@ export async function renderSettingsView(container, ctx = {}) {
   let activeEditingSig = null;
   let aiModels = [];
   let importHistory = [];
+  let activeProfileName = '';
 
   async function refreshSettingsData() {
     try {
@@ -458,6 +459,8 @@ export async function renderSettingsView(container, ctx = {}) {
       storageHealth = sHealth || { isIdbActive: false, profileCount: 0 };
       statusData = statRes || {};
       autoCleanState = autoCleanRes || storage.outfox_withdraw_cleanup_state || { active: false, totalWithdrawnToday: 0 };
+
+      activeProfileName = storage.user_profile?.name || storage.user_profile?.fullName || '';
 
       workingDays = config.workingDays || defaultDays;
       startMinutes = Number.isInteger(config.startMinutes) ? config.startMinutes : 0;
@@ -484,7 +487,7 @@ export async function renderSettingsView(container, ctx = {}) {
           id: 'acc_gmail_primary',
           provider: 'google',
           email: mailbox.email,
-          senderName: config.senderName || 'Aditya Chaudhary',
+          senderName: config.senderName || activeProfileName || '',
           status: 'active',
           connectedAt: Date.now(),
         });
@@ -988,7 +991,7 @@ export async function renderSettingsView(container, ctx = {}) {
                             </div>
                           </td>
                           <td class="email-addr-txt">${acc.email}</td>
-                          <td>${acc.senderName || 'Aditya Chaudhary'}</td>
+                          <td>${acc.senderName || config.senderName || activeProfileName || ''}</td>
                           <td><span class="badge-status-running"><span class="live-dot-circle"></span> Connected</span></td>
                           <td>
                             <button type="button" class="btn-disconnect-acc" data-id="${acc.id}" title="Disconnect">${ICONS.x}</button>
@@ -1731,6 +1734,7 @@ export async function renderSettingsView(container, ctx = {}) {
 
     container.querySelector('#btn-open-connect-modal')?.addEventListener('click', () => {
       openConnectEmailModal({
+        defaultSenderName: config.senderName || activeProfileName || '',
         onSuccess: async (newAccount) => {
           emailAccounts.push(newAccount);
           await chrome.storage.local.set({ emailAccounts });
@@ -1757,7 +1761,8 @@ export async function renderSettingsView(container, ctx = {}) {
     });
 
     const startNewSig = () => {
-      activeEditingSig = { id: `sig_${Date.now()}`, name: 'My Signature', content: 'Best regards,\nAditya Chaudhary' };
+      const sigSignoff = config.senderName || activeProfileName ? `Best regards,\n${config.senderName || activeProfileName}` : 'Best regards,\n{{senderName}}';
+      activeEditingSig = { id: `sig_${Date.now()}`, name: 'My Signature', content: sigSignoff };
       paint();
     };
 
@@ -2285,7 +2290,7 @@ export function openAiEngineRouterModal({ aiModels = [], onSave }) {
 /**
  * Connect Email Modal (Google OAuth, Outlook, SMTP)
  */
-function openConnectEmailModal({ onSuccess }) {
+function openConnectEmailModal({ onSuccess, defaultSenderName = '' }) {
   const existing = document.getElementById('modal-connect-email-backdrop');
   if (existing) existing.remove();
 
@@ -2357,7 +2362,7 @@ function openConnectEmailModal({ onSuccess }) {
         id: `acc_google_${Date.now()}`,
         provider: 'google',
         email: res.email || 'connected-user@gmail.com',
-        senderName: 'Aditya Chaudhary',
+        senderName: defaultSenderName || '',
         connectedAt: Date.now(),
       });
     } catch (e) {
@@ -2382,7 +2387,7 @@ function openConnectEmailModal({ onSuccess }) {
         id: `acc_outlook_${Date.now()}`,
         provider: 'outlook',
         email: email.trim(),
-        senderName: 'Aditya Chaudhary',
+        senderName: defaultSenderName || '',
         connectedAt: Date.now(),
       });
     }
@@ -2404,7 +2409,7 @@ function openConnectEmailModal({ onSuccess }) {
       id: `acc_smtp_${Date.now()}`,
       provider: 'smtp',
       email,
-      senderName: 'Aditya Chaudhary',
+      senderName: defaultSenderName || '',
       connectedAt: Date.now(),
     });
   });

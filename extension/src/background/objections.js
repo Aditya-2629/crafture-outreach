@@ -329,7 +329,7 @@ ${objections
   .join('\n\n')}
 
 CANDIDATE CONTEXT:
-• Name: "${activeCand?.name || 'Aditya Chaudhary'}" (${activeCand?.title || 'Data Analyst'})
+• Name: "${activeCand?.name || 'Default Persona'}" (${activeCand?.title || 'Data Analyst'})
 • Resume URL: "${resumeLink}"
 • Booking Calendar Link: "${bookingLink}"
 

@@ -175,6 +175,55 @@ describe('selfTest', () => {
     chrome.__mock.cookies.clear();
     expect(await v.selfTest()).toEqual({ loggedIn: false, selfUrn: '' });
   });
+
+  it('extracts firstName, lastName, fullName, and publicId from me()', async () => {
+    const out = await v.selfTest();
+    expect(out.firstName).toBe('Sam');
+    expect(out.lastName).toBe('Seller');
+    expect(out.fullName).toBe('Sam Seller');
+    expect(out.publicId).toBe('samseller');
+  });
+
+  it('extracts avatarUrl from nested VectorImage artifacts prioritizing 200px', () => {
+    const mini = {
+      picture: {
+        'com.linkedin.common.VectorImage': {
+          rootUrl: 'https://media.licdn.com/dms/image/v2/test/',
+          artifacts: [
+            { width: 100, fileIdentifyingUrlPathSegment: '100.jpg' },
+            { width: 400, fileIdentifyingUrlPathSegment: '400.jpg' },
+            { width: 200, fileIdentifyingUrlPathSegment: '200.jpg' },
+          ],
+        },
+      },
+    };
+    const url = v.extractAvatarFromMini(mini);
+    expect(url).toBe('https://media.licdn.com/dms/image/v2/test/200.jpg');
+  });
+
+  it('extracts avatarUrl from displayImageReference vectorImage selecting largest if 200px not present', () => {
+    const mini = {
+      profilePicture: {
+        displayImageReference: {
+          vectorImage: {
+            rootUrl: 'https://media.licdn.com/dms/image/v2/test/',
+            artifacts: [
+              { width: 100, fileIdentifyingUrlPathSegment: '100.jpg' },
+              { width: 500, fileIdentifyingUrlPathSegment: '500.jpg' },
+            ],
+          },
+        },
+      },
+    };
+    const url = v.extractAvatarFromMini(mini);
+    expect(url).toBe('https://media.licdn.com/dms/image/v2/test/500.jpg');
+  });
+
+  it('handles string avatarUrl or pictureUrl directly', () => {
+    expect(v.extractAvatarFromMini({ avatarUrl: 'https://example.com/avatar.png' })).toBe('https://example.com/avatar.png');
+    expect(v.extractAvatarFromMini({ pictureUrl: 'https://example.com/pic.png' })).toBe('https://example.com/pic.png');
+    expect(v.extractAvatarFromMini({ picture: 'https://example.com/direct.png' })).toBe('https://example.com/direct.png');
+  });
 });
 
 /* ================================================================== */

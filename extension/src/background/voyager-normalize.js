@@ -77,19 +77,24 @@ export function fsdProfileUrnIn(urn) {
 export function vectorImageUrl(image) {
   if (!image) return '';
   const vector =
+    image['com.linkedin.common.VectorImage'] ||
     image.vectorImage ||
-    (image.displayImageReference && image.displayImageReference.vectorImage) ||
+    (image.displayImageReference && (image.displayImageReference['com.linkedin.common.VectorImage'] || image.displayImageReference.vectorImage)) ||
     image.displayImageReference ||
     image;
-  const artifacts = Array.isArray(vector.artifacts) ? vector.artifacts : [];
+  const artifacts = Array.isArray(vector?.artifacts) ? vector.artifacts : [];
   const widest = artifacts.reduce(
     (best, a) => (a && a.fileIdentifyingUrlPathSegment && (!best || (a.width || 0) > (best.width || 0)) ? a : best),
     null,
   );
   if (widest && widest.fileIdentifyingUrlPathSegment) {
-    return `${vector.rootUrl || ''}${widest.fileIdentifyingUrlPathSegment}`;
+    const rootUrl = vector?.rootUrl || '';
+    const seg = widest.fileIdentifyingUrlPathSegment;
+    return rootUrl && seg
+      ? `${rootUrl.replace(/\/+$/, '')}/${seg.replace(/^\/+/, '')}`
+      : `${rootUrl}${seg}`;
   }
-  if (typeof vector.rootUrl === 'string' && vector.rootUrl.startsWith('http')) {
+  if (typeof vector?.rootUrl === 'string' && vector.rootUrl.startsWith('http')) {
     return vector.rootUrl;
   }
   return '';

@@ -57,6 +57,7 @@ import {
   sectionToExperience,
   sectionToSkills,
   threadIdFromUrn,
+  vectorImageUrl,
 } from './voyager-normalize.js';
 
 export * from './voyager-core.js';
@@ -354,7 +355,9 @@ export async function selfProfileUrn({ refresh = false } = {}) {
   const raw = await me();
   const included = (raw && raw.included) || [];
   const mini =
-    included.find((e) => String(e.entityUrn || '').includes('miniProfile')) || included[0] || {};
+    included.find((e) => (e && e.firstName) || String(e?.entityUrn || '').includes('miniProfile')) ||
+    included[0] ||
+    {};
   const urn = toFsdProfileUrn(
     mini.dashEntityUrn || mini.entityUrn || (raw && raw.data && raw.data['*miniProfile']) || '',
   );
@@ -373,25 +376,99 @@ export function forgetSelf() {
 }
 
 /**
+ * Extract avatar image URL from miniProfile / vectorImage structures.
+ *
+ * @param {object} mini
+ * @param {Array} [included]
+ * @returns {string}
+ */
+export function extractAvatarFromMini(mini, included = []) {
+  if (!mini) return '';
+  if (typeof mini.avatarUrl === 'string' && mini.avatarUrl.startsWith('http')) return mini.avatarUrl;
+  if (typeof mini.pictureUrl === 'string' && mini.pictureUrl.startsWith('http')) return mini.pictureUrl;
+  if (typeof mini.picture === 'string' && mini.picture.startsWith('http')) return mini.picture;
+
+  const vec =
+    mini.picture?.['com.linkedin.common.VectorImage'] ||
+    mini.picture?.vectorImage ||
+    mini.picture ||
+    mini.profilePicture?.displayImageReference?.vectorImage ||
+    mini.profilePicture?.displayImageReference?.['com.linkedin.common.VectorImage'] ||
+    mini.profilePicture?.['com.linkedin.common.VectorImage'] ||
+    mini.profilePicture?.vectorImage ||
+    mini.profilePicture;
+
+  if (vec && typeof vec === 'object') {
+    const rootUrl = vec.rootUrl || '';
+    const artifacts = Array.isArray(vec.artifacts) ? vec.artifacts : [];
+    if (artifacts.length > 0) {
+      const sorted = [...artifacts].sort((a, b) => (b.width || 0) - (a.width || 0));
+      const target = sorted.find((a) => a && a.width === 200) || sorted[0];
+      const segment = target?.fileIdentifyingUrlPathSegment || '';
+      if (segment) {
+        return rootUrl && segment
+          ? `${rootUrl.replace(/\/+$/, '')}/${segment.replace(/^\/+/, '')}`
+          : `${rootUrl}${segment}`;
+      }
+    }
+    if (rootUrl && rootUrl.startsWith('http')) return rootUrl;
+  }
+
+  // Also check if vectorImageUrl helper can resolve it
+  const normalized = vectorImageUrl(mini.picture || mini.profilePicture);
+  if (normalized) return normalized;
+
+  // Search included if picture is a URN reference
+  const picUrn = mini.picture || mini.profilePicture || mini['*picture'] || mini['*profilePicture'];
+  if (picUrn && typeof picUrn === 'string' && Array.isArray(included)) {
+    const found = included.find((e) => e && (e.entityUrn === picUrn || e.$id === picUrn || e.dashEntityUrn === picUrn));
+    if (found) {
+      const fromFound = extractAvatarFromMini(found);
+      if (fromFound) return fromFound;
+    }
+  }
+
+  return '';
+}
+
+/**
  * Is this session usable, and who is it?
  *
  * One cheap unmetered call — `/me` is not a profile view — that a smoke test
  * or `lit endpoints check` can run before anything else.
  *
- * @returns {Promise<{loggedIn: boolean, selfUrn: string, clientVersion?: string}>}
+ * @returns {Promise<{loggedIn: boolean, selfUrn: string, publicId?: string, firstName?: string, lastName?: string, fullName?: string, avatarUrl?: string, clientVersion?: string}>}
  */
 export async function selfTest() {
   try {
     const raw = await me();
     const included = (raw && raw.included) || [];
     const mini =
-      included.find((e) => String(e.entityUrn || '').includes('miniProfile')) || included[0] || {};
-    const selfUrn = toFsdProfileUrn(mini.dashEntityUrn || mini.entityUrn || '');
+      included.find((e) => (e && e.firstName) || String(e?.entityUrn || '').includes('miniProfile')) ||
+      included[0] ||
+      {};
+    const selfUrn = toFsdProfileUrn(
+      mini.dashEntityUrn || mini.entityUrn || (raw && raw.data && raw.data['*miniProfile']) || '',
+    );
     if (selfUrn) selfUrnCache = selfUrn;
+    if (!selfUrn) {
+      return { loggedIn: false, selfUrn: '' };
+    }
+
+    const firstName = (mini.firstName || '').trim();
+    const lastName = (mini.lastName || '').trim();
+    const fullName = [firstName, lastName].filter(Boolean).join(' ');
+    const publicId = (mini.publicIdentifier || '').trim();
+    const avatarUrl = extractAvatarFromMini(mini, included);
+
     const out = {
-      loggedIn: !!selfUrn,
+      loggedIn: true,
       selfUrn,
-      publicId: mini.publicIdentifier || '',
+      publicId,
+      firstName,
+      lastName,
+      fullName,
+      avatarUrl,
     };
     // LinkedIn does not return its own client version on this endpoint; it is
     // reported only when a future response starts carrying one.

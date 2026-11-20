@@ -408,14 +408,16 @@ export async function renderHomeView(container, ctx = {}) {
   const isQuotaReached = (quotas.invite?.remaining === 0) || (quotas.invite?.usedToday >= (quotas.invite?.max || 25));
 
   const isConnected = stats.linkedinConnected !== false && Boolean(profile && (profile.name || profile.firstName));
-  const rawName = (profile?.firstName || profile?.name || 'there').trim();
-  const firstName = rawName.split(/[\s-_]+/)[0] || 'there';
-  const displayGreeting = isConnected && firstName.toLowerCase() !== 'there' && firstName.toLowerCase() !== 'outfox'
+  const rawName = (profile?.firstName || profile?.name || '').trim();
+  const firstName = rawName.split(/[\s-_]+/)[0] || '';
+  const cleanGreeting = isConnected && firstName && firstName.toLowerCase() !== 'there' && firstName.toLowerCase() !== 'outfox' && firstName.toLowerCase() !== 'user'
     ? (firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase())
-    : 'there';
-  const initials = isConnected
+    : '';
+  const greetingText = isConnected && cleanGreeting ? `Hello, ${cleanGreeting}` : 'Welcome';
+  const profileName = isConnected && (profile?.name || rawName) ? (profile.name || rawName) : 'Not Connected';
+  const avatarTxt = isConnected
     ? (profile?.initials || rawName.split(/[\s-_]+/).map((n) => n[0]).slice(0, 2).join('').toUpperCase() || 'U')
-    : 'G';
+    : '?';
 
   const savedHomeState = ctx?.getSavedState?.() || {};
   if (savedHomeState.selectedDays) selectedDays = savedHomeState.selectedDays;
@@ -533,24 +535,26 @@ export async function renderHomeView(container, ctx = {}) {
 
     // Account network metrics: read cached networkStats from storage immediately
     const cachedNet = storage.networkStats || null;
-    const connectionsDisplay = cachedNet?.connections != null
-      ? Number(cachedNet.connections).toLocaleString()
-      : (stats.profile?.connections != null
-          ? Number(stats.profile.connections).toLocaleString()
-          : '—');
-    const pendingDisplay = cachedNet?.pending != null
-      ? Number(cachedNet.pending).toLocaleString()
-      : (stats.profile?.pending != null
-          ? Number(stats.profile.pending).toLocaleString()
-          : '—');
-
-    const cleanGreeting = displayGreeting;
+    const connectionsDisplay = isConnected
+      ? (cachedNet?.connections != null
+          ? Number(cachedNet.connections).toLocaleString()
+          : (profile?.connections != null
+              ? Number(profile.connections).toLocaleString()
+              : '—'))
+      : '—';
+    const pendingDisplay = isConnected
+      ? (cachedNet?.pending != null
+          ? Number(cachedNet.pending).toLocaleString()
+          : (profile?.pending != null
+              ? Number(profile.pending).toLocaleString()
+              : '—'))
+      : '—';
 
     container.innerHTML = `
       <div class="OutFox-home-grid">
         <div class="home-main-col">
           <div class="home-header-row">
-            <h1 class="home-greeting">Hello, ${cleanGreeting}</h1>
+            <h1 class="home-greeting">${greetingText}</h1>
             <div class="home-filters-row">
               <div class="filter-pill-wrap">
                 <select class="home-filter-select" id="home-filter-range">
@@ -759,10 +763,10 @@ export async function renderHomeView(container, ctx = {}) {
           <div class="side-card profile-card-OutFox">
             <div class="avatar-center-wrapper">
               <div class="OutFox-alien-avatar">
-                <span class="avatar-initials-txt">${initials}</span>
+                <span class="avatar-initials-txt">${avatarTxt}</span>
                 <span class="li-corner-badge">${ICONS.linkedin}</span>
               </div>
-              <h3 class="profile-username">${profile.name}</h3>
+              <h3 class="profile-username">${profileName}</h3>
               <div style="display:flex; justify-content:center; gap:16px; margin-top:14px; border-top:1px solid rgba(226, 232, 240, 0.7); padding-top:14px; width:100%;">
                 <div style="text-align:center;">
                   <div id="profile-connections-val" style="font-size:16px; font-weight:800; color:#0f172a;">${connectionsDisplay}</div>
@@ -821,11 +825,13 @@ export async function renderHomeView(container, ctx = {}) {
         storage.networkStats = fresh;
         const connEl = container.querySelector('#profile-connections-val');
         const pendEl = container.querySelector('#profile-pending-val');
-        if (connEl && fresh.connections != null) {
-          connEl.textContent = Number(fresh.connections).toLocaleString();
-        }
-        if (pendEl && fresh.pending != null) {
-          pendEl.textContent = Number(fresh.pending).toLocaleString();
+        if (isConnected) {
+          if (connEl && fresh.connections != null) {
+            connEl.textContent = Number(fresh.connections).toLocaleString();
+          }
+          if (pendEl && fresh.pending != null) {
+            pendEl.textContent = Number(fresh.pending).toLocaleString();
+          }
         }
       }).catch(() => {});
     }

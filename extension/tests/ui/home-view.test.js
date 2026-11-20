@@ -1,8 +1,10 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect } from 'vitest';
-import { computeFilteredHomeStats } from '../../src/dashboard/home-view.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHomeView, computeFilteredHomeStats } from '../../src/dashboard/home-view.js';
+import * as api from '../../src/ui/api.js';
+import { ACTIONS } from '../../src/lib/actions.js';
 
 describe('HomeView — Dynamic Date Range & Campaign Filtering', () => {
   const now = Date.now();
@@ -169,5 +171,77 @@ describe('HomeView — Dynamic Date Range & Campaign Filtering', () => {
     expect(stats.kpis.acceptanceRate).toBe(40); // 6 / 15 = 40%
     expect(stats.kpis.messageResponses).toBe(3);
     expect(stats.kpis.responseRate).toBe(38); // 3 / 8 = 38%
+  });
+});
+
+describe('HomeView — Dynamic Profile & Disconnected Fallback Rendering', () => {
+  beforeEach(async () => {
+    document.body.innerHTML = '';
+    await chrome.storage.local.clear();
+  });
+
+  it('renders "Welcome", "Not Connected", and avatar "?" when LinkedIn is not logged in', async () => {
+    vi.spyOn(api, 'call').mockImplementation(async (action) => {
+      if (action === ACTIONS.DASHBOARD_LIVE_STATS || action === 'dashboard.live_stats') {
+        return { linkedinConnected: false, profile: null, quotas: {} };
+      }
+      return {};
+    });
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    await renderHomeView(container, {
+      getSavedState: () => ({}),
+      saveState: () => {},
+      isActiveView: () => true,
+    });
+
+    const greeting = container.querySelector('.home-greeting');
+    const profileName = container.querySelector('.profile-username');
+    const avatar = container.querySelector('.avatar-initials-txt');
+
+    expect(greeting?.textContent).toBe('Welcome');
+    expect(profileName?.textContent).toBe('Not Connected');
+    expect(avatar?.textContent).toBe('?');
+    expect(container.textContent).not.toContain('Aditya');
+    expect(container.textContent).not.toContain('AC');
+  });
+
+  it('renders authentic user greeting, full name, and initials when logged in', async () => {
+    vi.spyOn(api, 'call').mockImplementation(async (action) => {
+      if (action === ACTIONS.DASHBOARD_LIVE_STATS || action === 'dashboard.live_stats') {
+        return {
+          linkedinConnected: true,
+          profile: {
+            name: 'Sarah Connor',
+            firstName: 'Sarah',
+            lastName: 'Connor',
+            initials: 'SC',
+            connections: 1250,
+            pending: 14,
+          },
+          quotas: {},
+        };
+      }
+      return {};
+    });
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    await renderHomeView(container, {
+      getSavedState: () => ({}),
+      saveState: () => {},
+      isActiveView: () => true,
+    });
+
+    const greeting = container.querySelector('.home-greeting');
+    const profileName = container.querySelector('.profile-username');
+    const avatar = container.querySelector('.avatar-initials-txt');
+
+    expect(greeting?.textContent).toBe('Hello, Sarah');
+    expect(profileName?.textContent).toBe('Sarah Connor');
+    expect(avatar?.textContent).toBe('SC');
   });
 });

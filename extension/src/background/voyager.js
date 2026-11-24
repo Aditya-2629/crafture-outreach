@@ -1,5 +1,5 @@
 /**
- * OutFox — Voyager endpoints.
+ * Crafture Network — Voyager endpoints.
  *
  * Every LinkedIn call the engine makes lives here, using the user's own
  * logged-in session. Response shaping lives in `voyager-normalize.js`, reading
@@ -20,6 +20,7 @@ import { noteBucketBackoff } from './quota.js';
 import { collection } from './normalized.js';
 import {
   getEndpoint,
+  getEndpointConfig,
   syncEndpointsFromVault,
   reportBrokenEndpoint,
   markEndpointHealthy,
@@ -1189,21 +1190,79 @@ export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
     );
     const normalized = normalizeSentInvitations(raw);
     if (normalized.length > 0) {
+      // Build secondary profile map from raw.included for bulletproof URN & vanity resolution
+      const profileMap = new Map();
+      const rawIncluded = Array.isArray(raw?.included) ? raw.included : [];
+      for (const ent of rawIncluded) {
+        if (!ent || typeof ent !== 'object') continue;
+        const aco = (String(ent.dashEntityUrn || ent.entityUrn || '').match(/ACoAA[A-Za-z0-9_-]+/) || [])[0];
+        const pub = ent.publicIdentifier || (String(ent.publicProfileUrl || '').match(/\/in\/([^/?#]+)/) || [])[1] || '';
+        const numId = (String(ent.objectUrn || ent.entityUrn || '').match(/urn:li:member:(\d+)/) || [])[1];
+        if (aco || pub || numId) {
+          const profObj = {
+            profileUrn: aco || '',
+            publicId: pub || '',
+            firstName: ent.firstName?.text || (typeof ent.firstName === 'string' ? ent.firstName : '') || '',
+            lastName: ent.lastName?.text || (typeof ent.lastName === 'string' ? ent.lastName : '') || '',
+          };
+          if (ent.entityUrn) profileMap.set(ent.entityUrn, profObj);
+          if (ent.dashEntityUrn) profileMap.set(ent.dashEntityUrn, profObj);
+          if (ent.objectUrn) profileMap.set(ent.objectUrn, profObj);
+          if (aco) profileMap.set(aco, profObj);
+          if (pub) profileMap.set(pub, profObj);
+          if (numId) {
+            profileMap.set(numId, profObj);
+            profileMap.set(`urn:li:member:${numId}`, profObj);
+          }
+        }
+      }
+
       return normalized.map((inv) => {
         const id = inv.invitationId || (inv.invitationUrn ? (inv.invitationUrn.match(/\d+$/) || [])[0] : '') || inv.invitationUrn;
-        const toPublicId = inv.toPublicId || inv.publicId || inv.vanityName || '';
+        let toPublicId = inv.toPublicId || inv.publicId || inv.vanityName || '';
         const entityUrn = inv.invitationUrn || inv.toMemberUrn || '';
         const toMemberUrn = inv.toMemberUrn || '';
-        const profileUrn = inv.profileUrn || (toMemberUrn ? String(toMemberUrn).replace(/^urn:li:[^:]+:/, '') : '');
+        let profileUrn = inv.profileUrn || '';
+        let firstName = inv.firstName || '';
+        let lastName = inv.lastName || '';
+
+        // If profileUrn does not start with ACo or toPublicId is empty, cross-resolve from profileMap
+        if (!profileUrn.startsWith('ACo') || !toPublicId) {
+          const candidateKeys = [
+            toMemberUrn,
+            inv.entityUrn,
+            inv.invitationUrn,
+            toPublicId,
+            profileUrn,
+          ].filter(Boolean);
+          for (const k of candidateKeys) {
+            const found = profileMap.get(k) || profileMap.get(String(k).replace(/^urn:li:[^:]+:/, ''));
+            if (found) {
+              if (!profileUrn.startsWith('ACo') && found.profileUrn) profileUrn = found.profileUrn;
+              if (!toPublicId && found.publicId) toPublicId = found.publicId;
+              if (!firstName && found.firstName) firstName = found.firstName;
+              if (!lastName && found.lastName) lastName = found.lastName;
+              break;
+            }
+          }
+        }
+
+        const acoMatch = String(profileUrn || toMemberUrn || '').match(/ACoAA[A-Za-z0-9_-]+/);
+        if (acoMatch) {
+          profileUrn = acoMatch[0];
+        } else if (!profileUrn && toMemberUrn) {
+          profileUrn = String(toMemberUrn).replace(/^urn:li:(?:fsd?_profile|fs_miniProfile|member):/i, '').split(':').pop();
+        }
+
         return {
           invitationId: String(id),
           entityUrn,
           sentTime: inv.sentTime || inv.sentAt || 0,
           sentAt: inv.sentTime || inv.sentAt || 0,
           profileUrn,
-          firstName: inv.firstName || '',
-          lastName: inv.lastName || '',
-          fullName: inv.fullName || [inv.firstName, inv.lastName].filter(Boolean).join(' ').trim() || '',
+          firstName,
+          lastName,
+          fullName: inv.fullName || [firstName, lastName].filter(Boolean).join(' ').trim() || '',
           vanityName: inv.vanityName || toPublicId,
           toMemberUrn,
           toPublicId,
@@ -1226,7 +1285,13 @@ export async function fetchSentInvitations({ start = 0, count = 50 } = {}) {
     const toPublicId = inv.toPublicId || inv.publicId || inv.vanityName || '';
     const entityUrn = inv.invitationUrn || inv.toMemberUrn || '';
     const toMemberUrn = inv.toMemberUrn || '';
-    const profileUrn = inv.profileUrn || (toMemberUrn ? String(toMemberUrn).replace(/^urn:li:[^:]+:/, '') : '');
+    let profileUrn = inv.profileUrn || '';
+    const acoMatch = String(profileUrn || toMemberUrn || '').match(/ACoAA[A-Za-z0-9_-]+/);
+    if (acoMatch) {
+      profileUrn = acoMatch[0];
+    } else if (!profileUrn && toMemberUrn) {
+      profileUrn = String(toMemberUrn).replace(/^urn:li:(?:fsd?_profile|fs_miniProfile|member):/i, '').split(':').pop();
+    }
     return {
       invitationId: String(id),
       entityUrn,
@@ -1292,9 +1357,9 @@ export async function domWithdrawInPage(targetInvites, options = {}) {
 
   function isWithdrawElement(el) {
     if (!el) return false;
-    const txt = (el.innerText || el.textContent || '').trim();
-    const aria = (el.getAttribute('aria-label') || '').toLowerCase();
-    return /^withdraw$/i.test(txt) || aria.includes('withdraw');
+    const txt = (el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ');
+    const aria = (el.getAttribute('aria-label') || '').toLowerCase().replace(/\s+/g, ' ');
+    return /withdraw/i.test(txt) || aria.includes('withdraw');
   }
 
   function getWithdrawButtons() {
@@ -1325,13 +1390,13 @@ export async function domWithdrawInPage(targetInvites, options = {}) {
   if (initialWithdrawButtons === 0) {
     const diagMsg = `url=${location.href}, bodySample=${JSON.stringify((document.body.innerText || document.body.textContent || '').replace(/\s+/g, ' ').slice(0, 220))}, buttons=${JSON.stringify([...document.querySelectorAll('button,[role="button"]')].slice(0, 12).map((b) => (b.innerText || b.textContent || '').trim()))}`;
     try {
-      console.log(`[OutFox DOM] initialWithdrawButtons=0: ${diagMsg}`);
+      console.log(`[Crafture DOM] initialWithdrawButtons=0: ${diagMsg}`);
     } catch {}
     domDiagnostics = diagMsg;
   } else {
     try {
       console.log(
-        `[OutFox DOM] Hydration check: initialWithdrawButtons=${initialWithdrawButtons}, pageTitle="${pageTitle}"`,
+        `[Crafture DOM] Hydration check: initialWithdrawButtons=${initialWithdrawButtons}, pageTitle="${pageTitle}"`,
       );
     } catch {}
   }
@@ -1386,31 +1451,39 @@ export async function domWithdrawInPage(targetInvites, options = {}) {
   }
 
   function isCardMatch(card, target) {
-    const vanity = String(target.vanityName || target.publicId || target.toPublicId || '').toLowerCase().trim();
-    const firstName = String(target.firstName || '').toLowerCase().trim();
-    const lastName = String(target.lastName || '').toLowerCase().trim();
-    const fullName = String(target.fullName || `${firstName} ${lastName}`).toLowerCase().trim();
+    const rawId = target.publicId || target.vanityName || target.toPublicId || '';
+    const publicId = String(rawId).toLowerCase().trim().replace(/^https?:\/\/[^/]+\/in\//i, '').replace(/^\/+|\/+$/g, '');
+    const rawName = target.fullName || target.name || `${target.firstName || ''} ${target.lastName || ''}`.trim();
+    const name = String(rawName).toLowerCase().trim().replace(/\s+/g, ' ');
 
-    const links = Array.from(card.querySelectorAll('a[href*="/in/"]')).map((a) =>
+    const links = Array.from(card.querySelectorAll('a[href]')).map((a) =>
       (a.getAttribute('href') || '').toLowerCase(),
     );
-    const text = (card.textContent || '').toLowerCase();
+    const cardText = (card.innerText || card.textContent || '').toLowerCase().replace(/\s+/g, ' ');
 
-    if (vanity) {
-      const matchUrl = links.some((href) =>
-        href.includes(`/in/${vanity}/`) ||
-        href.includes(`/in/${vanity}?`) ||
-        href.endsWith(`/in/${vanity}`) ||
-        href.includes(`/${vanity}`),
-      );
-      if (matchUrl) return true;
-    }
+    const hrefMatch = Boolean(
+      publicId &&
+      links.some((href) =>
+        href.includes(`/${publicId}/`) ||
+        href.includes(`/${publicId}?`) ||
+        href.endsWith(`/${publicId}`) ||
+        href.includes(`/${publicId}`)
+      )
+    );
 
-    if (fullName && fullName.length >= 3 && text.includes(fullName)) {
-      return true;
-    }
+    const nameMatch = Boolean(
+      name &&
+      name.length >= 2 &&
+      cardText.includes(name)
+    );
 
-    if (firstName && lastName && firstName.length >= 2 && lastName.length >= 2 && text.includes(firstName) && text.includes(lastName)) {
+    // Reliable match: match BOTH href and name when both are available, or either when one is available
+    if (hrefMatch && nameMatch) return true;
+    if (hrefMatch || nameMatch) return true;
+
+    const firstName = String(target.firstName || '').toLowerCase().trim();
+    const lastName = String(target.lastName || '').toLowerCase().trim();
+    if (firstName.length >= 2 && lastName.length >= 2 && cardText.includes(firstName) && cardText.includes(lastName)) {
       return true;
     }
 
@@ -1418,60 +1491,111 @@ export async function domWithdrawInPage(targetInvites, options = {}) {
   }
 
   function getLoadMoreButton() {
-    const candidates = Array.from(document.querySelectorAll('button, [role="button"]'));
-    return candidates.find((btn) => {
-      const hasLayout = btn.offsetWidth !== undefined && btn.offsetHeight !== undefined;
-      const isVisible = hasLayout
-        ? (btn.offsetWidth > 0 || btn.offsetHeight > 0 || (btn.getClientRects && btn.getClientRects().length > 0) || (btn.style && btn.style.display !== 'none' && !btn.hidden))
-        : (btn.style && btn.style.display !== 'none' && !btn.hidden);
-      if (!isVisible) return false;
-      const txt = (btn.innerText || btn.textContent || '').trim();
-      const aria = (btn.getAttribute('aria-label') || '').trim();
+    const candidates = Array.from(
+      document.querySelectorAll('button, [role="button"], a.artdeco-button, .scaffold-finite-scroll__load-button')
+    );
+    const found = candidates.find((btn) => {
+      if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return false;
+      if (btn.hidden || (btn.style && (btn.style.display === 'none' || btn.style.visibility === 'hidden'))) return false;
+      const txt = (btn.innerText || btn.textContent || '').trim().replace(/\s+/g, ' ');
+      const aria = (btn.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ');
       return (
-        /load\s*more|show\s*more/i.test(txt) ||
-        /load\s*more|show\s*more/i.test(aria) ||
-        (btn.classList && btn.classList.contains('scaffold-finite-scroll__load-button'))
+        /load\s*more|show\s*more|see\s*more/i.test(txt) ||
+        /load\s*more|show\s*more|see\s*more/i.test(aria) ||
+        (btn.classList && (
+          btn.classList.contains('scaffold-finite-scroll__load-button') ||
+          btn.classList.contains('invitation-manager__load-more-btn')
+        ))
       );
     });
+    if (found && found.tagName !== 'BUTTON' && found.querySelector('button')) {
+      const childBtn = found.querySelector('button');
+      if (childBtn && !childBtn.disabled && childBtn.getAttribute('aria-disabled') !== 'true') {
+        return childBtn;
+      }
+    }
+    return found;
   }
 
-  // 2. Fix "Load more" detection & scrolling:
-  // Scroll to the bottom, find visible "Load more", scroll into view, click it, and wait ~2s per click (up to 20 clicks)
-  const MAX_LOAD_MORE_CLICKS = 20;
+  // 2. Load older invitations: scroll to bottom and click "Load more" / "Show more" / "See more" up to 15 times
+  const MAX_SCROLL_ROUNDS = 15;
   let loadMoreClicks = 0;
   const safeTargets = Array.isArray(targetInvites) ? targetInvites : [];
+  let prevBtnCount = getWithdrawButtons().length;
+  let noIncreaseRounds = 0;
 
-  while (loadMoreClicks < MAX_LOAD_MORE_CLICKS) {
+  for (let round = 0; round < MAX_SCROLL_ROUNDS; round++) {
     const currentCards = findInvitationCards();
     const unmatchedTargets = safeTargets.filter((t) => !currentCards.some((c) => isCardMatch(c, t)));
     if (safeTargets.length > 0 && unmatchedTargets.length === 0) {
       break; // All targets already visible in DOM
     }
 
+    // Support scrolling window to the bottom
     try {
       if (typeof window.scrollTo === 'function') {
-        window.scrollTo(0, document.body.scrollHeight || 999999);
+        const scrollHeight = (document.body && document.body.scrollHeight) || document.documentElement.scrollHeight || 999999;
+        window.scrollTo(0, scrollHeight);
+      }
+      if (document.scrollingElement && typeof document.scrollingElement.scrollTop === 'number') {
+        document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight || 999999;
       }
     } catch {}
-    await sleep(400);
 
-    const loadMoreBtn = getLoadMoreButton();
+    // Support scrolling any scrollable ancestor/container to the bottom
+    try {
+      const scrollableCandidates = Array.from(
+        document.querySelectorAll(
+          'main, section, div, ul, [role="main"], .scaffold-finite-scroll, .mn-invitation-manager__sent-list, .scaffold-layout__main'
+        )
+      );
+      for (const el of scrollableCandidates) {
+        if (el && typeof el.scrollTop === 'number') {
+          el.scrollTop = el.scrollHeight || 999999;
+        }
+      }
+    } catch {}
+
+    // Click any visible "Load more" / "Show more" button anywhere in document if present
+    let loadMoreBtn = getLoadMoreButton();
     if (!loadMoreBtn) {
-      break; // No visible "Load more" button remains
+      await sleep(200);
+      loadMoreBtn = getLoadMoreButton();
     }
 
-    try {
-      if (typeof loadMoreBtn.scrollIntoView === 'function') {
-        loadMoreBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-      await sleep(300);
-      loadMoreBtn.click();
-      loadMoreClicks++;
-      await sleep(2000); // wait ~2s per click
-    } catch {
+    if (loadMoreBtn) {
+      try {
+        if (typeof loadMoreBtn.scrollIntoView === 'function') {
+          loadMoreBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        loadMoreBtn.click();
+        loadMoreClicks++;
+      } catch {}
+    }
+
+    // Wait 1500ms per round for new cards to render
+    await sleep(1500);
+
+    // Stop only when all targets are matched OR withdrawButtons.length stops increasing for 2 consecutive scroll rounds
+    const afterCards = findInvitationCards();
+    const afterUnmatched = safeTargets.filter((t) => !afterCards.some((c) => isCardMatch(c, t)));
+    if (safeTargets.length > 0 && afterUnmatched.length === 0) {
       break;
     }
+
+    const currentBtnCount = getWithdrawButtons().length;
+    if (currentBtnCount > prevBtnCount) {
+      noIncreaseRounds = 0;
+      prevBtnCount = currentBtnCount;
+    } else {
+      noIncreaseRounds++;
+      if (noIncreaseRounds >= 2) {
+        break; // Stop: withdrawButtons.length stopped increasing for 2 consecutive scroll rounds
+      }
+    }
   }
+
+  const finalWithdrawButtons = getWithdrawButtons().length;
 
   // 3. Match targets or Relative-Date Card Fallback
   function parseCardAgeDays(card) {
@@ -1627,13 +1751,18 @@ export async function domWithdrawInPage(targetInvites, options = {}) {
       await sleep(800);
 
       // Find and click confirmation modal "Withdraw" button
-      const dialogSelectors = '[role="dialog"], .artdeco-modal, #artdeco-modal-outlet';
+      const dialogSelectors = '[role="dialog"], .artdeco-modal, #artdeco-modal-outlet, .artdeco-modal-overlay';
       const dialogs = Array.from(document.querySelectorAll(dialogSelectors));
       let confirmBtn = null;
 
       for (const dialog of dialogs) {
         const modalButtons = Array.from(dialog.querySelectorAll('button, [role="button"], a'));
-        confirmBtn = modalButtons.find(isWithdrawElement);
+        confirmBtn = modalButtons.find(
+          (b) =>
+            isWithdrawElement(b) ||
+            (b.classList && b.classList.contains('artdeco-button--primary')) ||
+            /withdraw|confirm/i.test((b.innerText || b.textContent || '').trim())
+        );
         if (confirmBtn) break;
       }
 
@@ -1673,6 +1802,7 @@ export async function domWithdrawInPage(targetInvites, options = {}) {
     matchedInDom,
     loadMoreClicks,
     initialWithdrawButtons,
+    finalWithdrawButtons,
     pageTitle,
     domDiagnostics,
   };
@@ -1784,6 +1914,9 @@ export async function withdrawViaDomFallback(invitesBatch, options = {}) {
     const initialWithdrawButtons = typeof rawResult?.initialWithdrawButtons === 'number'
       ? rawResult.initialWithdrawButtons
       : 0;
+    const finalWithdrawButtons = typeof rawResult?.finalWithdrawButtons === 'number'
+      ? rawResult.finalWithdrawButtons
+      : initialWithdrawButtons;
     const pageTitle = rawResult?.pageTitle || '';
     const domDiagnostics = rawResult?.domDiagnostics || '';
 
@@ -1797,10 +1930,10 @@ export async function withdrawViaDomFallback(invitesBatch, options = {}) {
     logDebug(
       'good',
       'AutoWithdraw',
-      `[AutoWithdraw] DOM fallback completed: initialWithdrawButtons=${initialWithdrawButtons}, pageTitle="${pageTitle}", matchedInDom=${matchedInDom}, withdrawn=${withdrawn}, failed=${failed}. (targets=${targetsCount}, loadMoreClicks=${loadMoreClicks})`,
+      `[AutoWithdraw] DOM fallback completed: initialWithdrawButtons=${initialWithdrawButtons}, finalWithdrawButtons=${finalWithdrawButtons}, pageTitle="${pageTitle}", matchedInDom=${matchedInDom}, withdrawn=${withdrawn}, failed=${failed}. (targets=${targetsCount}, loadMoreClicks=${loadMoreClicks})`,
     );
 
-    return { withdrawn, failed, matchedInDom, loadMoreClicks, initialWithdrawButtons, pageTitle, domDiagnostics, results };
+    return { withdrawn, failed, matchedInDom, loadMoreClicks, initialWithdrawButtons, finalWithdrawButtons, pageTitle, domDiagnostics, results };
   } catch (err) {
     logDebug('error', 'AutoWithdraw', `[AutoWithdraw] DOM fallback error: ${err.message || err}`);
     throw err;
@@ -2796,60 +2929,140 @@ export async function withdrawInvitation(invitationId, meta = {}) {
     vanityName = meta.publicId || meta.vanityName || '';
   }
 
-  const cleanId = String(rawId).split(':').pop().replace(/\D+/g, '') || String(rawId).split(':').pop();
-  const cleanProfileUrn = String(profileUrn || '').replace(/^urn:li:[^:]+:/, '').split(':').pop();
+  const cleanInvitationId = String(rawId).split(':').pop().replace(/\D+/g, '') || String(rawId).split(':').pop();
+  const cleanId = cleanInvitationId;
+  let rawProfileId = String(profileUrn || '')
+    .replace(/^urn:li:(?:fsd_profile|fs_miniProfile):/i, '')
+    .replace(/^urn:li:[^:]+:/, '')
+    .split(':')
+    .pop();
+  const publicId = vanityName;
 
-  if (!cleanId) {
+  if (!cleanInvitationId) {
     throw new EngineError(ERROR.INVALID_PARAMS, 'Valid numeric invitationId is required to withdraw an invitation');
   }
 
-  const requestedArguments = {
-    $type: 'proto.sdui.actions.requests.RequestedArguments',
-    knownTemplateIds: [],
-    payload: {
-      firstFiveInviteCount: { key: 'guidedFlowNumSentInvites', namespace: '' },
-      firstName: firstName || '',
-      guidedFlowUrlandProfileList: {
-        key: 'guidedFlowUrlAndPictureList',
-        namespace: 'guidedFlowUrlAndPictureListNameSpace',
-      },
-      invitationType: 'GenericInvitationType_CONNECTION',
-      invitationUrn: { invitationId: cleanId },
-      inviteeVanityName: vanityName || '',
-      inviterActionType: 'InviterActionType_WITHDRAW',
-      lastName: lastName || '',
-      profileUrn: cleanProfileUrn,
-      queryName: 'ProfileMemberRelationshipRefreshById',
+  const endpointCfg = getEndpointConfig('withdrawInvitation');
+  const { mode, meta: vaultMeta = {} } = endpointCfg;
+  const vaultMode = mode || 'sdui_first';
+  const allowDomFallback = meta?.allowDomFallback !== false;
+
+  if (vaultMode === 'dom_first' && allowDomFallback) {
+    logDebug('good', 'Voyager', `[withdrawInvitation] Mode is dom_first, executing DOM fallback directly`);
+    const inviteObj = {
+      invitationId: cleanInvitationId,
+      entityUrn: meta?.entityUrn || `urn:li:fs_relInvitation:${cleanInvitationId}`,
+      profileUrn: rawProfileId,
+      firstName,
+      lastName,
+      fullName,
+      vanityName: publicId,
+      publicId,
+    };
+    const domRes = await withdrawViaDomFallback([inviteObj]);
+    return { ok: (domRes?.withdrawn || 0) > 0, method: 'dom_fallback', data: domRes };
+  }
+
+  // If rawProfileId is empty or numeric-only (not ACo...), check cached profile storage (zero network cost)
+  if ((!rawProfileId || !rawProfileId.startsWith('ACo')) && publicId) {
+    try {
+      const cached = await getStoredProfile(publicId).catch(() => null);
+      const cachedUrn =
+        cached?.profileUrn ||
+        cached?.dashEntityUrn ||
+        cached?.entityUrn ||
+        cached?.urn ||
+        '';
+      const match = String(cachedUrn).match(/ACoAA[A-Za-z0-9_-]+/);
+      if (match) {
+        rawProfileId = match[0];
+      }
+    } catch {}
+  }
+
+  const cleanProfileUrn = rawProfileId;
+
+  const payload = {
+    inviterActionType: vaultMeta.inviterActionType || 'InviterActionType_WITHDRAW',
+    inviteeVanityName: publicId || '',
+    firstName: firstName || '',
+    lastName: lastName || '',
+    profileUrn: rawProfileId || '',
+    firstFiveInviteCount: { key: 'guidedFlowNumSentInvites', namespace: '' },
+    guidedFlowUrlandProfileList: {
+      key: 'guidedFlowUrlAndPictureList',
+      namespace: 'guidedFlowUrlAndPictureListNameSpace',
     },
-    requestMetadata: { $type: 'proto.sdui.common.RequestMetadata' },
-    requestedStateKeys: [
-      { key: { value: { $case: 'id', id: 'guidedFlowNumSentInvites' } }, namespace: '' },
-    ],
-    screenId: 'com.linkedin.sdui.flagshipnav.mynetwork.invitations.WithdrawConfirmationDialog',
-    states: [],
+    invitationType: 'GenericInvitationType_CONNECTION',
+    invitationUrn: { invitationId: String(cleanInvitationId) },
   };
 
+  // Only include queryName when a valid ACoAA... profile ID is present
+  if (rawProfileId && rawProfileId.startsWith('ACo')) {
+    payload.queryName = 'ProfileMemberRelationshipRefreshById';
+  }
+  if (vaultMeta.queryName !== undefined) {
+    if (vaultMeta.queryName) payload.queryName = vaultMeta.queryName;
+    else delete payload.queryName;
+  }
+  if (vaultMeta.extraPayload && typeof vaultMeta.extraPayload === 'object') {
+    Object.assign(payload, vaultMeta.extraPayload);
+  }
+
+  const requestedStateKeys = Array.isArray(vaultMeta.requestedStateKeys) ? vaultMeta.requestedStateKeys : [
+    { key: { value: { $case: 'id', id: 'guidedFlowNumSentInvites' } }, namespace: '' },
+    {
+      key: { value: { $case: 'id', id: 'guidedFlowUrlAndPictureList' } },
+      namespace: 'guidedFlowUrlAndPictureListNameSpace',
+    },
+  ];
+
+  const serverRequestArgs = {
+    $type: 'proto.sdui.actions.requests.RequestedArguments',
+    requestedStateKeys,
+    payload,
+    requestMetadata: { $type: 'proto.sdui.common.RequestMetadata' },
+  };
+
+  const topLevelArgs = {
+    ...serverRequestArgs,
+    states: [],
+    screenId: vaultMeta.screenId || 'com.linkedin.sdui.flagshipnav.mynetwork.invitations.WithdrawConfirmationDialog',
+    knownTemplateIds: [],
+  };
+
+  const sduiId = vaultMeta.sduiid || 'com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation';
+
   const sduiPayload = {
-    requestId: 'com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation',
-    requestedArguments,
+    requestId: sduiId,
     serverRequest: {
-      requestId: 'com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation',
-      requestedArguments,
+      requestId: sduiId,
+      requestedArguments: serverRequestArgs,
+      isApfcEnabled: false,
+      isStreaming: false,
+      rumPageKey: '',
     },
     states: [],
+    requestedArguments: topLevelArgs,
+  };
+
+  const withdrawHeaders = {
+    accept: '*/*',
+    'content-type': 'application/json',
+    'x-li-rsc-stream': 'true',
+    'x-li-anchor-page-key': 'd_flagship3_people_invitations_withdraw_friction',
+    ...(vaultMeta.headers && typeof vaultMeta.headers === 'object' ? vaultMeta.headers : {}),
   };
 
   const withdrawPath =
+    endpointCfg.url ||
     getEndpoint('withdrawInvitation') ||
     '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation';
 
   try {
     const res = await voyagerFetch(withdrawPath, {
       method: 'POST',
-      headers: {
-        accept: 'application/json, text/plain, */*',
-        'content-type': 'application/json; charset=UTF-8',
-      },
+      headers: withdrawHeaders,
       body: sduiPayload,
       rawText: true,
     });
@@ -2875,7 +3088,7 @@ export async function withdrawInvitation(invitationId, meta = {}) {
       /400|404|410|422|500|502|503|SDUI action error/i.test(String(err?.message));
 
     const bodyText = err?.response?.text || err?.message || JSON.stringify(err);
-    logDebug('warn', 'Voyager', `[withdrawInvitation SDUI Failed] id=${cleanId} status=${status} response=${bodyText}`);
+    logDebug('warn', 'Voyager', `[withdrawInvitation SDUI Failed] id=${cleanId} profileUrn=${cleanProfileUrn} vanity=${vanityName} status=${status} response=${bodyText}`);
 
     if (isSduiRejection) {
       // 1. Hot-swap retry: check if Vault has updated endpoint URL
@@ -2886,10 +3099,7 @@ export async function withdrawInvitation(invitationId, meta = {}) {
           logDebug('good', 'Voyager', `[withdrawInvitation] Hot-swapping to new Vault endpoint: ${freshPath}`);
           const retryRes = await voyagerFetch(freshPath, {
             method: 'POST',
-            headers: {
-              accept: 'application/json, text/plain, */*',
-              'content-type': 'application/json; charset=UTF-8',
-            },
+            headers: withdrawHeaders,
             body: sduiPayload,
             rawText: true,
           });
@@ -2898,6 +3108,7 @@ export async function withdrawInvitation(invitationId, meta = {}) {
             /^(?:\d+:)?E:|"actionStatus"\s*:\s*"FAILED"|"errorCode"\s*:/i.test(retryText) ||
             /"errorMessage"\s*:\s*"[^"]+"/i.test(retryText);
           if (!retryHasError) {
+            markEndpointHealthy('withdrawInvitation');
             return { ok: true, status: retryRes?.status || 200, method: 'sdui_api_hotswap', data: retryRes };
           }
         }
@@ -3031,55 +3242,68 @@ export async function sendSduiConnectionRequest({
     }
   }
 
+  const endpointCfg = getEndpointConfig('sendInviteSdui').url
+    ? getEndpointConfig('sendInviteSdui')
+    : getEndpointConfig('sendInvite');
+  const vaultMeta = endpointCfg.meta || {};
+
+  const payload = {
+    connectionState: {
+      key: `state:invitation:urn:li:member:${cleanMemberId}`,
+      namespace: null,
+    },
+    firstName: firstName || '',
+    inviteeUrn: {
+      memberId: String(cleanMemberId),
+    },
+    isDisabled: {
+      key: `connect-button-disabled-${cleanPublicId}`,
+      namespace: null,
+    },
+    lastName: lastName || '',
+    nonIterableProfileId: cleanFsdProfileUrn,
+    origin: 'InvitationOrigin_PROFILE',
+    profileCanonicalUrl: `https://www.linkedin.com/in/${cleanPublicId}`,
+  };
+  if (vaultMeta.queryName) payload.queryName = vaultMeta.queryName;
+  if (vaultMeta.extraPayload && typeof vaultMeta.extraPayload === 'object') {
+    Object.assign(payload, vaultMeta.extraPayload);
+  }
+
   const requestedArguments = {
     $type: 'proto.sdui.actions.requests.RequestedArguments',
     knownTemplateIds: [],
-    payload: {
-      connectionState: {
-        key: `state:invitation:urn:li:member:${cleanMemberId}`,
-        namespace: null,
-      },
-      firstName: firstName || '',
-      inviteeUrn: {
-        memberId: String(cleanMemberId),
-      },
-      isDisabled: {
-        key: `connect-button-disabled-${cleanPublicId}`,
-        namespace: null,
-      },
-      lastName: lastName || '',
-      nonIterableProfileId: cleanFsdProfileUrn,
-      origin: 'InvitationOrigin_PROFILE',
-      profileCanonicalUrl: `https://www.linkedin.com/in/${cleanPublicId}`,
-    },
+    payload,
     requestMetadata: {
       $type: 'proto.sdui.common.RequestMetadata',
     },
-    requestedStateKeys: [],
-    screenId: 'com.linkedin.sdui.flagshipnav.mynetwork.invitations.CustomInvite',
+    requestedStateKeys: Array.isArray(vaultMeta.requestedStateKeys) ? vaultMeta.requestedStateKeys : [],
+    screenId: vaultMeta.screenId || 'com.linkedin.sdui.flagshipnav.mynetwork.invitations.CustomInvite',
     states: [],
   };
+
+  const sduiId = vaultMeta.sduiid || 'com.linkedin.sdui.requests.mynetwork.addaAddConnection';
 
   const serverRequest = {
     isApfcEnabled: false,
     isStreaming: false,
-    requestId: 'com.linkedin.sdui.requests.mynetwork.addaAddConnection',
+    requestId: sduiId,
     requestedArguments,
     rumPageKey: '',
   };
 
   const sduiPayload = {
-    requestId: 'com.linkedin.sdui.requests.mynetwork.addaAddConnection',
+    requestId: sduiId,
     requestedArguments,
     serverRequest,
     states: [],
   };
 
-  const configuredPath = getEndpoint('sendInvite');
+  const configuredPath = endpointCfg.url || getEndpoint('sendInviteSdui') || getEndpoint('sendInvite');
   const sduiPath =
     configuredPath && configuredPath.includes('server-request')
       ? configuredPath
-      : '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaAddConnection';
+      : `/flagship-web/rsc-action/actions/server-request?sduiid=${encodeURIComponent(sduiId)}`;
 
   try {
     const res = await voyagerFetch(sduiPath, {
@@ -3087,6 +3311,7 @@ export async function sendSduiConnectionRequest({
       headers: {
         accept: 'application/json, text/plain, */*',
         'content-type': 'application/json; charset=UTF-8',
+        ...(vaultMeta.headers && typeof vaultMeta.headers === 'object' ? vaultMeta.headers : {}),
       },
       body: sduiPayload,
       rawText: true,
@@ -3283,6 +3508,19 @@ export async function sendInvite({
     }
     return null;
   };
+
+  const sendInviteSduiCfg = getEndpointConfig('sendInviteSdui');
+  const sendInviteCfg = getEndpointConfig('sendInvite');
+  const endpointCfg = (sendInviteSduiCfg.mode === 'dom_first' || sendInviteCfg.mode === 'dom_first')
+    ? { mode: 'dom_first', meta: { ...sendInviteCfg.meta, ...sendInviteSduiCfg.meta } }
+    : (sendInviteSduiCfg.url ? sendInviteSduiCfg : sendInviteCfg);
+  const { mode: vaultMode = 'sdui_first', meta: vaultMeta = {} } = endpointCfg;
+
+  if (vaultMode === 'dom_first' && id) {
+    logDebug('good', 'Voyager', `[sendInvite] Mode is dom_first, executing DOM action directly for ${id}`);
+    const domRes = await sendDom(message);
+    if (domRes) return domRes;
+  }
 
   const sendSdui = async () => {
     await ensureSduiProfile();
@@ -3725,27 +3963,59 @@ export async function follow({ publicId, profileUrn, memberId, following = true 
     );
   }
 
-  const sduiId = 'com.linkedin.sdui.requests.mynetwork.addaUpdateFollowState';
+  const endpointCfg = getEndpointConfig('follow');
+  const { mode: vaultMode = 'sdui_first', meta: vaultMeta = {} } = endpointCfg;
+
+  if (vaultMode === 'dom_first' && (publicId || id) && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+    const targetId = publicId || id;
+    logDebug('good', 'Voyager', `[Follow] Mode is dom_first, executing DOM action directly for ${targetId}`);
+    try {
+      const domRes = await runDomActionInTab(
+        `https://www.linkedin.com/in/${encodeURIComponent(targetId)}/`,
+        domFollowInPage,
+        [{ following }],
+        'follow',
+      );
+      if (domRes && (domRes.ok || domRes.success)) {
+        return {
+          ok: true,
+          method: 'dom',
+          memberId: resolvedMemberId || targetId,
+          ...(domRes.alreadyFollowing ? { alreadyFollowing: true } : {}),
+        };
+      }
+    } catch (domErr) {
+      logDebug('warn', 'Voyager', `[Follow] DOM fallback failed: ${domErr?.message}`);
+    }
+  }
+
+  const sduiId = vaultMeta.sduiid || 'com.linkedin.sdui.requests.mynetwork.addaUpdateFollowState';
   const followStateType = following ? 'FollowStateType_FOLLOW_ACTIVE' : 'FollowStateType_UNFOLLOW';
+
+  const payload = {
+    followStateBinding: {
+      key: `urn:li:fsd_followingState:urn:li:member:${resolvedMemberId}`,
+      namespace: null,
+    },
+    followStateType,
+    memberUrn: {
+      memberId: String(resolvedMemberId),
+    },
+  };
+  if (vaultMeta.queryName) payload.queryName = vaultMeta.queryName;
+  if (vaultMeta.extraPayload && typeof vaultMeta.extraPayload === 'object') {
+    Object.assign(payload, vaultMeta.extraPayload);
+  }
 
   const requestedArguments = {
     $type: 'proto.sdui.actions.requests.RequestedArguments',
     knownTemplateIds: [],
-    payload: {
-      followStateBinding: {
-        key: `urn:li:fsd_followingState:urn:li:member:${resolvedMemberId}`,
-        namespace: null,
-      },
-      followStateType,
-      memberUrn: {
-        memberId: String(resolvedMemberId),
-      },
-    },
+    payload,
     requestMetadata: {
       $type: 'proto.sdui.common.RequestMetadata',
     },
-    requestedStateKeys: [],
-    screenId: '',
+    requestedStateKeys: Array.isArray(vaultMeta.requestedStateKeys) ? vaultMeta.requestedStateKeys : [],
+    screenId: vaultMeta.screenId !== undefined ? vaultMeta.screenId : '',
     states: [],
   };
 
@@ -3763,6 +4033,7 @@ export async function follow({ publicId, profileUrn, memberId, following = true 
   };
 
   const followPath =
+    endpointCfg.url ||
     getEndpoint('follow') ||
     `/flagship-web/rsc-action/actions/server-request?sduiid=${sduiId}`;
 
@@ -3772,6 +4043,7 @@ export async function follow({ publicId, profileUrn, memberId, following = true 
       headers: {
         accept: 'application/json, text/plain, */*',
         'content-type': 'application/json; charset=UTF-8',
+        ...(vaultMeta.headers && typeof vaultMeta.headers === 'object' ? vaultMeta.headers : {}),
       },
       body: sduiPayload,
       rawText: true,
@@ -3806,10 +4078,7 @@ export async function follow({ publicId, profileUrn, memberId, following = true 
           const freshPath = getEndpoint('follow');
           const retryRes = await voyagerFetch(freshPath, {
             method: 'POST',
-            headers: {
-              accept: 'application/json, text/plain, */*',
-              'content-type': 'application/json; charset=UTF-8',
-            },
+            headers: withdrawHeaders,
             body: sduiPayload,
             rawText: true,
           });
@@ -3903,33 +4172,59 @@ export async function likePost({ postUrl, publicId, profileUrn, reactionType = '
     return { ok: true, skipped: true, status: 'skipped', reason: 'no_post_url' };
   }
 
+  const endpointCfg = getEndpointConfig('likePost').url ? getEndpointConfig('likePost') : getEndpointConfig('like');
+  const { mode: vaultMode = 'sdui_first', meta: vaultMeta = {} } = endpointCfg;
+
+  if (vaultMode === 'dom_first' && targetPostUrl && typeof chrome !== 'undefined' && chrome.tabs?.create) {
+    logDebug('good', 'Voyager', `[likePost] Mode is dom_first, executing DOM action directly for ${targetPostUrl}`);
+    try {
+      const domRes = await runDomActionInTab(targetPostUrl, domLikePostInPage, [targetPostUrl], 'likePost');
+      if (domRes && (domRes.ok || domRes.success)) {
+        return {
+          ok: true,
+          method: 'dom',
+          activityId: activityIdFromUrl(targetPostUrl),
+          ...(domRes.alreadyLiked ? { alreadyLiked: true } : {}),
+        };
+      }
+    } catch (domErr) {
+      logDebug('warn', 'Voyager', `[likePost] DOM action failed: ${domErr?.message}`);
+    }
+  }
+
   const activityId = activityIdFromUrl(targetPostUrl);
-  const sduiId = 'com.linkedin.sdui.reactions.create';
+  const sduiId = vaultMeta.sduiid || 'com.linkedin.sdui.reactions.create';
 
   const normReactionType =
     reactionType && String(reactionType).startsWith('ReactionType_')
       ? reactionType
       : `ReactionType_${String(reactionType || 'LIKE').toUpperCase()}`;
 
-  const requestedArguments = {
-    $type: 'proto.sdui.actions.requests.RequestedArguments',
-    knownTemplateIds: [],
-    payload: {
-      reactionSource: 'Update',
-      reactionType: normReactionType,
-      threadUrn: {
-        threadUrnActivityThreadUrn: {
-          activityUrn: {
-            activityId: String(activityId),
-          },
+  const payload = {
+    reactionSource: vaultMeta.reactionSource || 'Update',
+    reactionType: normReactionType,
+    threadUrn: {
+      threadUrnActivityThreadUrn: {
+        activityUrn: {
+          activityId: String(activityId),
         },
       },
     },
+  };
+  if (vaultMeta.queryName) payload.queryName = vaultMeta.queryName;
+  if (vaultMeta.extraPayload && typeof vaultMeta.extraPayload === 'object') {
+    Object.assign(payload, vaultMeta.extraPayload);
+  }
+
+  const requestedArguments = {
+    $type: 'proto.sdui.actions.requests.RequestedArguments',
+    knownTemplateIds: [],
+    payload,
     requestMetadata: {
       $type: 'proto.sdui.common.RequestMetadata',
     },
-    requestedStateKeys: [],
-    screenId: 'com.linkedin.sdui.flagshipnav.profile.Profile',
+    requestedStateKeys: Array.isArray(vaultMeta.requestedStateKeys) ? vaultMeta.requestedStateKeys : [],
+    screenId: vaultMeta.screenId || 'com.linkedin.sdui.flagshipnav.profile.Profile',
     states: [],
   };
 
@@ -3947,6 +4242,7 @@ export async function likePost({ postUrl, publicId, profileUrn, reactionType = '
   };
 
   const likePath =
+    endpointCfg.url ||
     getEndpoint('likePost') ||
     getEndpoint('like') ||
     `/flagship-web/rsc-action/actions/server-request?sduiid=${sduiId}`;
@@ -3957,6 +4253,7 @@ export async function likePost({ postUrl, publicId, profileUrn, reactionType = '
       headers: {
         accept: 'application/json, text/plain, */*',
         'content-type': 'application/json; charset=UTF-8',
+        ...(vaultMeta.headers && typeof vaultMeta.headers === 'object' ? vaultMeta.headers : {}),
       },
       body: sduiPayload,
       rawText: true,
@@ -3992,10 +4289,7 @@ export async function likePost({ postUrl, publicId, profileUrn, reactionType = '
           const freshPath = getEndpoint('likePost') || getEndpoint('like');
           const retryRes = await voyagerFetch(freshPath, {
             method: 'POST',
-            headers: {
-              accept: 'application/json, text/plain, */*',
-              'content-type': 'application/json; charset=UTF-8',
-            },
+            headers: withdrawHeaders,
             body: sduiPayload,
             rawText: true,
           });

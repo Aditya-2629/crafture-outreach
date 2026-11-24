@@ -1,5 +1,5 @@
 /**
- * OutFox — Dynamic LinkedIn Endpoints, Vault Hot-Sync & Read-Only Health Audit
+ * Crafture Network — Dynamic LinkedIn Endpoints, Vault Hot-Sync & Read-Only Health Audit
  *
  * Ensures the extension stays resilient when LinkedIn rotates or alters Voyager/SDUI endpoints.
  * Endpoints are loaded from Vault on startup and every 6 hours, cached locally in storage,
@@ -39,13 +39,18 @@ export const DEFAULT_ENDPOINTS = Object.freeze({
     '/voyagerMessagingDashMessengerMessages?action=createMessage',
 });
 
-const STORAGE_ENDPOINTS_KEY = 'outfox_remote_endpoints';
-const STORAGE_REPORTS_KEY = 'outfox_endpoint_reports';
-const STORAGE_LAST_AUDIT_RUN_KEY = 'outfox_last_audit_run_at';
+const STORAGE_ENDPOINTS_KEY = 'crafture_remote_endpoints';
+const STORAGE_LEGACY_ENDPOINTS_KEY = 'outfox_remote_endpoints';
+const STORAGE_REPORTS_KEY = 'crafture_endpoint_reports';
+const STORAGE_LAST_AUDIT_RUN_KEY = 'crafture_last_audit_run_at';
 const REPORT_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours
 const SYNC_THROTTLE_MS = 2 * 60 * 1000; // 2 minutes throttle for lightweight polling
 
-let cachedEndpoints = { ...DEFAULT_ENDPOINTS };
+let cachedEndpoints = {};
+for (const [k, v] of Object.entries(DEFAULT_ENDPOINTS)) {
+  cachedEndpoints[k] = { url: v, mode: 'sdui_first', meta: {} };
+}
+
 let endpointsMeta = {
   lastSyncAt: 0,
   lastAuditRunAt: 0,
@@ -59,11 +64,27 @@ export async function initEndpoints() {
     return cachedEndpoints;
   }
   try {
-    const data = await chrome.storage.local.get([STORAGE_ENDPOINTS_KEY, STORAGE_LAST_AUDIT_RUN_KEY]);
-    const stored = data[STORAGE_ENDPOINTS_KEY];
+    const data = await chrome.storage.local.get([
+      STORAGE_ENDPOINTS_KEY,
+      STORAGE_LEGACY_ENDPOINTS_KEY,
+      STORAGE_LAST_AUDIT_RUN_KEY,
+    ]);
+    const stored = data[STORAGE_ENDPOINTS_KEY] || data[STORAGE_LEGACY_ENDPOINTS_KEY];
     if (stored && typeof stored === 'object') {
-      if (stored.endpoints && typeof stored.endpoints === 'object') {
-        cachedEndpoints = { ...DEFAULT_ENDPOINTS, ...stored.endpoints };
+      const endpointsMap = (stored.endpoints && typeof stored.endpoints === 'object')
+        ? stored.endpoints
+        : stored;
+      for (const [k, val] of Object.entries(endpointsMap)) {
+        if (!val || k === 'lastSyncAt' || k === 'lastAuditRunAt') continue;
+        if (typeof val === 'string' && val.trim()) {
+          cachedEndpoints[k] = { url: val.trim(), mode: 'sdui_first', meta: {} };
+        } else if (typeof val === 'object') {
+          cachedEndpoints[k] = {
+            url: val.url ? String(val.url).trim() : (DEFAULT_ENDPOINTS[k] || ''),
+            mode: val.mode === 'dom_first' ? 'dom_first' : (val.mode || 'sdui_first'),
+            meta: val.meta && typeof val.meta === 'object' ? val.meta : {},
+          };
+        }
       }
       endpointsMeta.lastSyncAt = Number(stored.lastSyncAt) || 0;
       endpointsMeta.lastAuditRunAt = Number(data[STORAGE_LAST_AUDIT_RUN_KEY] || stored.lastAuditRunAt) || 0;
@@ -77,13 +98,37 @@ export async function initEndpoints() {
 }
 
 /**
- * Get currently active endpoint URL by key.
+ * Get currently active endpoint URL string by key.
  *
  * @param {string} key
  * @returns {string}
  */
 export function getEndpoint(key) {
-  return cachedEndpoints[key] || DEFAULT_ENDPOINTS[key] || '';
+  const item = cachedEndpoints[key] ?? DEFAULT_ENDPOINTS[key];
+  if (!item) return '';
+  if (typeof item === 'string') return item;
+  return item.url || DEFAULT_ENDPOINTS[key] || '';
+}
+
+/**
+ * Get complete endpoint configuration including URL, strategy mode, and declarative JSON payload metadata.
+ *
+ * @param {string} key
+ * @returns {{ url: string, mode: 'sdui_first' | 'dom_first', meta: object }}
+ */
+export function getEndpointConfig(key) {
+  const item = cachedEndpoints[key] ?? DEFAULT_ENDPOINTS[key];
+  if (!item) {
+    return { url: '', mode: 'sdui_first', meta: {} };
+  }
+  if (typeof item === 'string') {
+    return { url: item, mode: 'sdui_first', meta: {} };
+  }
+  return {
+    url: item.url || DEFAULT_ENDPOINTS[key] || '',
+    mode: item.mode === 'dom_first' ? 'dom_first' : (item.mode || 'sdui_first'),
+    meta: item.meta && typeof item.meta === 'object' ? item.meta : {},
+  };
 }
 
 /**
@@ -122,9 +167,24 @@ export async function syncEndpointsFromVault(force = false) {
 
     if (remoteEndpoints && typeof remoteEndpoints === 'object') {
       for (const [k, val] of Object.entries(remoteEndpoints)) {
-        const rawUrl = typeof val === 'string' ? val : val?.url;
-        if (typeof rawUrl === 'string' && rawUrl.trim() && cachedEndpoints[k] !== rawUrl.trim()) {
-          cachedEndpoints[k] = rawUrl.trim();
+        if (!val) continue;
+        const rawUrl = typeof val === 'string' ? val.trim() : (val.url ? String(val.url).trim() : '');
+        if (!rawUrl) continue;
+        const mode = (typeof val === 'object' && val.mode === 'dom_first') ? 'dom_first' : 'sdui_first';
+        const meta = (typeof val === 'object' && val.meta && typeof val.meta === 'object') ? val.meta : {};
+
+        const current = cachedEndpoints[k];
+        const currentUrl = typeof current === 'string' ? current : (current?.url || '');
+        const currentMode = typeof current === 'object' ? (current?.mode || 'sdui_first') : 'sdui_first';
+        const currentMetaStr = typeof current === 'object' ? JSON.stringify(current?.meta || {}) : '{}';
+        const newMetaStr = JSON.stringify(meta);
+
+        if (currentUrl !== rawUrl || currentMode !== mode || currentMetaStr !== newMetaStr) {
+          cachedEndpoints[k] = {
+            url: rawUrl,
+            mode,
+            meta,
+          };
           changed = true;
         }
       }
@@ -135,6 +195,10 @@ export async function syncEndpointsFromVault(force = false) {
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       await chrome.storage.local.set({
         [STORAGE_ENDPOINTS_KEY]: {
+          endpoints: cachedEndpoints,
+          ...endpointsMeta,
+        },
+        [STORAGE_LEGACY_ENDPOINTS_KEY]: {
           endpoints: cachedEndpoints,
           ...endpointsMeta,
         },

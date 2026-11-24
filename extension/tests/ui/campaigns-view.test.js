@@ -199,7 +199,7 @@ describe('CampaignsView — Full Layout & Tab Switching', () => {
     await renderCampaignsView(host, { showToast: () => {} });
     await flush(6);
 
-    const card = host.querySelector('.OutFox-camp-card');
+    const card = host.querySelector('.cn-camp-card');
     expect(card).toBeTruthy();
 
     // Check Left, Middle, Right columns
@@ -228,7 +228,7 @@ describe('CampaignsView — Full Layout & Tab Switching', () => {
     await renderCampaignsView(host, { showToast: () => {} });
     await flush(6);
 
-    const cards = host.querySelectorAll('.OutFox-camp-card');
+    const cards = host.querySelectorAll('.cn-camp-card');
     expect(cards.length).toBeGreaterThanOrEqual(2);
 
     const card0 = cards[0];
@@ -272,7 +272,7 @@ describe('CampaignsView — Full Layout & Tab Switching', () => {
     await flush(6);
 
     // Open wizard by clicking Edit on first campaign
-    const card = host.querySelector('.OutFox-camp-card');
+    const card = host.querySelector('.cn-camp-card');
     const editItem = card.querySelector('.camp-menu-item[data-action="edit"]');
     editItem.click();
     await flush(6);
@@ -342,7 +342,7 @@ describe('CampaignsView — Full Layout & Tab Switching', () => {
     it('returns Auto-Pilot Resting with resume time when quota cooldown is active', () => {
       const activeCamps = [{ campaignId: 'c1', status: 'active' }];
       const storage = {
-        outfox_bucket_cooldowns: {
+        crafture_bucket_cooldowns: {
           invite: t0 + 3600 * 1000, // Resting 1h
         },
       };

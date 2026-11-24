@@ -890,7 +890,7 @@ describe('v1 migration', () => {
     const tick1 = await handle(ACTIONS.CAMPAIGN_TICK, {}, 'system');
     expect(tick1.data.executed).toBe(0);
 
-    // Verify persistent cooldown is stored in outfox_bucket_cooldowns
+    // Verify persistent cooldown is stored in crafture_bucket_cooldowns
     const cooldowns = await quota.getBucketCooldowns();
     expect(cooldowns.invite).toBeGreaterThan(Date.now());
 
@@ -900,12 +900,12 @@ describe('v1 migration', () => {
 
     // Reset spy & cooldown
     vi.restoreAllMocks();
-    await chrome.storage.local.remove('outfox_bucket_cooldowns');
+    await chrome.storage.local.remove('crafture_bucket_cooldowns');
   });
 
   it('acquires and releases crash-proof persistent tick lock with 60s TTL', async () => {
     // Verify tick lock key and TTL
-    expect(campaigns.TICK_LOCK_KEY).toBe('outfox_tick_lock');
+    expect(campaigns.TICK_LOCK_KEY).toBe('crafture_tick_lock');
     expect(campaigns.TICK_LOCK_TTL_MS).toBe(60 * 1000);
     expect(campaigns.DEFAULT_MAX_ACTIONS_PER_TICK).toBe(1);
 
@@ -1090,7 +1090,7 @@ describe('v1 migration', () => {
     // Clean up
     vi.restoreAllMocks();
     campaigns.setMaxActionsPerTick(campaigns.DEFAULT_MAX_ACTIONS_PER_TICK);
-    await chrome.storage.local.remove('outfox_bucket_cooldowns');
+    await chrome.storage.local.remove('crafture_bucket_cooldowns');
   });
 
   it('enforces PROSPECT_COOLDOWN_MS between actions for the same prospect', async () => {
@@ -1217,7 +1217,7 @@ describe('v1 migration', () => {
       await chrome.storage.local.set({
         campaigns: [{ campaignId: 'c_active', status: 'active', name: 'Active Camp' }],
       });
-      vi.spyOn(chrome.alarms, 'get').mockImplementation((name, cb) => cb({ name: 'outfox-campaign-tick', scheduledTime: Date.now() + 60000 }));
+      vi.spyOn(chrome.alarms, 'get').mockImplementation((name, cb) => cb({ name: 'crafture-campaign-tick', scheduledTime: Date.now() + 60000 }));
       const createSpy = vi.spyOn(chrome.alarms, 'create');
 
       const reCreated = await campaigns.ensureCampaignAlarmWatchdog();

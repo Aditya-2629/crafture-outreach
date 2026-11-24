@@ -1,5 +1,5 @@
 /**
- * OutFox — shared action contract.
+ * Crafture Network — shared action contract.
  *
  * Source of truth: `docs/actions.md`. Every layer (engine, popup, bridge, MCP
  * server, CLI, clients) speaks exactly these action names, error codes and
@@ -91,12 +91,14 @@ export const ACTIONS = Object.freeze({
   QUEUE_REJECT: 'queue.reject',
 
   AI_COMPLETE: 'ai.complete',
+  AI_LIST_MODELS: 'ai.list_models',
 
   EXPORT_CSV: 'export.csv',
 
   RESEARCH_RESOLVE: 'research.resolve',
   RESEARCH_PACK: 'research.pack',
   RESEARCH_GET: 'research.get',
+  RESEARCH_LIST: 'research.list',
 
   SYNC_PULL: 'sync.pull',
 
@@ -561,11 +563,11 @@ const PARAM_SPECS = {
   },
 
   [ACTIONS.INBOX_THREADS]: {
-    optional: { since: 'number', unreadOnly: 'boolean', count: 'number' },
+    optional: { since: 'number', unreadOnly: 'boolean', count: 'number', refresh: 'boolean', force: 'boolean' },
   },
   [ACTIONS.INBOX_MESSAGES]: {
     required: { threadId: 'string' },
-    optional: { since: 'number' },
+    optional: { since: 'number', count: 'number', refresh: 'boolean', force: 'boolean' },
   },
   [ACTIONS.INBOX_EXPORT]: { optional: { since: 'number' } },
 
@@ -635,6 +637,10 @@ const PARAM_SPECS = {
     required: { task: 'string', input: 'object' },
     enums: { task: ['opener', 'summary', 'sentiment', 'comment', 'score'] },
   },
+  [ACTIONS.AI_LIST_MODELS]: {
+    required: { provider: 'string' },
+    optional: { apiKey: 'string', baseUrl: 'string' },
+  },
 
   [ACTIONS.EXPORT_CSV]: {
     required: { kind: 'string' },
@@ -648,6 +654,7 @@ const PARAM_SPECS = {
     optional: { listName: 'string', enrich: 'boolean', full: 'boolean' },
   },
   [ACTIONS.RESEARCH_GET]: { required: { jobId: 'string' } },
+  [ACTIONS.RESEARCH_LIST]: {},
 
   [ACTIONS.SYNC_PULL]: { optional: { since: 'number' } },
 

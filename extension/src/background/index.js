@@ -1,5 +1,5 @@
 /**
- * OutFox — Background Service Worker (router).
+ * Crafture Network — Background Service Worker (router).
  *
  * Deliberately thin. Every feature module registers its own contract actions
  * on import; this file routes inbound messages through `engine.handle`, gates
@@ -54,7 +54,8 @@ import { ensureConnected, onAlarm, startKeepalive } from './bridge.js';
 /* ================================================================== */
 
 export const CAMPAIGN_TICK_ALARM = 'campaignTick';
-export const OUTFOX_CAMPAIGN_TICK_ALARM = 'outfox-campaign-tick';
+export const CRAFTURE_CAMPAIGN_TICK_ALARM = 'crafture-campaign-tick';
+export const OUTFOX_CAMPAIGN_TICK_ALARM = CRAFTURE_CAMPAIGN_TICK_ALARM;
 
 /**
  * The approval queue's own tick.
@@ -148,11 +149,11 @@ function reconnectBridge() {
     .catch((e) => console.warn('[Bridge] reconnect failed:', e.message));
 }
 
-export const STALE_WITHDRAW_ALARM = 'outfox-stale-withdraw';
-export const SNOOZE_CHECK_ALARM = 'outfox-snooze-check';
-export const DRIVE_AUTOBACKUP_ALARM = 'outfox-drive-autobackup';
-export const ENDPOINTS_SYNC_ALARM = 'outfox-endpoints-sync';
-export const ACCEPT_WATCHER_ALARM = 'outfox-accept-watcher';
+export const STALE_WITHDRAW_ALARM = 'crafture-stale-withdraw';
+export const SNOOZE_CHECK_ALARM = 'crafture-snooze-check';
+export const DRIVE_AUTOBACKUP_ALARM = 'crafture-drive-autobackup';
+export const ENDPOINTS_SYNC_ALARM = 'crafture-endpoints-sync';
+export const ACCEPT_WATCHER_ALARM = 'crafture-accept-watcher';
 
 // Clear legacy campaignTick alarm on startup so duplicate alarms never collide
 try {
@@ -163,13 +164,13 @@ try {
 // so campaigns.js randomized 1–2.5m human-spacing jitter is preserved.
 try {
   if (chrome.alarms?.get) {
-    chrome.alarms.get(OUTFOX_CAMPAIGN_TICK_ALARM, (existing) => {
+    chrome.alarms.get(CRAFTURE_CAMPAIGN_TICK_ALARM, (existing) => {
       if (!existing) {
-        chrome.alarms.create(OUTFOX_CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
+        chrome.alarms.create(CRAFTURE_CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
       }
     });
   } else if (chrome.alarms?.create) {
-    chrome.alarms.create(OUTFOX_CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
+    chrome.alarms.create(CRAFTURE_CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
   }
 } catch {}
 chrome.alarms.create(QUEUE_TICK_ALARM, { periodInMinutes: QUEUE_TICK_MINUTES });
@@ -223,7 +224,17 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 
   if (alarm.name === RESEARCH_TICK_ALARM) {
-    researchProgress().catch((e) => console.warn('[Research tick]', e.message));
+    researchProgress()
+      .then(async () => {
+        const jobs = await allResearchJobs().catch(() => []);
+        const hasActive = jobs?.some((j) => j.status === 'pending' || j.status === 'running');
+        if (!hasActive) {
+          try {
+            chrome.alarms?.clear?.(RESEARCH_TICK_ALARM);
+          } catch {}
+        }
+      })
+      .catch((e) => console.warn('[Research tick]', e.message));
     return;
   }
 
@@ -232,7 +243,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     return;
   }
 
-  if (alarm.name !== CAMPAIGN_TICK_ALARM && alarm.name !== OUTFOX_CAMPAIGN_TICK_ALARM) return;
+  if (alarm.name !== CAMPAIGN_TICK_ALARM && alarm.name !== CRAFTURE_CAMPAIGN_TICK_ALARM && alarm.name !== 'outfox-campaign-tick') return;
   reconnectBridge();
   syncEndpointsFromVault(false).catch(() => {});
   handle(ACTIONS.CAMPAIGN_TICK, {}, 'system')
@@ -250,9 +261,9 @@ function onStartup() {
   initEndpoints().then(() => syncEndpointsFromVault(false)).catch(() => {});
   try {
     if (chrome.alarms?.get) {
-      chrome.alarms.get(OUTFOX_CAMPAIGN_TICK_ALARM, (existing) => {
+      chrome.alarms.get(CRAFTURE_CAMPAIGN_TICK_ALARM, (existing) => {
         if (!existing) {
-          chrome.alarms.create(OUTFOX_CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
+          chrome.alarms.create(CRAFTURE_CAMPAIGN_TICK_ALARM, { periodInMinutes: 2 });
         }
       });
     }

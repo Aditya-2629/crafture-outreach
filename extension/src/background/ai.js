@@ -1,5 +1,5 @@
 /**
- * OutFox — AI provider adapters.
+ * Crafture Network — AI provider adapters.
  *
  * Bring your own key (or run Ollama locally). Each adapter turns one prompt
  * into a request and one response into text; nothing about the user's key ever
@@ -138,7 +138,7 @@ const ADAPTERS = {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: system }] },
-            contents: [{ role: 'user', parts: [{ text: user }] }],
+            contents: sanitizeGeminiContents([{ role: 'user', parts: [{ text: user }] }]),
             generationConfig: { maxOutputTokens: maxTokens },
           }),
         },
@@ -289,6 +289,430 @@ export async function getActiveAiProviders() {
 
 export const getAiFallbackChain = getActiveAiProviders;
 
+/**
+ * Recursively sanitize a JSON schema for Gemini FunctionDeclaration.
+ * Strips unsupported fields: $schema, additionalProperties, default, invalid enums.
+ * Normalizes union types like ['string', 'null'] to 'STRING'.
+ * Uppercases all types to Gemini Schema types: STRING, NUMBER, INTEGER, BOOLEAN, ARRAY, OBJECT.
+ */
+export function sanitizeGeminiSchema(schema) {
+  if (!schema || typeof schema !== 'object') return { type: 'STRING' };
+
+  const out = {};
+
+  // Normalize type
+  let type = schema.type;
+  if (Array.isArray(type)) {
+    // Union types like ['string', 'null'] -> select first non-null type
+    const nonNull = type.find((t) => t && String(t).toLowerCase() !== 'null');
+    type = nonNull || 'string';
+  }
+
+  if (typeof type === 'string') {
+    const upper = type.toUpperCase();
+    out.type = upper === 'INT' ? 'INTEGER' : upper;
+  } else if (schema.properties) {
+    out.type = 'OBJECT';
+  } else if (schema.items) {
+    out.type = 'ARRAY';
+  } else {
+    out.type = 'STRING';
+  }
+
+  if (schema.description && typeof schema.description === 'string') {
+    out.description = schema.description;
+  }
+
+  // Gemini only supports enum on STRING types; strip if non-string
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) {
+    if (out.type === 'STRING') {
+      out.enum = schema.enum.map(String).filter(Boolean);
+    }
+  }
+
+  // Properties for OBJECT
+  if (schema.properties && typeof schema.properties === 'object') {
+    out.properties = {};
+    for (const [key, val] of Object.entries(schema.properties)) {
+      if (val && typeof val === 'object') {
+        out.properties[key] = sanitizeGeminiSchema(val);
+      }
+    }
+  }
+
+  // Required properties
+  if (Array.isArray(schema.required) && schema.required.length > 0) {
+    out.required = schema.required.filter((k) => typeof k === 'string');
+  }
+
+  // Items for ARRAY
+  if (schema.items && typeof schema.items === 'object') {
+    out.items = sanitizeGeminiSchema(schema.items);
+  }
+
+  // Strips $schema, additionalProperties, default by omission
+  return out;
+}
+
+/**
+ * Sanitize tool definitions into clean Gemini function declarations.
+ *
+ * @param {Array<object>} tools
+ * @returns {Array<object>}
+ */
+export function sanitizeGeminiTools(tools) {
+  if (!Array.isArray(tools)) return [];
+
+  const declarations = [];
+
+  for (const item of tools) {
+    if (!item || typeof item !== 'object') continue;
+
+    // Support both OpenAI format ({ type: 'function', function: { name, description, parameters } })
+    // and raw Gemini declaration format ({ name, description, parameters })
+    const fn = item.function || item;
+    const name = String(fn.name || '').trim();
+    if (!name) continue;
+
+    const description = String(fn.description || '');
+    const parameters = sanitizeGeminiSchema(fn.parameters || { type: 'object' });
+
+    declarations.push({
+      name,
+      description,
+      parameters,
+    });
+  }
+
+  return declarations;
+}
+
+/**
+ * Robust JSON output parser for AI responses.
+ * Strips markdown code fences (```json ... ```), leading prose, and trailing commentary.
+ * Falls back gracefully to `fallback` without throwing.
+ *
+ * @param {string|object} rawResponse
+ * @param {any} [fallback=null]
+ * @returns {any}
+ */
+export function extractJsonFromAiResponse(rawResponse, fallback = null) {
+  if (rawResponse === null || rawResponse === undefined) return fallback;
+  if (typeof rawResponse === 'object') return rawResponse;
+
+  let str = String(rawResponse).trim();
+  if (!str) return fallback;
+
+  // 1. Strip markdown code fences
+  str = str.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+  // 2. Direct JSON.parse
+  try {
+    return JSON.parse(str);
+  } catch (_) {}
+
+  // 3. Extract outermost object { ... }
+  const firstBrace = str.indexOf('{');
+  const lastBrace = str.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(str.slice(firstBrace, lastBrace + 1));
+    } catch (_) {}
+  }
+
+  // 4. Extract outermost array [ ... ]
+  const firstBracket = str.indexOf('[');
+  const lastBracket = str.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    try {
+      return JSON.parse(str.slice(firstBracket, lastBracket + 1));
+    } catch (_) {}
+  }
+
+  return fallback;
+}
+
+/**
+ * Sanitize Gemini `contents` turns right before dispatching to the Gemini API.
+ * Ensures strict compliance with Gemini 2.5+ REST API schema:
+ * - If `part.functionCall` exists: keeps ONLY `{ name, args }` inside `part.functionCall`
+ *   (strips any `thoughtSignature`, `thought_signature`, `thought signature`, `id`, etc. from inside `functionCall`).
+ * - Preserves valid `thoughtSignature` at the PART level ONLY (sibling to `functionCall`), NEVER inside `functionCall`.
+ * - Strips invalid keys like `'thought signature'` (with space) or `'thought_signature'` at the part level.
+ * - If `part.thought === true` and `part.text`: preserves thought / text without invalid keys.
+ * - Alternates valid roles strictly (merging consecutive same-role turns into single turns).
+ * - Never passes uncleaned raw model parts into Gemini API requests.
+ *
+ * @param {Array<object>} contents
+ * @returns {Array<object>}
+ */
+export function sanitizeGeminiContents(contents) {
+  if (!Array.isArray(contents)) return [];
+
+  const rawTurns = [];
+
+  for (const turn of contents) {
+    if (!turn || typeof turn !== 'object') continue;
+    const role = turn.role === 'assistant' ? 'model' : (turn.role || 'user');
+    const rawParts = Array.isArray(turn.parts) ? turn.parts : [];
+
+    const sanitizedParts = rawParts.map((part) => {
+      if (!part || typeof part !== 'object') {
+        return { text: String(part ?? '') };
+      }
+
+      // Check for any signature candidate across part and functionCall
+      const signature =
+        part.thoughtSignature ||
+        part.thought_signature ||
+        part['thought signature'] ||
+        part.functionCall?.thoughtSignature ||
+        part.functionCall?.thought_signature ||
+        part.functionCall?.['thought signature'] ||
+        null;
+
+      // 1. Function Call Part: keep ONLY { name, args } inside functionCall
+      if (part.functionCall && typeof part.functionCall === 'object') {
+        const fc = part.functionCall;
+        const name = String(fc.name || '');
+        const args = fc.args && typeof fc.args === 'object' && !Array.isArray(fc.args) ? fc.args : {};
+
+        const cleanPart = {
+          functionCall: { name, args },
+        };
+
+        if (signature && typeof signature === 'string') {
+          cleanPart.thoughtSignature = signature;
+        }
+
+        return cleanPart;
+      }
+
+      // 2. Function Response Part
+      if (part.functionResponse && typeof part.functionResponse === 'object') {
+        const fr = part.functionResponse;
+        return {
+          functionResponse: {
+            name: String(fr.name || ''),
+            response: (fr.response && typeof fr.response === 'object') ? fr.response : { result: fr.response },
+          },
+        };
+      }
+
+      // 3. Text / Thought Part
+      if (typeof part.text === 'string') {
+        const cleanPart = { text: part.text };
+        if (part.thought === true) {
+          cleanPart.thought = true;
+        }
+        if (signature && typeof signature === 'string') {
+          cleanPart.thoughtSignature = signature;
+        }
+        return cleanPart;
+      }
+
+      // 4. Inline Data Part
+      if (part.inlineData && typeof part.inlineData === 'object') {
+        return {
+          inlineData: {
+            mimeType: part.inlineData.mimeType,
+            data: part.inlineData.data,
+          },
+        };
+      }
+
+      // Fallback: If part has other shapes, clean text / signature
+      const cleanPart = {};
+      if (part.text !== undefined) cleanPart.text = String(part.text);
+      if (signature && typeof signature === 'string') cleanPart.thoughtSignature = signature;
+      return Object.keys(cleanPart).length > 0 ? cleanPart : { text: '' };
+    }).filter((p) => Object.keys(p).length > 0);
+
+    rawTurns.push({
+      role,
+      parts: sanitizedParts.length > 0 ? sanitizedParts : [{ text: '' }],
+    });
+  }
+
+  // Strict role alternation: merge consecutive same-role turns into single turns
+  const alternating = [];
+  for (const turn of rawTurns) {
+    if (alternating.length > 0 && alternating[alternating.length - 1].role === turn.role) {
+      alternating[alternating.length - 1].parts.push(...turn.parts);
+    } else {
+      alternating.push(turn);
+    }
+  }
+
+  // For multi-turn chats, Gemini requires initial turn to be 'user'
+  if (alternating.length > 1 && alternating[0].role === 'model' && alternating.some((t) => t.role === 'user')) {
+    while (alternating.length > 0 && alternating[0].role !== 'user') {
+      alternating.shift();
+    }
+  }
+
+  return alternating;
+}
+
+/**
+ * Queries the selected provider's live models API (or returns curated defaults).
+ * Marks recommended top tool-calling / fast models.
+ *
+ * @param {object} params
+ * @param {string} params.provider
+ * @param {string} [params.apiKey]
+ * @param {string} [params.baseUrl]
+ * @returns {Promise<{provider: string, models: Array<{id: string, name: string, recommended: boolean}>}>}
+ */
+export async function listProviderModels({ provider, apiKey, baseUrl } = {}) {
+  const norm = String(provider || '').trim().toLowerCase();
+  const normalizedProvider = norm === 'claude' ? 'anthropic' : (norm || 'groq');
+
+  const CURATED_MODELS = {
+    gemini: [
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', recommended: true },
+      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', recommended: true },
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', recommended: false },
+      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', recommended: false },
+      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', recommended: false },
+    ],
+    groq: [
+      { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile', recommended: true },
+      { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B (Groq)', recommended: true },
+      { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant', recommended: false },
+      { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B 32k', recommended: false },
+      { id: 'gemma2-9b-it', name: 'Gemma 2 9B IT', recommended: false },
+    ],
+    openai: [
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', recommended: true },
+      { id: 'gpt-4o', name: 'GPT-4o', recommended: true },
+      { id: 'o1-mini', name: 'o1 Mini', recommended: false },
+      { id: 'o3-mini', name: 'o3 Mini', recommended: false },
+      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', recommended: false },
+    ],
+    anthropic: [
+      { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', recommended: true },
+      { id: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku', recommended: true },
+      { id: 'claude-3-7-sonnet-latest', name: 'Claude 3.7 Sonnet', recommended: false },
+      { id: 'claude-3-opus-latest', name: 'Claude 3 Opus', recommended: false },
+    ],
+    ollama: [
+      { id: 'llama3.2', name: 'Llama 3.2', recommended: true },
+      { id: 'llama3.1:8b', name: 'Llama 3.1 8B', recommended: true },
+      { id: 'mistral', name: 'Mistral 7B', recommended: false },
+      { id: 'qwen2.5:7b', name: 'Qwen 2.5 7B', recommended: false },
+    ],
+  };
+
+  const fallbacks = (CURATED_MODELS[normalizedProvider] || []).map((m) => ({ ...m }));
+  const cleanKey = String(apiKey || '').trim();
+
+  // If no apiKey provided, return curated defaults immediately
+  if (!cleanKey && normalizedProvider !== 'ollama') {
+    return { provider: normalizedProvider, models: fallbacks, fromCache: true };
+  }
+
+  try {
+    if (normalizedProvider === 'gemini') {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        const rawList = Array.isArray(data.models) ? data.models : [];
+        const filtered = rawList
+          .filter((m) => {
+            const methods = m.supportedGenerationMethods || [];
+            return methods.includes('generateContent') || String(m.name || '').includes('gemini');
+          })
+          .map((m) => {
+            const rawId = String(m.name || '').replace(/^models\//, '');
+            const isRec = rawId.includes('2.5-flash') || rawId.includes('2.5-pro');
+            return {
+              id: rawId,
+              name: m.displayName || rawId,
+              recommended: isRec,
+            };
+          });
+
+        if (filtered.length > 0) {
+          filtered.sort((a, b) => (b.recommended ? 1 : 0) - (a.recommended ? 1 : 0));
+          return { provider: normalizedProvider, models: filtered, live: true };
+        }
+      }
+    } else if (normalizedProvider === 'groq') {
+      const url = 'https://api.groq.com/openai/v1/models';
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${cleanKey}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const rawList = Array.isArray(data.data) ? data.data : [];
+        const filtered = rawList
+          .filter((m) => !String(m.id || '').includes('whisper'))
+          .map((m) => {
+            const id = m.id;
+            const isRec = id === 'llama-3.3-70b-versatile' || id.includes('gpt-oss') || id === 'llama-3.1-8b-instant';
+            return {
+              id,
+              name: id,
+              recommended: isRec,
+            };
+          });
+
+        if (filtered.length > 0) {
+          filtered.sort((a, b) => (b.recommended ? 1 : 0) - (a.recommended ? 1 : 0));
+          return { provider: normalizedProvider, models: filtered, live: true };
+        }
+      }
+    } else if (normalizedProvider === 'openai') {
+      const url = 'https://api.openai.com/v1/models';
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${cleanKey}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const rawList = Array.isArray(data.data) ? data.data : [];
+        const filtered = rawList
+          .filter((m) => m.id && (m.id.startsWith('gpt-') || m.id.startsWith('o1') || m.id.startsWith('o3')))
+          .map((m) => {
+            const id = m.id;
+            const isRec = id === 'gpt-4o-mini' || id === 'gpt-4o';
+            return {
+              id,
+              name: id,
+              recommended: isRec,
+            };
+          });
+
+        if (filtered.length > 0) {
+          filtered.sort((a, b) => (b.recommended ? 1 : 0) - (a.recommended ? 1 : 0));
+          return { provider: normalizedProvider, models: filtered, live: true };
+        }
+      }
+    } else if (normalizedProvider === 'ollama') {
+      const host = baseUrl || 'http://localhost:11434';
+      const res = await fetch(`${host.replace(/\/$/, '')}/api/tags`);
+      if (res.ok) {
+        const data = await res.json();
+        const rawList = Array.isArray(data.models) ? data.models : [];
+        const filtered = rawList.map((m) => ({
+          id: m.name,
+          name: m.name,
+          recommended: m.name.includes('llama3') || m.name.includes('mistral'),
+        }));
+        if (filtered.length > 0) {
+          filtered.sort((a, b) => (b.recommended ? 1 : 0) - (a.recommended ? 1 : 0));
+          return { provider: normalizedProvider, models: filtered, live: true };
+        }
+      }
+    }
+  } catch (_) {
+    // Return curated fallbacks on error
+  }
+
+  return { provider: normalizedProvider, models: fallbacks, fallback: true };
+}
+
 /* ================================================================== */
 /*  Public interface                                                  */
 /* ================================================================== */
@@ -402,6 +826,7 @@ export async function complete(task, input = {}) {
 }
 
 register(ACTIONS.AI_COMPLETE, ({ task, input }) => complete(task, input));
+register(ACTIONS.AI_LIST_MODELS, (params) => listProviderModels(params));
 
 /* ================================================================== */
 /*  Prompt Execution & Hybrid Audience Filter                         */

@@ -1,5 +1,5 @@
 /**
- * OutFox — Content Script (ISOLATED world)
+ * Crafture Network — Content Script (ISOLATED world)
  *
  * Two jobs:
  *  1. On-page UI — selection checkboxes on search results, a floating action
@@ -21,11 +21,11 @@
 
   function cleanupStaleElements() {
     try {
-      document.getElementById('outfox-floating-import')?.remove();
-      document.getElementById('outfox-import-btn')?.remove();
-      document.getElementById('outfox-dossier-btn')?.remove();
-      document.getElementById('outfox-invalidated-notice')?.remove();
-      document.querySelectorAll('.outfox-dossier-overlay, .outfox-import-overlay').forEach((el) => el.remove());
+      (document.getElementById('cn-floating-import') )?.remove();
+      (document.getElementById('cn-import-btn') )?.remove();
+      (document.getElementById('cn-dossier-btn') )?.remove();
+      (document.getElementById('cn-invalidated-notice') )?.remove();
+      document.querySelectorAll('.cn-dossier-overlay, .cn-import-overlay').forEach((el) => el.remove());
     } catch {}
   }
 
@@ -44,10 +44,10 @@
     invalidatedNoticeShown = true;
 
     try {
-      document.getElementById('outfox-invalidated-notice')?.remove();
+      (document.getElementById('cn-invalidated-notice') )?.remove();
 
       const banner = document.createElement('div');
-      banner.id = 'outfox-invalidated-notice';
+      banner.id = 'cn-invalidated-notice';
       banner.style.cssText = `
         position: fixed;
         top: 20px;
@@ -70,10 +70,10 @@
       banner.innerHTML = `
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff741f;"></span>
-          <span>OutFox was just updated — refreshing or click to reload this LinkedIn tab.</span>
+          <span>Crafture Network was just updated — refreshing or click to reload this LinkedIn tab.</span>
         </div>
         <button type="button" id="btn-reload-linkedin" style="
-          background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);
+          background: #104B35;
           color: #ffffff;
           border: none;
           padding: 6px 14px;
@@ -308,7 +308,7 @@
       try {
         profiles.push(await call('profile.get', { publicId }));
       } catch (err) {
-        console.warn(`[OutFox] Failed to export ${urlOrName}:`, err.message);
+        console.warn(`[Crafture Network] Failed to export ${urlOrName}:`, err.message);
       }
     }
 
@@ -350,7 +350,7 @@
     const btn = document.createElement('button');
     btn.className = 'litk-export-btn';
     btn.textContent = 'Export Profile';
-    btn.title = 'Export this profile as JSON (OutFox)';
+    btn.title = 'Export this profile as JSON (Crafture)';
 
     btn.addEventListener('click', async () => {
       btn.disabled = true;
@@ -389,7 +389,7 @@
 
   function injectProfileDossierButton() {
     if (!window.location.pathname.match(/^\/in\/[^/]+\/?$/)) return;
-    if (document.getElementById('outfox-dossier-btn')) return;
+    if ((document.getElementById('cn-dossier-btn') )) return;
 
     const targetArea =
       document.querySelector('.pv-top-card-v2-ctas') ||
@@ -401,10 +401,10 @@
     if (!targetArea) return;
 
     const btn = document.createElement('button');
-    btn.id = 'outfox-dossier-btn';
-    btn.className = 'outfox-pill-btn';
+    btn.id = 'cn-dossier-btn';
+    btn.className = 'cn-pill-btn';
     btn.innerHTML = 'AI Dossier';
-    btn.title = 'Generate instant AI dossier & personalized conversation hook (OutFox)';
+    btn.title = 'Generate instant AI dossier & personalized conversation hook (Crafture)';
 
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -427,15 +427,15 @@
 
       // Open floating modal card
       const overlay = document.createElement('div');
-      overlay.className = 'outfox-dossier-overlay';
+      overlay.className = 'cn-dossier-overlay';
       overlay.innerHTML = `
-        <div class="outfox-dossier-card">
-          <div class="outfox-dossier-head">
-            <span class="outfox-dossier-title">AI Dossier · ${fullName}</span>
-            <button type="button" class="outfox-dossier-close" id="btn-close-dossier">✕</button>
+        <div class="cn-dossier-card">
+          <div class="cn-dossier-head">
+            <span class="cn-dossier-title">AI Dossier · ${fullName}</span>
+            <button type="button" class="cn-dossier-close" id="btn-close-dossier">✕</button>
           </div>
           <div id="dossier-content" style="display: flex; flex-direction: column; gap: 14px; padding: 20px 0; text-align: center;">
-            <div class="outfox-loading-spin" style="width:24px; height:24px; border:2.5px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; margin:0 auto; animation: spin 0.8s infinite linear;"></div>
+            <div class="cn-loading-spin" style="width:24px; height:24px; border:2.5px solid #E6EFE9; border-top-color:#104B35; border-radius:50%; margin:0 auto; animation: spin 0.8s infinite linear;"></div>
             <span style="font-size: 13px; color: #6e7191;">Analyzing profile with Groq/Gemini AI...</span>
           </div>
         </div>
@@ -465,15 +465,15 @@
         if (contentEl) {
           contentEl.style.textAlign = 'left';
           contentEl.innerHTML = `
-            <div class="outfox-dossier-section">
-              <span class="outfox-dossier-lbl">WHAT THEY DO & RESPONSIBILITIES</span>
-              <p class="outfox-dossier-text">${outputText.replace(/\n+/g, ' ')}</p>
+            <div class="cn-dossier-section">
+              <span class="cn-dossier-lbl">WHAT THEY DO & RESPONSIBILITIES</span>
+              <p class="cn-dossier-text">${outputText.replace(/\n+/g, ' ')}</p>
             </div>
 
-            <div class="outfox-hook-box">
-              <span class="outfox-dossier-lbl" style="color: #ff6b00;">BEST ICEBREAKER HOOK</span>
-              <p class="outfox-hook-text" id="outfox-hook-copy-target">"${hook}"</p>
-              <button type="button" class="outfox-btn-copy" id="btn-copy-hook">
+            <div class="cn-hook-box">
+              <span class="cn-dossier-lbl" style="color: #104B35;">BEST ICEBREAKER HOOK</span>
+              <p class="cn-hook-text" id="cn-hook-copy-target">"${hook}"</p>
+              <button type="button" class="cn-btn-copy" id="btn-copy-hook">
                 Copy Hook
               </button>
             </div>
@@ -685,18 +685,18 @@
       location.pathname.includes('/search/') ||
       location.search.includes('keywords');
     if (!isSearchPage) {
-      document.getElementById('outfox-floating-import')?.remove();
-      document.getElementById('outfox-import-btn')?.remove();
+      (document.getElementById('cn-floating-import') )?.remove();
+      (document.getElementById('cn-import-btn') )?.remove();
       return;
     }
 
-    if (document.getElementById('outfox-floating-import') || document.getElementById('outfox-import-btn')) return;
+    if ((document.getElementById('cn-floating-import') ) || (document.getElementById('cn-import-btn') )) return;
 
     const badge = document.createElement('div');
-    badge.id = 'outfox-floating-import';
-    badge.className = 'outfox-float-badge';
-    badge.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:text-bottom;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Import to OutFox';
-    badge.title = '1-click import all search result prospects into OutFox';
+    badge.id = 'cn-floating-import';
+    badge.className = 'cn-float-badge';
+    badge.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:text-bottom;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Import to Crafture';
+    badge.title = '1-click import all search result prospects into Crafture';
 
     badge.addEventListener('click', async () => {
       // Fetch lists from background
@@ -713,36 +713,36 @@
 
       // Open Modal Overlay
       const overlay = document.createElement('div');
-      overlay.className = 'outfox-import-overlay';
+      overlay.className = 'cn-import-overlay';
       overlay.innerHTML = `
-        <div class="outfox-import-dialog">
-          <div class="outfox-dossier-head">
-            <span class="outfox-dossier-title">
+        <div class="cn-import-dialog">
+          <div class="cn-dossier-head">
+            <span class="cn-dossier-title">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:text-bottom;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               1-Click Search Import
             </span>
-            <button type="button" class="outfox-dossier-close" id="btn-close-import">✕</button>
+            <button type="button" class="cn-dossier-close" id="btn-close-import">✕</button>
           </div>
 
           <!-- Configuration View -->
-          <div id="outfox-import-config-view" style="display: flex; flex-direction: column; gap: 14px;">
+          <div id="cn-import-config-view" style="display: flex; flex-direction: column; gap: 14px;">
             <div>
               <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
                 <label style="font-size: 12.5px; font-weight: 600; color: #14142b;">Target leads to import:</label>
                 <span style="font-size: 11.5px; color: #6e7191;">Auto-paginates search</span>
               </div>
-              <input type="number" id="input-import-target" class="outfox-input" value="50" min="10" max="1000" step="5" />
+              <input type="number" id="input-import-target" class="cn-input" value="50" min="10" max="1000" step="5" />
               <div style="display: flex; gap: 6px; margin-top: 8px;">
-                <button type="button" class="outfox-preset-btn" data-val="25">25</button>
-                <button type="button" class="outfox-preset-btn active" data-val="50">50</button>
-                <button type="button" class="outfox-preset-btn" data-val="100">100</button>
-                <button type="button" class="outfox-preset-btn" data-val="250">250</button>
+                <button type="button" class="cn-preset-btn" data-val="25">25</button>
+                <button type="button" class="cn-preset-btn active" data-val="50">50</button>
+                <button type="button" class="cn-preset-btn" data-val="100">100</button>
+                <button type="button" class="cn-preset-btn" data-val="250">250</button>
               </div>
             </div>
 
             <div>
               <label style="font-size: 12.5px; font-weight: 600; color: #14142b; display: block; margin-bottom: 6px;">Destination List:</label>
-              <select id="select-import-list" class="outfox-select" style="margin-top: 0; width: 100%;">
+              <select id="select-import-list" class="cn-select" style="margin-top: 0; width: 100%;">
                 <option value="__new__">✨ + Create New List</option>
                 ${lists.map((l) => `<option value="${l.listId || l.id}">${l.name} (${l.count || 0} leads)</option>`).join('')}
               </select>
@@ -751,9 +751,9 @@
             <div id="container-list-name-input" style="margin-top: 4px;">
               <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
                 <label id="label-list-custom-name" style="font-size: 12px; font-weight: 600; color: #475569;">New List Name:</label>
-                <span id="hint-list-action" style="font-size: 11px; color: #ff6b00; font-weight: 600;">Custom Name</span>
+                <span id="hint-list-action" style="font-size: 11px; color: #104B35; font-weight: 600;">Custom Name</span>
               </div>
-              <input type="text" id="input-import-list-name" class="outfox-input" placeholder="e.g. Austin Software Engineers" value="${defaultNewName}" style="width: 100%; box-sizing: border-box;" />
+              <input type="text" id="input-import-list-name" class="cn-input" placeholder="e.g. Austin Software Engineers" value="${defaultNewName}" style="width: 100%; box-sizing: border-box;" />
             </div>
 
             <div style="background: #f8fafc; border-radius: 10px; padding: 10px 14px; font-size: 12px; color: #6e7191; line-height: 1.4;">
@@ -761,26 +761,26 @@
             </div>
 
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
-              <button type="button" class="outfox-pill-btn" style="background: #f1f2f6 !important; color: #6e7191 !important;" id="btn-cancel-import">Cancel</button>
-              <button type="button" class="outfox-pill-btn" id="btn-confirm-import">Start Import →</button>
+              <button type="button" class="cn-pill-btn" style="background: #f1f2f6 !important; color: #6e7191 !important;" id="btn-cancel-import">Cancel</button>
+              <button type="button" class="cn-pill-btn" id="btn-confirm-import">Start Import →</button>
             </div>
           </div>
 
           <!-- Progress View -->
-          <div id="outfox-import-progress-view" style="display: none; flex-direction: column; gap: 12px; padding: 6px 0;">
+          <div id="cn-import-progress-view" style="display: none; flex-direction: column; gap: 12px; padding: 6px 0;">
             <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <span id="outfox-progress-status" style="font-size: 13.5px; font-weight: 600; color: #14142b;">Scraping Page 1...</span>
-              <span id="outfox-progress-counter" style="font-size: 13px; font-weight: 700; color: #ff6b00;">0 / 50</span>
+              <span id="cn-progress-status" style="font-size: 13.5px; font-weight: 600; color: #14142b;">Scraping Page 1...</span>
+              <span id="cn-progress-counter" style="font-size: 13px; font-weight: 700; color: #104B35;">0 / 50</span>
             </div>
 
-            <div style="background: #fff7ed; border-radius: 9999px; height: 10px; overflow: hidden; width: 100%;">
-              <div id="outfox-progress-fill" style="background: #ff6b00; height: 100%; width: 0%; border-radius: 9999px; transition: width 0.3s ease;"></div>
+            <div style="background: #E6EFE9; border-radius: 9999px; height: 10px; overflow: hidden; width: 100%;">
+              <div id="cn-progress-fill" style="background: #104B35; height: 100%; width: 0%; border-radius: 9999px; transition: width 0.3s ease;"></div>
             </div>
 
-            <span id="outfox-progress-hint" style="font-size: 11.5px; color: #6e7191;">Simulating natural human pacing (2.5s - 3.5s delay between pages)...</span>
+            <span id="cn-progress-hint" style="font-size: 11.5px; color: #6e7191;">Simulating natural human pacing (2.5s - 3.5s delay between pages)...</span>
 
             <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
-              <button type="button" class="outfox-pill-btn" style="background: #f1f2f6 !important; color: #14142b !important;" id="btn-stop-import">Stop & Save Leads</button>
+              <button type="button" class="cn-pill-btn" style="background: #f1f2f6 !important; color: #14142b !important;" id="btn-stop-import">Stop & Save Leads</button>
             </div>
           </div>
         </div>
@@ -791,7 +791,7 @@
       let cancelled = false;
 
       const targetInput = overlay.querySelector('#input-import-target');
-      const presetBtns = overlay.querySelectorAll('.outfox-preset-btn');
+      const presetBtns = overlay.querySelectorAll('.cn-preset-btn');
 
       presetBtns.forEach((pBtn) => {
         pBtn.addEventListener('click', () => {
@@ -859,11 +859,11 @@
         let finalListName = customName || defaultNewName;
 
         // Switch to progress view
-        const configView = overlay.querySelector('#outfox-import-config-view');
-        const progressView = overlay.querySelector('#outfox-import-progress-view');
-        const statusEl = overlay.querySelector('#outfox-progress-status');
-        const counterEl = overlay.querySelector('#outfox-progress-counter');
-        const fillEl = overlay.querySelector('#outfox-progress-fill');
+        const configView = overlay.querySelector('#cn-import-config-view');
+        const progressView = overlay.querySelector('#cn-import-progress-view');
+        const statusEl = overlay.querySelector('#cn-progress-status');
+        const counterEl = overlay.querySelector('#cn-progress-counter');
+        const fillEl = overlay.querySelector('#cn-progress-fill');
         const closeBtn = overlay.querySelector('#btn-close-import');
 
         if (configView) configView.style.display = 'none';

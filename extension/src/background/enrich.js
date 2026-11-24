@@ -1,5 +1,5 @@
 /**
- * OutFox — Enrichment Provider Interface & Waterfall Engine.
+ * Crafture Network — Enrichment Provider Interface & Waterfall Engine.
  * Supports Apollo.io, Hunter.io, and algorithmic Pattern Generation fallback.
  */
 

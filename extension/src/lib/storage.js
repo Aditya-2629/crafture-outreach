@@ -1,5 +1,5 @@
 /**
- * OutFox — storage helpers.
+ * Crafture Network — storage helpers.
  *
  * Everything the engine persists goes through this module: a thin promise
  * wrapper over `chrome.storage.local`, the profile store, and the `actions`
@@ -18,9 +18,9 @@ import { idbGet, idbGetAll, idbPut, idbPutMany, idbCount, isIdbAvailable } from 
 export const K = Object.freeze({
   CONFIG: 'config',
   QUOTA: 'quota',
-  BUCKET_COOLDOWNS: 'outfox_bucket_cooldowns',
-  NOTE_LIMIT_UNTIL: 'outfox_note_limit_until',
-  TICK_LOCK: 'outfox_tick_lock',
+  BUCKET_COOLDOWNS: 'crafture_bucket_cooldowns',
+  NOTE_LIMIT_UNTIL: 'crafture_note_limit_until',
+  TICK_LOCK: 'crafture_tick_lock',
   BLACKLIST: 'blacklist',
   COMPANY_BLACKLIST: 'company_blacklist',
   DEBUG_LOGS: 'debug_logs',
@@ -544,7 +544,7 @@ export async function logDebug(level, tag, message, data = null) {
   } catch {}
 
   const consolePrefix = `[${entry.timestamp}] [${entry.tag}]`;
-  if (level === 'error') console.error(consolePrefix, entry.message, data || '');
+  if (level === 'error') console.warn(consolePrefix, entry.message, data || '');
   else if (level === 'warn') console.warn(consolePrefix, entry.message, data || '');
   else console.log(consolePrefix, entry.message, data || '');
 
@@ -633,3 +633,32 @@ export async function getImportHistory() {
 
 
 
+
+/**
+ * One-time startup migration: copies any legacy outfox_* chrome.storage.local
+ * entries to crafture_* keys so all user campaigns, settings, and cooldowns persist.
+ */
+export async function migrateLegacyStorage() {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local?.get) return;
+  return new Promise((resolve) => {
+    chrome.storage.local.get(null, (all) => {
+      if (!all || typeof all !== 'object') return resolve();
+      const updates = {};
+      let needsUpdate = false;
+      for (const [key, val] of Object.entries(all)) {
+        if (key.startsWith('outfox_')) {
+          const newKey = 'crafture_' + key.slice(7);
+          if (all[newKey] === undefined) {
+            updates[newKey] = val;
+            needsUpdate = true;
+          }
+        }
+      }
+      if (needsUpdate) {
+        chrome.storage.local.set(updates, () => resolve());
+      } else {
+        resolve();
+      }
+    });
+  });
+}

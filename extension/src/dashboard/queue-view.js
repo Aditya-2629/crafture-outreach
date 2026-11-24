@@ -1,5 +1,5 @@
 /**
- * OutFox — OutFox Queue & Daily Quotas View
+ * Crafture Network — Crafture Network Queue & Daily Quotas View
  * Matches 1:1 Screenshots: Queued actions table, filters, bulk delete,
  * live runner status banner with auto-refresh, and live LinkedIn Daily Quotas progress cards.
  * 100% Manifest V3 CSP Compliant · Zero Emojis in Core UI · Pure SVG Icons
@@ -11,7 +11,7 @@ import { ICONS } from '../ui/icons.js';
 import { openUiConfirm, openLeadTimelineModal } from './modal-engine.js';
 import { isStorageChangeRelevant, captureInputFocus, restoreInputFocus } from './dashboard.js';
 
-const QUEUE_RELEVANT_KEYS = new Set(['campaigns', 'queue', 'quotas', 'outfox_quotas', 'enrollments']);
+const QUEUE_RELEVANT_KEYS = new Set(['campaigns', 'queue', 'quotas', 'crafture_quotas', 'enrollments']);
 
 let selectedQueueIds = new Set();
 let activeCampaignFilter = 'all';
@@ -207,6 +207,26 @@ function renderRowStatusPill(item, now = Date.now()) {
   const cooldownUntil = item.bucketCooldownUntil || 0;
   const isBucketCooling = cooldownUntil > now;
 
+  // 0. Waiting for acceptance (checked before retries and scheduled)
+  const isWaitingAcceptance =
+    e.parkReason === 'waiting_acceptance' ||
+    (typeof e.parkReason === 'string' && e.parkReason.includes('waiting_acceptance')) ||
+    /waiting for invite acceptance/i.test(e.lastError || '') ||
+    /waiting for invite acceptance/i.test(e.error || '');
+
+  if (isWaitingAcceptance) {
+    const diffMs = (e.nextAt || 0) > now ? (e.nextAt - now) : 0;
+    const subtext = diffMs > 0 ? `in ${formatTimeRemaining(diffMs)}` : 'Auto-detects';
+    const tooltipText = diffMs > 0
+      ? `Waiting for invite acceptance. Next check in ${formatTimeRemaining(diffMs)}`
+      : 'Waiting for invite acceptance. Automatically resumes once accepted';
+    return `
+      <span class="status-pill status-waiting-accept" title="${escapeHtml(tooltipText)}" style="display:inline-flex; align-items:center; gap:4px;">
+        ${ICONS.clock || ''} Waiting for Accept <span style="font-size:10px; opacity:0.85; font-weight:600;">(${subtext})</span>
+      </span>
+    `;
+  }
+
   // 1. Retry state
   if ((e.retryCount || 0) > 0 && e.lastError) {
     const errorText = escapeHtml(e.lastError);
@@ -217,7 +237,7 @@ function renderRowStatusPill(item, now = Date.now()) {
     `;
   }
 
-  // 2. Cooldown / Quota Full in outfox_bucket_cooldowns
+  // 2. Cooldown / Quota Full in crafture_bucket_cooldowns
   if (isBucketCooling) {
     const diffMs = cooldownUntil - now;
     if (diffMs > 2 * 3600 * 1000) {
@@ -265,12 +285,12 @@ function renderRowStatusPill(item, now = Date.now()) {
 }
 
 function ensureQueueStyles() {
-  const STYLE_ID = 'OutFox-queue-view-css';
+  const STYLE_ID = 'cn-queue-view-css';
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
-    .OutFox-queue-layout { display: grid; grid-template-columns: 1fr 300px; gap: 24px; max-width: 1200px; margin: 0 auto; }
+    .cn-queue-layout { display: grid; grid-template-columns: 1fr 300px; gap: 24px; max-width: 1200px; margin: 0 auto; }
     .queue-main-panel { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
     .queue-header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
     .queue-view-title { font-size: 22px; font-weight: 800; color: #14142b; margin: 0; }
@@ -279,14 +299,14 @@ function ensureQueueStyles() {
     .badge-quota-reached { font-size: 11px; font-weight: 700; background: #fef2f2; color: #dc2626; padding: 2px 8px; border-radius: 6px; }
     .badge-quota-active { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; background: #ecfdf5; color: #059669; padding: 2px 8px; border-radius: 6px; }
     .btn-update-activity { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 20px; padding: 8px 16px; font-size: 12px; font-weight: 700; color: #14142b; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.15s; }
-    .btn-update-activity:hover { border-color: #ff6b00; color: #ff6b00; background: #f8fafc; }
+    .btn-update-activity:hover { border-color: #104B35; color: #104B35; background: #f8fafc; }
     .spin-icon-update { display: flex; align-items: center; justify-content: center; }
     .spin-icon-update.is-spinning { animation: spin 0.8s linear infinite; }
 
     /* Top Live Runner Status Banner */
     .queue-live-banner {
-      background: linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
-      border: 1.5px solid #ffedd5;
+      background: linear-gradient(135deg, #E6EFE9 0%, #ffffff 100%);
+      border: 1.5px solid #DCE5DE;
       border-radius: 14px;
       padding: 14px 18px;
       margin-bottom: 20px;
@@ -295,19 +315,19 @@ function ensureQueueStyles() {
       align-items: center;
       flex-wrap: wrap;
       gap: 16px;
-      box-shadow: 0 2px 6px rgba(255, 107, 0, 0.04);
+      box-shadow: 0 2px 6px rgba(16, 75, 53, 0.04);
     }
     .banner-left { display: flex; flex-direction: column; gap: 4px; }
     .banner-super-label { font-size: 10px; font-weight: 800; color: #9a3412; letter-spacing: 0.8px; text-transform: uppercase; }
     .live-state-pill { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; padding: 4px 12px; border-radius: 20px; }
     .live-state-pill.pill-active { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
-    .live-state-pill.pill-cooldown { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+    .live-state-pill.pill-cooldown { background: #E6EFE9; color: #c2410c; border: 1px solid #DCE5DE; }
     .live-state-pill.pill-quota { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
     .live-state-pill.pill-idle { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
 
     .pulse-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
     .pulse-dot.green { background: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2); }
-    .pulse-dot.orange { background: #f97316; box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2); }
+    .pulse-dot.orange { background: #104B35; box-shadow: 0 0 0 3px rgba(16, 75, 53, 0.2); }
     .pulse-dot.red { background: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2); }
     .pulse-dot.gray { background: #94a3b8; }
     .pulse-dot.animated { animation: livePulse 2s infinite; }
@@ -322,13 +342,13 @@ function ensureQueueStyles() {
     .banner-stat-item { display: flex; flex-direction: column; gap: 2px; }
     .banner-stat-label { font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 0.5px; text-transform: uppercase; }
     .banner-stat-val { font-size: 12.5px; font-weight: 700; color: #14142b; }
-    .banner-stat-val.font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: #ff6b00; }
+    .banner-stat-val.font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: #104B35; }
     .banner-refresh-indicator { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: #64748b; background: #ffffff; padding: 4px 10px; border-radius: 12px; border: 1px solid #e2e8f0; }
 
     .queue-channel-tabs { display: flex; gap: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px; }
     .channel-tab { background: transparent; border: none; font-size: 13.5px; font-weight: 600; color: #64748b; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; }
-    .channel-tab.is-active { background: #fff7ed; color: #ff6b00; font-weight: 700; }
-    .tab-count-pill { font-size: 11px; padding: 2px 6px; border-radius: 9999px; background: rgba(255, 107, 0, 0.1); color: #ff6b00; }
+    .channel-tab.is-active { background: #E6EFE9; color: #104B35; font-weight: 700; }
+    .tab-count-pill { font-size: 11px; padding: 2px 6px; border-radius: 9999px; background: rgba(16, 75, 53, 0.1); color: #104B35; }
     .queue-filters-bar { display: flex; gap: 10px; margin-bottom: 16px; }
     .filter-pill-select { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #14142b; outline: none; cursor: pointer; }
     .filter-pill-btn { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #14142b; cursor: pointer; }
@@ -344,7 +364,7 @@ function ensureQueueStyles() {
     .queue-table th { position: sticky; top: 0; z-index: 10; text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; color: #64748b; background: #f8fafc; border-bottom: 1px solid #e2e8f0; letter-spacing: 0.5px; }
     .queue-table td { padding: 12px; font-size: 13px; color: #14142b; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
     .queue-table tr:hover td { background: #f8fafc; }
-    .queue-action-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #ff6b00; background: #fff7ed; padding: 4px 10px; border-radius: 6px; }
+    .queue-action-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #104B35; background: #E6EFE9; padding: 4px 10px; border-radius: 6px; }
     .q-icon { display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; }
     .prospect-name { font-weight: 600; color: #14142b; }
     .queue-campaign-tag { font-size: 12px; color: #64748b; background: #f1f5f9; padding: 3px 8px; border-radius: 4px; }
@@ -353,10 +373,11 @@ function ensureQueueStyles() {
     .status-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; }
     .status-pill.status-due-now { background: #fef08a; color: #854d0e; border: 1px solid #fde047; font-weight: 800; }
     .status-pill.status-scheduled { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
-    .status-pill.status-cooling { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+    .status-pill.status-cooling { background: #E6EFE9; color: #c2410c; border: 1px solid #DCE5DE; }
     .status-pill.status-quota-full { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
     .status-pill.status-retry { background: #fdf4ff; color: #86198f; border: 1px solid #f0abfc; cursor: help; }
-    .status-pill.status-needs-conn { background: #fff1ee; color: #ea580c; border: 1px solid #fed7aa; cursor: help; }
+    .status-pill.status-waiting-accept { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; cursor: help; }
+    .status-pill.status-needs-conn { background: #fff1ee; color: #167448; border: 1px solid #DCE5DE; cursor: help; }
 
     .queue-empty-state { text-align: center; padding: 40px 20px; }
     .empty-icon-wrap { width: 48px; height: 48px; border-radius: 12px; background: #f1f5f9; color: #94a3b8; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto; }
@@ -369,7 +390,7 @@ function ensureQueueStyles() {
     .quota-progress-card.is-warning { border-color: #fca5a5; background: #fff5f5; }
     .quota-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
     .quota-icon-wrap { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .icon-invites { background: #fff7ed; color: #ff6b00; }
+    .icon-invites { background: #E6EFE9; color: #104B35; }
     .icon-messages { background: #e0f2fe; color: #0284c7; }
     .icon-visits { background: #fff1ee; color: #ff7a59; }
     .quota-meta { flex: 1; }
@@ -378,7 +399,7 @@ function ensureQueueStyles() {
     .quota-info-icon { color: #cbd5e1; cursor: pointer; display: flex; align-items: center; }
     .quota-bar-track { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
     .quota-bar-fill { height: 100%; border-radius: 3px; }
-    .fill-invites { background: #ff6b00; }
+    .fill-invites { background: #104B35; }
     .fill-messages { background: #0284c7; }
     .fill-visits { background: #ff7a59; }
     .quota-count-line { font-size: 11px; color: #64748b; text-align: right; }
@@ -407,12 +428,12 @@ async function performQueueFetchAndPaint(container, ctx = {}, { isInitial = fals
   isRefreshing = true;
 
   try {
-    const hasExistingContent = Boolean(container.querySelector('.OutFox-queue-layout'));
+    const hasExistingContent = Boolean(container.querySelector('.cn-queue-layout'));
     const showSpinner = isInitial && !hasExistingContent && !ctx.silent && ctx.isInitialRender !== false;
     if (showSpinner) {
       container.innerHTML = `
         <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
-          <div style="width:34px; height:34px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+          <div style="width:34px; height:34px; border:3px solid #E6EFE9; border-top-color:#104B35; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
         </div>
         <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
       `;
@@ -425,7 +446,7 @@ async function performQueueFetchAndPaint(container, ctx = {}, { isInitial = fals
       new Promise((r) => {
         try {
           if (typeof chrome !== 'undefined' && chrome.alarms?.get) {
-            chrome.alarms.get('outfox-campaign-tick', (a1) => {
+            chrome.alarms.get('crafture-campaign-tick', (a1) => {
               if (a1 && a1.scheduledTime) return r(a1);
               chrome.alarms.get('campaignTick', r);
             });
@@ -472,7 +493,7 @@ async function performQueueFetchAndPaint(container, ctx = {}, { isInitial = fals
 
     const isWeeklyInviteQuotaReached = invitesLeft === 0 || weeklyInvitesLeft === 0;
     const campaigns = Array.isArray(allStorage.campaigns) ? allStorage.campaigns : [];
-    const cooldowns = allStorage.outfox_bucket_cooldowns || {};
+    const cooldowns = allStorage.crafture_bucket_cooldowns || allStorage.outfox_bucket_cooldowns || {};
     const now = Date.now();
     const queuedItems = [];
 
@@ -512,7 +533,12 @@ async function performQueueFetchAndPaint(container, ctx = {}, { isInitial = fals
 
           const bucketCooldownUntil = cooldowns[bucketKey] || (bucketKey === 'view' ? cooldowns.visit : 0) || 0;
           const isBucketCooling = bucketCooldownUntil > now;
-          const isDueNow = (e.nextAt || 0) <= now && !isBucketCooling && st === 'active';
+          const isWaitingAcceptance =
+            e.parkReason === 'waiting_acceptance' ||
+            (typeof e.parkReason === 'string' && e.parkReason.includes('waiting_acceptance')) ||
+            /waiting for invite acceptance/i.test(e.lastError || '') ||
+            /waiting for invite acceptance/i.test(e.error || '');
+          const isDueNow = (e.nextAt || 0) <= now && !isBucketCooling && st === 'active' && !isWaitingAcceptance;
 
           const storedProfile = allStorage[`profile:${e.publicId}`] || allStorage.profileIndex?.[e.publicId];
           const prospectName =
@@ -561,7 +587,7 @@ async function performQueueFetchAndPaint(container, ctx = {}, { isInitial = fals
       ],
       queued: queuedItems.map(
         (q) =>
-          `${q.id}:${q.actionType}:${q.isDueNow}:${q.bucketCooldownUntil}:${q.enrollment.status}:${q.enrollment.retryCount}`
+          `${q.id}:${q.actionType}:${q.isDueNow}:${q.bucketCooldownUntil}:${q.enrollment.status}:${q.enrollment.retryCount}:${q.enrollment.parkReason || ''}`
       ),
       activeCampaignFilter,
       activeTypeFilters: Array.from(activeTypeFilters).sort(),
@@ -656,7 +682,7 @@ function paint(state) {
   const totalSelected = selectedQueueIds.size;
 
   container.innerHTML = `
-    <div class="OutFox-queue-layout">
+    <div class="cn-queue-layout">
       <div class="queue-main-panel">
         <!-- Top Live Runner Status Banner -->
         <div class="queue-live-banner" id="queue-live-banner">
@@ -798,7 +824,7 @@ function paint(state) {
             <h2 class="quotas-title">Daily quotas</h2>
             <p class="quotas-sub">These quotas are updated on a daily basis.</p>
           </div>
-          <button type="button" id="btn-queue-reset-quota" title="Reset Today's Quotas" style="background: #fff7ed; border: 1px solid #ffedd5; color: #ff6b00; border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+          <button type="button" id="btn-queue-reset-quota" title="Reset Today's Quotas" style="background: #E6EFE9; border: 1px solid #DCE5DE; color: #104B35; border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;">
             ↻ Reset
           </button>
         </div>
@@ -863,7 +889,7 @@ function paint(state) {
 
           <div class="quota-progress-card ${quotas.emailsLeft === 0 ? 'is-warning' : ''}">
             <div class="quota-card-top">
-              <div class="quota-icon-wrap" style="background:#fff7ed; color:#ff6b00; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">${ICONS.email}</div>
+              <div class="quota-icon-wrap" style="background:#E6EFE9; color:#104B35; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">${ICONS.email}</div>
               <div class="quota-meta">
                 <span class="quota-metric-name">COLD EMAILS</span>
                 <span class="quota-metric-val"><strong>${quotas.emailsLeft}</strong> left today</span>
@@ -871,7 +897,7 @@ function paint(state) {
               <span class="quota-info-icon" title="Daily cold email outreach cap">${ICONS.info}</span>
             </div>
             <div class="quota-bar-track">
-              <div class="quota-bar-fill" style="background:#ff6b00; width: ${Math.min(100, Math.round(((quotas.emailUsed) / (quotas.emailDailyCap || 50)) * 100))}%;"></div>
+              <div class="quota-bar-fill" style="background:#104B35; width: ${Math.min(100, Math.round(((quotas.emailUsed) / (quotas.emailDailyCap || 50)) * 100))}%;"></div>
             </div>
             <div class="quota-count-line">${quotas.emailUsed} / ${quotas.emailDailyCap} sent today</div>
           </div>
@@ -1102,7 +1128,7 @@ export async function renderQueueView(container, ctx = {}) {
   ensureQueueStyles();
   lastRenderedSnapshot = '';
 
-  const hasExistingContent = Boolean(container.querySelector('.OutFox-queue-layout'));
+  const hasExistingContent = Boolean(container.querySelector('.cn-queue-layout'));
   const isInitial = !hasExistingContent && !ctx.silent && ctx.isInitialRender !== false;
   await performQueueFetchAndPaint(container, ctx, { isInitial, force: true });
 

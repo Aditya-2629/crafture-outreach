@@ -1,65 +1,77 @@
 /**
- * OutFox — Refined High-Trust B2B SaaS Design System
- * Inspired by Linear / Attio / Clay
+ * Crafture Network — Restrained B2B SaaS Design System
+ * Forest Green (#104B35) + Charcoal (#191D1B) + Warm White (#F5F7F4)
+ * Guided by unslop, impeccable, and ui-ux-pro-max
  */
 
 :root {
-  /* Brand Core Tokens — Linear/Clay Restraint: Reserve #F97316 strictly for primary CTAs and active indicators */
-  --primary: #F97316;
-  --primary-hover: #EA580C;
-  --primary-active: #C2410C;
-  --primary-soft: #FFF7ED;
-  --primary-border-soft: #FFEDD5;
-  --primary-glow: rgba(249, 115, 22, 0.16);
-  --primary-gradient: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
+  /* Crafture Network Brand Design Tokens */
+  --cn-primary: #104B35;
+  --cn-primary-hover: #167448;
+  --cn-accent: #43C878;
+  --cn-ink: #191D1B;
+  --cn-bg: #F5F7F4;
+  --cn-surface-soft: #E6EFE9;
+  --cn-muted: #69756E;
+  --cn-border: #DCE5DE;
+  --cn-card: #FFFFFF;
 
-  /* Canvas & Elevated Surfaces (Linear/Attio Calm Chrome) */
-  --bg-page: #F8FAFC;
-  --canvas-bg: #F8FAFC;
-  --surface: #FFFFFF;
-  --surface-2: #F8FAFC;
-  --surface-elevated: #FFFFFF;
-  --surface-hover: #F1F5F9;
+  /* Semantic & Compatibility Mappings */
+  --primary: var(--cn-primary);
+  --primary-hover: var(--cn-primary-hover);
+  --primary-active: #0B3626;
+  --primary-soft: var(--cn-surface-soft);
+  --primary-border-soft: #C8DBD0;
+  --primary-glow: rgba(16, 75, 53, 0.12);
+  --primary-gradient: linear-gradient(135deg, #104B35 0%, #167448 100%);
+
+  /* Canvas & Elevated Surfaces (Calm Chrome) */
+  --bg-page: var(--cn-bg);
+  --canvas-bg: var(--cn-bg);
+  --surface: var(--cn-card);
+  --surface-2: var(--cn-surface-soft);
+  --surface-elevated: var(--cn-card);
+  --surface-hover: #EDF3EF;
 
   /* High-Contrast Typography Ramp */
-  --text-primary: #0F172A;
-  --text-secondary: #475569;
-  --text-muted: #64748B;
+  --text-primary: var(--cn-ink);
+  --text-secondary: #3D4741;
+  --text-muted: var(--cn-muted);
 
   /* Crisp Hairline Borders */
-  --border: rgba(15, 23, 42, 0.08);
-  --border-subtle: rgba(15, 23, 42, 0.04);
-  --border-focus: #F97316;
+  --border: var(--cn-border);
+  --border-subtle: #E8EFEA;
+  --border-focus: var(--cn-primary);
 
   /* Semantic Feedback */
-  --success: #10B981;
-  --success-soft: #ECFDF5;
-  --warning: #F59E0B;
-  --warning-soft: #FFFBEB;
-  --danger: #EF4444;
-  --danger-soft: #FEF2F2;
+  --success: #167448;
+  --success-soft: #E6EFE9;
+  --warning: #B45309;
+  --warning-soft: #FEF3C7;
+  --danger: #DC2626;
+  --danger-soft: #FEE2E2;
 
-  /* Crisp Modern Calm Shadows & Radii */
+  /* Restrained SaaS Shadows & Radii */
   --clay-card-radius: 12px;
-  --clay-card-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.04);
-  --clay-card-border: 1px solid rgba(15, 23, 42, 0.08);
-  --clay-card-border-subtle: 1px solid rgba(15, 23, 42, 0.04);
+  --clay-card-shadow: 0 1px 2px rgba(25, 29, 27, 0.04);
+  --clay-card-border: 1px solid var(--cn-border);
+  --clay-card-border-subtle: 1px solid #E8EFEA;
 
-  --clay-btn-transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease, background-color 180ms ease, color 180ms ease;
-  --clay-btn-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --clay-btn-primary-shadow: 0 1px 2px rgba(249, 115, 22, 0.24);
+  --clay-btn-transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1), background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  --clay-btn-shadow: 0 1px 2px rgba(25, 29, 27, 0.04);
+  --clay-btn-primary-shadow: 0 1px 2px rgba(16, 75, 53, 0.18);
 
-  --card-shadow: var(--clay-card-shadow);
-  --shadow-card: var(--clay-card-shadow);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-popover: 0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+  --card-shadow: 0 1px 2px rgba(25, 29, 27, 0.04);
+  --shadow-card: 0 1px 2px rgba(25, 29, 27, 0.04);
+  --shadow-sm: 0 1px 2px rgba(25, 29, 27, 0.04);
+  --shadow-popover: 0 4px 12px -2px rgba(25, 29, 27, 0.08), 0 2px 4px -2px rgba(25, 29, 27, 0.04);
 
   --radius-card: 12px;
   --radius-pill: 9999px;
-  --radius-input: 8px;
+  --radius-input: 10px;
   --radius-sm: 6px;
   --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-lg: 12px;
 
   --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-family: var(--font-main);
@@ -73,12 +85,12 @@
   --bg-surface-elevated: var(--surface);
   --text: var(--text-primary);
   --text-main: var(--text-primary);
-  --muted: var(--text-secondary);
-  --accent: var(--primary);
-  --accent-soft: var(--primary-soft);
-  --accent-mint: var(--success);
+  --muted: var(--text-muted);
+  --accent: var(--cn-accent);
+  --accent-soft: var(--cn-surface-soft);
+  --accent-mint: var(--cn-accent);
   --accent-amber: var(--warning);
-  --accent-cyan: #00C2FF;
+  --accent-cyan: #167448;
   --good: var(--success);
   --warn: var(--warning);
   --bad: var(--danger);
@@ -145,7 +157,7 @@ button:active {
 
 /* Accessible Focus Rings */
 :focus-visible {
-  outline: 2px solid var(--accent, #F97316);
+  outline: 2px solid var(--cn-primary, #104B35);
   outline-offset: 2px;
 }
 
@@ -255,13 +267,13 @@ table.prospects-table tbody tr,
 table.prospects-table tbody tr:hover td,
 .crm-table tbody tr:hover td,
 .queue-table tbody tr:hover td {
-  background-color: #f8fafc;
+  background-color: var(--cn-surface-soft, #E6EFE9);
 }
 
 table.prospects-table tbody tr:hover td:first-child,
 .crm-table tbody tr:hover td:first-child,
 .queue-table tbody tr:hover td:first-child {
-  box-shadow: inset 3px 0 0 var(--primary, #f97316);
+  box-shadow: inset 3px 0 0 var(--cn-primary, #104B35);
 }
 
 /* Modals, Drawers & Dropdowns Entrance */
@@ -272,7 +284,7 @@ table.prospects-table tbody tr:hover td:first-child,
 .modal-card,
 .modal-content,
 .terminal-modal,
-.OutFox-import-drawer,
+.cn-import-drawer,
 .drawer-content,
 .list-dropdown-menu,
 .columns-dropdown-menu,

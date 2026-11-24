@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "outfox": {
+    "crafture-network": {
       "command": "npx",
       "args": [
         "-y",
-        "outfox-mcp"
+        "crafture-network-mcp"
       ]
     }
   }

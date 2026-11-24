@@ -69,9 +69,9 @@ Check that repo's legend for the correct emoji — 🏠 usually means "local ser
 ## Open-source and alternative directories — Phase 4
 
 - [ ] **AlternativeTo** — https://alternativeto.net/manage-app/ · list as an alternative to
-      OutFox, PhantomBuster, Dux-Soup, Expandi, Sales-Mind. Tags: open-source, self-hosted, free.
+      Waalaxy, PhantomBuster, Dux-Soup, Expandi, Sales-Mind. Tags: open-source, self-hosted, free.
 - [ ] **OpenSourceAlternative.to** — https://www.opensourcealternative.to/submit · proprietary
-      alternative: OutFox
+      alternative: Waalaxy
 - [ ] **Awesome Selfhosted** — https://github.com/awesome-selfhosted/awesome-selfhosted (PR, text
       below)
 - [ ] **Awesome Chrome Extensions** — a few competing lists; pick the maintained one

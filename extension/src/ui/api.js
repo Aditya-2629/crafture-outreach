@@ -1,5 +1,5 @@
 /**
- * OutFox — messaging bridge between the UI pages and the engine.
+ * Crafture Network — messaging bridge between the UI pages and the engine.
  *
  * Every UI call goes through `send(action, params)`, which is exactly the
  * contract envelope over `chrome.runtime.sendMessage`. Nothing in the UI sends

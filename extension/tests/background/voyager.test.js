@@ -237,6 +237,8 @@ describe('selfTest', () => {
   it('concatVectorUrl only inserts slash when needed', () => {
     expect(v.concatVectorUrl('https://example.com/profile-displayphoto-', 'shrink_200_200/abc.jpg'))
       .toBe('https://example.com/profile-displayphoto-shrink_200_200/abc.jpg');
+    expect(v.concatVectorUrl('https://example.com/profile-framedphoto-shrink_', '200_200/abc.jpg'))
+      .toBe('https://example.com/profile-framedphoto-shrink_200_200/abc.jpg');
     expect(v.concatVectorUrl('https://example.com/path/', 'abc.jpg'))
       .toBe('https://example.com/path/abc.jpg');
     expect(v.concatVectorUrl('https://example.com/path', '/abc.jpg'))
@@ -1000,7 +1002,61 @@ describe('withdraw invitation', () => {
     expect(call.json.requestedArguments.payload.inviteeVanityName).toBe('adalovelace');
     expect(call.json.requestedArguments.payload.inviterActionType).toBe('InviterActionType_WITHDRAW');
     expect(call.json.requestedArguments.payload.invitationType).toBe('GenericInvitationType_CONNECTION');
+    expect(call.json.requestedArguments.requestedStateKeys).toEqual([
+      { key: { value: { $case: 'id', id: 'guidedFlowNumSentInvites' } }, namespace: '' },
+      {
+        key: { value: { $case: 'id', id: 'guidedFlowUrlAndPictureList' } },
+        namespace: 'guidedFlowUrlAndPictureListNameSpace',
+      },
+    ]);
+    expect(call.json.requestedArguments.payload.queryName).toBe('ProfileMemberRelationshipRefreshById');
     expect(call.json.serverRequest.requestId).toBe('com.linkedin.sdui.requests.mynetwork.addaWithdrawInvitation');
+    expect(call.json.serverRequest.isApfcEnabled).toBe(false);
+    expect(call.json.serverRequest.isStreaming).toBe(false);
+    expect(call.json.serverRequest.rumPageKey).toBe('');
+    expect(call.json.serverRequest.requestedArguments.screenId).toBeUndefined();
+    expect(call.json.serverRequest.requestedArguments.states).toBeUndefined();
+    expect(call.json.serverRequest.requestedArguments.knownTemplateIds).toBeUndefined();
+    expect(call.json.requestedArguments.states).toEqual([]);
+    expect(call.json.requestedArguments.knownTemplateIds).toEqual([]);
+    expect(call.headers.accept).toBe('*/*');
+    expect(call.headers['content-type']).toBe('application/json');
+    expect(call.headers['x-li-rsc-stream']).toBe('true');
+    expect(call.headers['x-li-anchor-page-key']).toBe('d_flagship3_people_invitations_withdraw_friction');
+    expect(call.headers['x-restli-protocol-version']).toBeUndefined();
+  });
+
+  it('omits queryName when profileUrn is empty or numeric-only and not in cached storage', async () => {
+    net.push({ ok: true });
+    await v.withdrawInvitation('7504239478362759168', {
+      profileUrn: '900116',
+      publicId: 'unknown-lead',
+    });
+
+    expect(net.calls).toHaveLength(1);
+    const call = net.calls[0];
+    expect(call.json.requestedArguments.payload.profileUrn).toBe('900116');
+    expect(call.json.requestedArguments.payload.queryName).toBeUndefined();
+  });
+
+  it('resolves ACoAA... profile ID from cached profile storage when profileUrn is numeric-only', async () => {
+    net.push({ ok: true });
+    await chrome.storage.local.set({
+      'profile:stored-lead': {
+        publicId: 'stored-lead',
+        profileUrn: 'urn:li:fsd_profile:ACoAA0106CACHED',
+      },
+    });
+
+    await v.withdrawInvitation('7504239478362759168', {
+      profileUrn: '900116',
+      publicId: 'stored-lead',
+    });
+
+    expect(net.calls).toHaveLength(1);
+    const call = net.calls[0];
+    expect(call.json.requestedArguments.payload.profileUrn).toBe('ACoAA0106CACHED');
+    expect(call.json.requestedArguments.payload.queryName).toBe('ProfileMemberRelationshipRefreshById');
   });
 
   it('accepts a raw string or urn as invitationId', async () => {

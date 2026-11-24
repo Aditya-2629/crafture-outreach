@@ -1,5 +1,5 @@
 /**
- * OutFox — lists.
+ * Crafture Network — lists.
  *
  * A list is a named, deduplicated bag of people plus tags. Members are stored
  * under `listMembers:{listId}`; `contactedBefore` and `signals` are *derived*

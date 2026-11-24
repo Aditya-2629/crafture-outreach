@@ -1,5 +1,5 @@
 /**
- * OutFox — client-side file downloads.
+ * Crafture Network — client-side file downloads.
  *
  * Files are built in the popup and handed to `chrome.downloads` as a data URL.
  * A service worker has no `URL.createObjectURL`, and using the same path from

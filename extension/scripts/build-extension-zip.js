@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * OutFox — Production Extension Zip Packager
+ * Crafture Network — Production Extension Zip Packager
  * Packages a clean, production-ready zip without devDependencies or tests.
  */
 
@@ -17,10 +17,10 @@ const stagingDir = resolve(distDir, 'staging');
 const manifestPath = join(extRoot, 'manifest.json');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 const version = manifest.version || '1.0.0';
-const zipName = `OutFox-v${version}.zip`;
+const zipName = `Crafture-Network-v${version}.zip`;
 const zipPath = join(distDir, zipName);
 
-console.log(`\n📦 Packaging OutFox v${version}...`);
+console.log(`\n📦 Packaging Crafture Network v${version}...`);
 
 // 1. Prepare clean dist and staging
 if (existsSync(stagingDir)) rmSync(stagingDir, { recursive: true, force: true });

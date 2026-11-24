@@ -4078,7 +4078,11 @@ export async function follow({ publicId, profileUrn, memberId, following = true 
           const freshPath = getEndpoint('follow');
           const retryRes = await voyagerFetch(freshPath, {
             method: 'POST',
-            headers: withdrawHeaders,
+            headers: {
+              accept: 'application/json, text/plain, */*',
+              'content-type': 'application/json; charset=UTF-8',
+              ...(vaultMeta.headers && typeof vaultMeta.headers === 'object' ? vaultMeta.headers : {}),
+            },
             body: sduiPayload,
             rawText: true,
           });
@@ -4289,7 +4293,11 @@ export async function likePost({ postUrl, publicId, profileUrn, reactionType = '
           const freshPath = getEndpoint('likePost') || getEndpoint('like');
           const retryRes = await voyagerFetch(freshPath, {
             method: 'POST',
-            headers: withdrawHeaders,
+            headers: {
+              accept: 'application/json, text/plain, */*',
+              'content-type': 'application/json; charset=UTF-8',
+              ...(vaultMeta.headers && typeof vaultMeta.headers === 'object' ? vaultMeta.headers : {}),
+            },
             body: sduiPayload,
             rawText: true,
           });

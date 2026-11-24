@@ -1,5 +1,5 @@
 /**
- * OutFox — Interactive Integrations Guide Modals
+ * Crafture Network — Interactive Integrations Guide Modals
  */
 
 import { ICONS } from '../ui/icons.js';
@@ -48,11 +48,11 @@ function showGuideToast(msg) {
  * Open Telegram Mobile AI Assistant setup modal
  */
 export function openTelegramGuideModal(onSaved) {
-  const existing = document.getElementById('outfox-telegram-guide-modal');
+  const existing = (document.getElementById('cn-telegram-guide-modal'));
   if (existing) existing.remove();
 
   const backdrop = document.createElement('div');
-  backdrop.id = 'outfox-telegram-guide-modal';
+  backdrop.id = 'cn-telegram-guide-modal';
   backdrop.className = 'modal-backdrop';
 
   backdrop.innerHTML = `
@@ -270,23 +270,23 @@ export function openTelegramGuideModal(onSaved) {
 }
 
 /**
- * Open OutFox MCP Server setup modal
+ * Open Crafture Network MCP Server setup modal
  */
 export function openMcpGuideModal() {
-  const existing = document.getElementById('outfox-mcp-guide-modal');
+  const existing = (document.getElementById('cn-mcp-guide-modal'));
   if (existing) existing.remove();
 
   const backdrop = document.createElement('div');
-  backdrop.id = 'outfox-mcp-guide-modal';
+  backdrop.id = 'cn-mcp-guide-modal';
   backdrop.className = 'modal-backdrop';
 
   const mcpConfigCode = JSON.stringify({
     mcpServers: {
-      outfox: {
+      'crafture-network': {
         command: "npx",
         args: [
           "-y",
-          "outfox-mcp"
+          "crafture-network-mcp"
         ]
       }
     }
@@ -296,15 +296,15 @@ export function openMcpGuideModal() {
     <div class="modal-dialog glass-card guide-dialog" style="max-width: 640px;">
       <div class="modal-head">
         <div class="guide-head-group">
-          <span class="guide-logo-icon" style="background:#ff6b00; color:#fff;">${ICONS.terminal}</span>
-          <h3 class="modal-title">OutFox MCP Server — Universal AI Agent Bridge</h3>
+          <span class="guide-logo-icon" style="background:#104B35; color:#fff;">${ICONS.terminal}</span>
+          <h3 class="modal-title">Crafture MCP Server — Universal AI Agent Bridge</h3>
         </div>
         <button type="button" class="btn-close-modal" id="btn-close-mcp-guide">${ICONS.x}</button>
       </div>
 
       <div class="modal-body guide-body">
         <p class="guide-intro">
-          Pair OutFox directly with Antigravity IDE, Claude Desktop, Cursor, or Windsurf. Agents can search LinkedIn prospects, trigger campaigns, and inspect quotas in real time.
+          Pair Crafture Network directly with Antigravity IDE, Claude Desktop, Cursor, or Windsurf. Agents can search LinkedIn prospects, trigger campaigns, and inspect quotas in real time.
         </p>
 
         <div class="guide-steps-list">
@@ -313,7 +313,7 @@ export function openMcpGuideModal() {
             <div class="step-content" style="width:100%;">
               <strong>Option A: 1-Command Auto-Installer (Recommended)</strong>
               <p>Run this in your terminal to automatically configure Claude Desktop & Cursor across Windows, macOS, or Linux:</p>
-              <pre style="background:#0f172a; color:#38bdf8; padding:10px 12px; border-radius:8px; font-size:12px; font-family:monospace; margin:6px 0;"><code>npx outfox-mcp-setup</code></pre>
+              <pre style="background:#0f172a; color:#38bdf8; padding:10px 12px; border-radius:8px; font-size:12px; font-family:monospace; margin:6px 0;"><code>npx crafture-network-mcp-setup</code></pre>
             </div>
           </div>
 
@@ -333,7 +333,7 @@ export function openMcpGuideModal() {
             <div class="step-num-badge">3</div>
             <div class="step-content">
               <strong>Localhost WebSocket Bridge</strong>
-              <p>OutFox MCP communicates over <code>ws://127.0.0.1:47829</code> with your active Chrome/Brave session. Zero tokens, no headless browsers or bot detection.</p>
+              <p>Crafture MCP communicates over <code>ws://127.0.0.1:47829</code> with your active Chrome/Brave session. Zero tokens, no headless browsers or bot detection.</p>
             </div>
           </div>
         </div>

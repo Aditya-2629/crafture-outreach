@@ -1,8 +1,8 @@
 {
-  "name": "outfox-client",
+  "name": "crafture-network-client",
   "version": "1.0.0",
   "author": "Aditya Chaudhary",
-  "description": "Typed client and agent-framework tool adapters for OutFox.",
+  "description": "Typed client and agent-framework tool adapters for Crafture Network.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",

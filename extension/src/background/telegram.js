@@ -1,5 +1,5 @@
 /**
- * OutFox — Telegram Autonomous AI SDR Engine.
+ * Crafture Network — Telegram Autonomous AI SDR Engine.
  * Features:
  * - Bulletproof Markdown Entity Delivery & Plain Text Fallback
  * - Conversational Sequence Step Editing (Step 2 Invite, Step 3 Follow-up, Name)
@@ -25,9 +25,9 @@ import { getActiveCandidate, setActiveCandidate, getAllCandidates, saveCandidate
 import { enrichLead } from './enrich.js';
 import { matchAndAdaptObjection, snoozeLead, popDueSnoozes } from './objections.js';
 import { syncAllLeadsToSheet, backupToGoogleDrive } from './google-workspace.js';
-import { getActiveAiProviders, getAiFallbackChain, filterProspectsByCriteria } from './ai.js';
+import { getActiveAiProviders, getAiFallbackChain, filterProspectsByCriteria, sanitizeGeminiContents, sanitizeGeminiTools, sanitizeGeminiSchema } from './ai.js';
 
-export { getActiveAiProviders, getAiFallbackChain, filterProspectsByCriteria };
+export { getActiveAiProviders, getAiFallbackChain, filterProspectsByCriteria, sanitizeGeminiContents, sanitizeGeminiTools, sanitizeGeminiSchema };
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
 let isPolling = false;
@@ -42,8 +42,8 @@ const pendingDrafts = new Map(); // draftId -> { publicId, text, at }
 const pendingBlueprints = new Map(); // blueprintId -> blueprint object
 
 // Storage Keys for MV3 Service Worker Sleep Resilience
-const BLUEPRINTS_STORAGE_KEY = 'outfox_pending_blueprints';
-const CHAT_HISTORY_KEY = 'outfox_chat_history';
+const BLUEPRINTS_STORAGE_KEY = 'crafture_pending_blueprints';
+const CHAT_HISTORY_KEY = 'crafture_chat_history';
 
 export async function getStoredBlueprints() {
   const map = (await get(BLUEPRINTS_STORAGE_KEY, {})) || {};
@@ -79,21 +79,59 @@ export async function removeStoredBlueprint(blueprintId) {
 
 // Persisted Multi-Turn Chat History Buffer
 export const chatHistory = []; // In-memory compatibility alias
-export async function recordChatTurn(role, text) {
-  if (!text || typeof text !== 'string') return;
-  const history = (await get(CHAT_HISTORY_KEY, [])) || [];
-  const clean = text.replace(/[*_`\[\]]/g, '').trim().slice(0, 500);
-  if (!clean) return;
-  history.push({ role, content: clean, at: Date.now() });
-  if (history.length > 16) history.splice(0, history.length - 16);
-  await set(CHAT_HISTORY_KEY, history);
+export function getChatHistoryKey(chatId) {
+  return chatId ? `crafture_chat_history_${chatId}` : CHAT_HISTORY_KEY;
 }
 
-export async function getRecentChatTurns() {
-  const history = (await get(CHAT_HISTORY_KEY, [])) || [];
+export async function recordChatTurn(role, text, chatId = null) {
+  if (!text || typeof text !== 'string') return;
+  const clean = text.replace(/[*_`\[\]]/g, '').trim().slice(0, 500);
+  if (!clean) return;
+  const turn = {
+    role: role === 'assistant' ? 'assistant' : 'user',
+    content: clean,
+    timestamp: Date.now(),
+    at: Date.now(), // backwards compatibility
+  };
+
+  const key = getChatHistoryKey(chatId);
+  const history = (await get(key, [])) || [];
+  const sanitized = history.filter(
+    (h) => h && (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string'
+  );
+  sanitized.push(turn);
+  if (sanitized.length > 12) sanitized.splice(0, sanitized.length - 12);
+  await set(key, sanitized);
+
+  // If a specific chatId was provided, mirror to global CHAT_HISTORY_KEY for backwards compatibility
+  if (chatId) {
+    const globalHistory = (await get(CHAT_HISTORY_KEY, [])) || [];
+    const globalSanitized = globalHistory.filter(
+      (h) => h && (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string'
+    );
+    globalSanitized.push(turn);
+    if (globalSanitized.length > 12) globalSanitized.splice(0, globalSanitized.length - 12);
+    await set(CHAT_HISTORY_KEY, globalSanitized);
+  }
+}
+
+export async function getRecentChatTurns(chatId = null) {
+  const key = getChatHistoryKey(chatId);
+  let history = (await get(key, [])) || [];
+  if ((!history || history.length === 0) && chatId) {
+    history = (await get(CHAT_HISTORY_KEY, [])) || [];
+  }
   const now = Date.now();
-  const active = history.filter((m) => now - (m.at || 0) < 7200000); // 2 hours
-  return active.map((m) => ({
+  const active = history.filter(
+    (m) =>
+      m &&
+      (m.role === 'user' || m.role === 'assistant') &&
+      typeof m.content === 'string' &&
+      now - (m.timestamp || m.at || 0) < 7200000 // 2 hours
+  );
+  // Keep last 10 turns (5 user / assistant pairs)
+  const windowed = active.slice(-10);
+  return windowed.map((m) => ({
     role: m.role === 'assistant' ? 'assistant' : 'user',
     content: m.content,
   }));
@@ -154,6 +192,30 @@ export async function sendChatAction(token, chatId, action = 'typing') {
   }
 }
 
+/**
+ * Starts a continuous 'typing' chat action loop on Telegram.
+ * Telegram clears the typing indicator after 5 seconds, so we refresh every 4500ms.
+ * Returns a stop() cleanup function wrapped in try/finally in callers.
+ */
+export function startTypingIndicator(botToken, chatId) {
+  if (!botToken || !chatId) {
+    const noop = () => {};
+    noop.stop = noop;
+    return noop;
+  }
+
+  sendChatAction(botToken, chatId, 'typing');
+  const timer = setInterval(() => {
+    sendChatAction(botToken, chatId, 'typing');
+  }, 4500);
+
+  const stop = () => {
+    clearInterval(timer);
+  };
+  stop.stop = stop;
+  return stop;
+}
+
 // Helper to extract a readable string from any error object
 export function extractErrorMessage(err) {
   if (!err) return 'Unknown error';
@@ -162,6 +224,210 @@ export function extractErrorMessage(err) {
     (typeof err === 'string' ? err : JSON.stringify(err)) ||
     'Unknown error'
   );
+}
+
+/**
+ * Edits an existing Telegram message's text.
+ * Safely handles Markdown fallback and ignores benign 'message is not modified' errors.
+ */
+export async function editTelegramMessage(token, chatId, messageId, text, options = {}) {
+  const content = String(text ?? '');
+  if (!token || !chatId || !messageId || !content) return null;
+
+  const parseMode = options.parse_mode ?? 'Markdown';
+
+  try {
+    return await callTelegramApi(token, 'editMessageText', {
+      chat_id: chatId,
+      message_id: messageId,
+      text: content,
+      parse_mode: parseMode,
+      disable_web_page_preview: true,
+      ...options,
+    });
+  } catch (err) {
+    const errorMsg = extractErrorMessage(err);
+    if (errorMsg.includes('message is not modified') || errorMsg.includes('exactly the same')) {
+      return null;
+    }
+
+    if (parseMode && (errorMsg.includes('can\'t parse entities') || errorMsg.includes('entity'))) {
+      const plainOptions = { ...options };
+      delete plainOptions.parse_mode;
+      const plainText = content.replace(/[*_`\[\]]/g, '');
+
+      try {
+        return await callTelegramApi(token, 'editMessageText', {
+          chat_id: chatId,
+          message_id: messageId,
+          text: plainText,
+          disable_web_page_preview: true,
+          ...plainOptions,
+        });
+      } catch (retryErr) {
+        const retryMsg = extractErrorMessage(retryErr);
+        if (retryMsg.includes('message is not modified')) return null;
+        logDebug('warn', 'Telegram', `Plain text editMessageText retry failed: ${retryMsg}`);
+        return null;
+      }
+    }
+    logDebug('warn', 'Telegram', `editTelegramMessage failed: ${errorMsg}`);
+    return null;
+  }
+}
+
+/**
+ * Deletes a Telegram message by ID.
+ * Returns true if successful, false otherwise without throwing.
+ */
+export async function deleteTelegramMessage(token, chatId, messageId) {
+  if (!token || !chatId || !messageId) return false;
+  try {
+    await callTelegramApi(token, 'deleteMessage', {
+      chat_id: chatId,
+      message_id: messageId,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Maps tool execution name and arguments to short, human-readable status text.
+ */
+export function getToolProgressDescription(name, args = {}) {
+  switch (name) {
+    case 'search_prospects':
+    case 'search_and_save_leads':
+      return args.keywords
+        ? `🔍 Searching LinkedIn for "${args.keywords}"...`
+        : '🔍 Searching LinkedIn for matching profiles...';
+    case 'filter_prospects':
+      return args.page
+        ? `✨ Filtering candidates (page ${args.page})...`
+        : '✨ Filtering candidates according to targeting criteria...';
+    case 'list_prospect_lists':
+      return '📋 Fetching prospect lists...';
+    case 'design_campaign_blueprint':
+      return args.campaignName
+        ? `📐 Designing campaign blueprint for "${args.campaignName}"...`
+        : '📐 Designing campaign sequence blueprint...';
+    case 'update_blueprint_steps':
+      return '✏️ Updating sequence steps & messaging...';
+    case 'launch_blueprint':
+    case 'create_campaign':
+      return '🚀 Launching campaign sequence...';
+    case 'control_campaign':
+      return args.action === 'resume'
+        ? '▶️ Resuming campaign(s)...'
+        : '⏸️ Pausing campaign(s)...';
+    case 'get_campaign_live_status':
+      return '📊 Checking live campaign progress...';
+    case 'enrich_lead_email':
+    case 'enrich_leads':
+      return args.publicId
+        ? `🔍 Enriching lead \`${args.publicId}\` via Apollo & Hunter...`
+        : '🔍 Enriching lead contact details...';
+    case 'switch_candidate_persona':
+      return `👤 Switching active persona to ${args.slugOrName || 'new candidate'}...`;
+    case 'update_candidate_links':
+      return '🔗 Updating candidate links & materials...';
+    case 'block_company':
+      return `🚫 Adding ${args.companyOrDomain || 'company'} to exclusion list...`;
+    case 'snooze_lead':
+      return `⏰ Snoozing lead ${args.publicId || ''}...`;
+    case 'sync_google_workspace':
+      return '🔄 Syncing CRM data with Google Workspace...';
+    case 'send_linkedin_message':
+      return '💬 Sending LinkedIn message...';
+    default:
+      return `⚙️ Running ${String(name || 'tool').replace(/_/g, ' ')}...`;
+  }
+}
+
+/**
+ * Single live-updating progress message tracker for AI tool executions.
+ * Throttled to >= 800ms between edits to prevent Telegram rate-limiting.
+ */
+export class LiveProgressTracker {
+  constructor(botToken, chatId, minIntervalMs = 800) {
+    this.botToken = botToken;
+    this.chatId = chatId;
+    this.minIntervalMs = minIntervalMs;
+    this.messageId = null;
+    this.lastEditTime = 0;
+    this.pendingText = null;
+    this.pendingTimer = null;
+    this.lastSentText = null;
+    this.isDone = false;
+  }
+
+  async init(initialText = '⏳ Thinking...') {
+    if (this.messageId || this.isDone) return;
+    try {
+      const res = await sendTelegramMessage(this.botToken, this.chatId, initialText);
+      if (res && res.message_id) {
+        this.messageId = res.message_id;
+        this.lastSentText = initialText;
+        // Keep lastEditTime at 0 so the first tool status edit happens immediately
+        this.lastEditTime = 0;
+      }
+    } catch {
+      // Progress message delivery error is non-fatal
+    }
+  }
+
+  async update(text) {
+    if (this.isDone) return;
+    if (!this.messageId) {
+      await this.init(text);
+      return;
+    }
+    if (text === this.lastSentText) return;
+
+    this.pendingText = text;
+    const elapsed = Date.now() - this.lastEditTime;
+
+    if (elapsed >= this.minIntervalMs) {
+      await this._flush();
+    } else if (!this.pendingTimer) {
+      this.pendingTimer = setTimeout(async () => {
+        this.pendingTimer = null;
+        await this._flush();
+      }, this.minIntervalMs - elapsed);
+    }
+  }
+
+  async _flush() {
+    if (this.isDone || !this.messageId || !this.pendingText) return;
+    const textToSend = this.pendingText;
+    this.pendingText = null;
+    if (textToSend === this.lastSentText) return;
+
+    this.lastEditTime = Date.now();
+    try {
+      await editTelegramMessage(this.botToken, this.chatId, this.messageId, textToSend);
+      this.lastSentText = textToSend;
+    } catch {
+      // Benign errors handled in editTelegramMessage
+    }
+  }
+
+  async cleanup() {
+    this.isDone = true;
+    if (this.pendingTimer) {
+      clearTimeout(this.pendingTimer);
+      this.pendingTimer = null;
+    }
+    if (this.messageId) {
+      const mid = this.messageId;
+      this.messageId = null;
+      try {
+        await deleteTelegramMessage(this.botToken, this.chatId, mid);
+      } catch {}
+    }
+  }
 }
 
 // 🛡️ Bulletproof Telegram Message Dispatcher with Automatic Plain-Text Fallback
@@ -301,7 +567,7 @@ export function buildSystemPrompt(context) {
     ? campList.map((c) => `  - "${c.name}" (ID: ${c.id}, Status: ${c.status}, Enrolled: ${c.enrolledCount}, Replied: ${c.repliedCount}, Failed: ${c.failedCount})`).join('\n')
     : '  (No campaigns yet)';
 
-  return `You are OutFox AI SDR, an elite autonomous Agentic Copilot controlling LinkedIn outreach sequences directly from Telegram.
+  return `You are Crafture Network AI SDR, an elite autonomous Agentic Copilot controlling LinkedIn outreach sequences directly from Telegram.
 
 CORE CAPABILITIES & DIRECTIVES:
 1. Multi-Turn ReAct Agent:
@@ -473,8 +739,8 @@ export async function testTelegram({ botToken, chatId }) {
   const activeCand = await getActiveCandidate().catch(() => null);
 
   const testMsg =
-    `🦊 *OutFox Mobile AI Copilot Connected!*\n\n` +
-    `Bot: *${me.first_name || 'OutFox'}* (@${me.username || 'bot'})\n` +
+    `🌿 *Crafture Network Mobile AI Copilot Connected!*\n\n` +
+    `Bot: *${me.first_name || 'Crafture'}* (@${me.username || 'bot'})\n` +
     `Active Candidate: *${activeCand?.name || 'Default'}* (\`${activeCand?.slug || 'default'}\`)\n` +
     `Mode: *${activeCand?.mode === 'reverse_recruiting' ? 'Reverse Recruiting (Job Pitch)' : 'Agency Sourcing (Placements)'}*\n` +
     `Booking Link: *${activeCand?.bookingLink || 'https://calendly.com'}*\n` +
@@ -747,7 +1013,7 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'control_campaign',
-      description: 'Pause or resume one or all OutFox outreach campaigns.',
+      description: 'Pause or resume one or all Crafture Network outreach campaigns.',
       parameters: {
         type: 'object',
         properties: {
@@ -836,7 +1102,7 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'sync_google_workspace',
-      description: 'Sync OutFox CRM leads to Google Sheets or trigger a cloud backup to Google Drive.',
+      description: 'Sync Crafture Network CRM leads to Google Sheets or trigger a cloud backup to Google Drive.',
       parameters: {
         type: 'object',
         properties: {
@@ -1473,25 +1739,13 @@ export async function executeTool(name, args = {}) {
 
 export const executeToolCall = executeTool;
 
-// Convert OpenAI JSON schema types to Gemini uppercase types recursively
+// Convert OpenAI JSON schema types to Gemini uppercase types recursively and sanitize
 function _toGeminiSchema(schema) {
-  if (!schema || typeof schema !== 'object') return schema;
-  const out = { ...schema };
-  if (out.type) out.type = out.type.toUpperCase();
-  if (out.properties)
-    out.properties = Object.fromEntries(
-      Object.entries(out.properties).map(([k, v]) => [k, _toGeminiSchema(v)])
-    );
-  if (out.items) out.items = _toGeminiSchema(out.items);
-  return out;
+  return sanitizeGeminiSchema(schema);
 }
 
 function _toGeminiFunctionDeclarations(tools) {
-  return tools.map((t) => ({
-    name: t.function.name,
-    description: t.function.description,
-    parameters: _toGeminiSchema(t.function.parameters),
-  }));
+  return sanitizeGeminiTools(tools);
 }
 
 // Convert OpenAI-format history turns to Gemini `contents` format with strict alternating roles
@@ -1601,7 +1855,8 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
     const url = `${baseHost}/v1beta/models/${resolvedModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
     const sysMsg = messages.find((m) => m.role === 'system');
     // Use pre-built Gemini contents if provided, otherwise convert history
-    const contents = geminiContents || _toGeminiContents(messages);
+    const rawContents = geminiContents || _toGeminiContents(messages);
+    const contents = sanitizeGeminiContents(rawContents);
 
     const payload = {
       contents,
@@ -1622,34 +1877,69 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
 
     const data = await res.json();
     const candidate = data.candidates?.[0];
-    // Keep exact untouched candidate content, ensuring valid role
-    const rawGeminiContent = candidate?.content || { role: 'model', parts: [] };
-    if (!rawGeminiContent.role) rawGeminiContent.role = 'model';
+    const rawContent = candidate?.content || { role: 'model', parts: [] };
+    const role = rawContent.role || 'model';
 
-    // Ensure thought_signature / thoughtSignature are preserved and available on all functionCall parts
-    let turnSignature = candidate?.thought_signature || candidate?.thoughtSignature || null;
-    for (const part of rawGeminiContent.parts || []) {
-      if (!turnSignature && (part.thought_signature || part.thoughtSignature)) {
-        turnSignature = part.thought_signature || part.thoughtSignature;
-      }
-      if (!turnSignature && (part.functionCall?.thought_signature || part.functionCall?.thoughtSignature)) {
-        turnSignature = part.functionCall.thought_signature || part.functionCall.thoughtSignature;
+    // Preserve thoughtSignature at the PART level as a sibling to functionCall — NEVER inside functionCall
+    let turnSignature =
+      candidate?.thoughtSignature ||
+      candidate?.thought_signature ||
+      candidate?.['thought signature'] ||
+      null;
+
+    const rawParts = Array.isArray(rawContent.parts) ? rawContent.parts : [];
+    for (const p of rawParts) {
+      if (!turnSignature) {
+        turnSignature =
+          p.thoughtSignature ||
+          p.thought_signature ||
+          p['thought signature'] ||
+          p.functionCall?.thoughtSignature ||
+          p.functionCall?.thought_signature ||
+          p.functionCall?.['thought signature'] ||
+          null;
       }
     }
-    if (turnSignature && Array.isArray(rawGeminiContent.parts)) {
-      for (const part of rawGeminiContent.parts) {
-        if (!part.thought_signature) part.thought_signature = turnSignature;
-        if (!part.thoughtSignature) part.thoughtSignature = turnSignature;
-        if (part.functionCall) {
-          if (!part.functionCall.thought_signature) part.functionCall.thought_signature = turnSignature;
-          if (!part.functionCall.thoughtSignature) part.functionCall.thoughtSignature = turnSignature;
-        }
+
+    const cleanParts = [];
+    for (const p of rawParts) {
+      const partSig =
+        p.thoughtSignature ||
+        p.thought_signature ||
+        p['thought signature'] ||
+        p.functionCall?.thoughtSignature ||
+        p.functionCall?.thought_signature ||
+        p.functionCall?.['thought signature'] ||
+        turnSignature;
+
+      if (p.functionCall) {
+        const fc = p.functionCall;
+        cleanParts.push({
+          functionCall: {
+            name: fc.name,
+            args: fc.args || {},
+          },
+          ...(partSig ? { thoughtSignature: partSig } : {}),
+        });
+      } else if (p.text) {
+        cleanParts.push({
+          text: p.text,
+          ...(p.thought ? { thought: true } : {}),
+          ...(partSig ? { thoughtSignature: partSig } : {}),
+        });
+      } else {
+        cleanParts.push(p);
       }
     }
+
+    const rawGeminiContent = {
+      role,
+      parts: cleanParts,
+    };
 
     let text = '';
     const toolCalls = [];
-    for (const part of rawGeminiContent.parts || []) {
+    for (const part of cleanParts) {
       if (part.text && !part.thought) {
         text += part.text;
       } else if (part.functionCall) {
@@ -1660,8 +1950,8 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
         });
       }
     }
-    if (!text && toolCalls.length === 0 && Array.isArray(rawGeminiContent.parts)) {
-      text = rawGeminiContent.parts.map((p) => p.text || '').join('');
+    if (!text && toolCalls.length === 0 && cleanParts.length > 0) {
+      text = cleanParts.map((p) => p.text || '').join('');
     }
     return { text, toolCalls, rawGeminiContent };
   }
@@ -1744,21 +2034,8 @@ export async function callLlmWithTools(provider, aiConfig, messages, tools = [],
 }
 
 export async function runAgentLoop(botToken, chatId, userText) {
-  let typingTimer = null;
-  const startTyping = () => {
-    sendChatAction(botToken, chatId, 'typing');
-    typingTimer = setInterval(() => {
-      sendChatAction(botToken, chatId, 'typing');
-    }, 3800);
-  };
-  const stopTyping = () => {
-    if (typingTimer) {
-      clearInterval(typingTimer);
-      typingTimer = null;
-    }
-  };
-
-  startTyping();
+  const stopTyping = startTypingIndicator(botToken, chatId);
+  const progress = new LiveProgressTracker(botToken, chatId, 800);
 
   try {
     const providers = await getActiveAiProviders();
@@ -1766,7 +2043,7 @@ export async function runAgentLoop(botToken, chatId, userText) {
     if (!providers || providers.length === 0) {
       const offlineMsg =
         `⚠️ *AI Copilot Not Configured:*\n` +
-        `OutFox Dashboard ➔ *Settings ➔ AI Engine* me jaakar apna Groq ya Gemini API Key connect karo!\n\n` +
+        `Crafture Network Dashboard ➔ *Settings ➔ AI Engine* me jaakar apna Groq ya Gemini API Key connect karo!\n\n` +
         `_Quick Actions Available:_\n` +
         `• \`/live\` — Check live campaigns\n` +
         `• \`/pulse\` — Daily scorecard\n` +
@@ -1777,7 +2054,7 @@ export async function runAgentLoop(botToken, chatId, userText) {
 
     const contextData = await buildAgentContext();
     const systemPrompt = buildSystemPrompt(contextData);
-    const recentHistory = await getRecentChatTurns();
+    const recentHistory = await getRecentChatTurns(chatId);
 
     // Ensure history does not end with unreplied user turns so multiturn talk alternates cleanly
     let historyTurns = [...recentHistory];
@@ -1850,6 +2127,11 @@ export async function runAgentLoop(botToken, chatId, userText) {
       const isGemini = activeProviderRecord.provider === 'gemini';
 
       if (response.toolCalls && response.toolCalls.length > 0) {
+        // Send initial progress message on first tool-calling turn
+        if (!progress.messageId) {
+          await progress.init('⏳ Thinking...');
+        }
+
         if (isGemini) {
           // Push raw model content VERBATIM — preserves thoughtSignature
           if (!geminiContents) geminiContents = _toGeminiContents(messages);
@@ -1881,6 +2163,10 @@ export async function runAgentLoop(botToken, chatId, userText) {
 
         const functionResponses = []; // collected for Gemini batch push
         for (const tc of response.toolCalls) {
+          // Live status update per tool call
+          const progressStatus = getToolProgressDescription(tc.name, tc.args);
+          await progress.update(progressStatus);
+
           let toolOutput;
           try {
             toolOutput = await executeTool(tc.name, tc.args);
@@ -1954,8 +2240,9 @@ export async function runAgentLoop(botToken, chatId, userText) {
       ]);
     }
 
-    await recordChatTurn('assistant', finalContent);
+    await recordChatTurn('assistant', finalContent, chatId);
 
+    await progress.cleanup();
     stopTyping();
     const replyMarkup = inlineButtons.length > 0 ? { inline_keyboard: inlineButtons } : undefined;
     return await sendTelegramMessage(botToken, chatId, finalContent, replyMarkup ? { reply_markup: replyMarkup } : {});
@@ -1963,14 +2250,16 @@ export async function runAgentLoop(botToken, chatId, userText) {
     const errorMsg = extractErrorMessage(err);
     logDebug('error', 'Telegram', `[Agent Loop Error] ${errorMsg}`);
     console.error('[Telegram Agent Loop Error]', err);
+    await progress.cleanup();
     stopTyping();
     const cleanError = errorMsg.replace(/[_*`\[\]]/g, ' ');
     const fallbackText = `⚠️ *Copilot Error:* ${cleanError}\n\n_Tip: Use /live or /clear to reset._`;
     try {
-      await recordChatTurn('assistant', `Encountered an issue: ${cleanError.slice(0, 100)}`);
+      await recordChatTurn('assistant', `Encountered an issue: ${cleanError.slice(0, 100)}`, chatId);
     } catch {}
     return await sendTelegramMessage(botToken, chatId, fallbackText);
   } finally {
+    await progress.cleanup();
     stopTyping();
   }
 }
@@ -1987,7 +2276,7 @@ export async function callDynamicAi(userText, options = {}) {
 
   const systemPrompt =
     options.systemPrompt ||
-    'You are OutFox AI SDR, an expert LinkedIn outreach copywriter. Write concise, warm, professional responses without corporate fluff. Keep under 240 characters.';
+    'You are Crafture Network AI SDR, an expert LinkedIn outreach copywriter. Write concise, warm, professional responses without corporate fluff. Keep under 240 characters.';
   const messages = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userText },
@@ -2021,7 +2310,7 @@ async function sendCandidatesList(botToken, chatId) {
     getActiveCandidate(),
   ]);
 
-  let text = `👥 *OutFox Candidate Personas:*\n\n`;
+  let text = `👥 *Crafture Network Candidate Personas:*\n\n`;
   all.forEach((c) => {
     const isActive = c.slug === active?.slug;
     const modeLabel = c.mode === 'reverse_recruiting' ? 'Job Pitch' : 'Agency Sourcing';
@@ -2052,7 +2341,7 @@ async function handleEnrichLead(botToken, chatId, publicId) {
       if (enr.phone) msg += `📱 *Phone:* \`${enr.phone}\`\n`;
       msg += `🏷️ *Source:* ${enr.provider?.toUpperCase() || 'WATERFALL'}\n`;
       msg += `🎯 *Confidence:* ${Math.round((enr.confidence || 0.8) * 100)}%\n\n`;
-      msg += `_Contact verified and saved to OutFox database!_`;
+      msg += `_Contact verified and saved to Crafture Network database!_`;
     } else {
       msg += `⚠️ No verified email found across Apollo & Hunter.\nReason: ${enr.reason || 'No match found'}`;
     }
@@ -2094,7 +2383,7 @@ async function renderDailyStats(botToken, chatId) {
   const replyRate = stats?.kpis?.responseRate ?? 0;
 
   const pulseMsg =
-    `📊 *OUTFOX DAILY PULSE SCORECARD*\n\n` +
+    `📊 *CRAFTURE NETWORK DAILY PULSE SCORECARD*\n\n` +
     `👤 *Active Candidate:* *${activeCand?.name || 'Default'}* (\`${activeCand?.slug || 'default'}\`)\n` +
     `⚙️ *Mode:* ${activeCand?.mode === 'reverse_recruiting' ? 'Reverse Recruiting' : 'Agency Sourcing'}\n\n` +
     `⚡ *Campaigns:*\n` +
@@ -2137,7 +2426,7 @@ async function renderLiveCampaignStatus(botToken, chatId, targetCampaignId = nul
   if (!target) {
     const emptyMsg =
       `ℹ️ *No Campaigns Found:*\n\n` +
-      `OutFox me abhi koi campaign active ya configured nahi hai.\n\n` +
+      `Crafture Network me abhi koi campaign active ya configured nahi hai.\n\n` +
       `_Type_ \`design campaign for [list]\` _to start a new sequence._`;
     return sendTelegramMessage(botToken, chatId, emptyMsg);
   }
@@ -2235,6 +2524,7 @@ async function handleUserCommand(botToken, chatId, text) {
   cleanOldCaches().catch(() => {});
 
   if (trimmed === '/clear' || trimmed === '/reset') {
+    await set(getChatHistoryKey(chatId), []);
     await set(CHAT_HISTORY_KEY, []);
     return sendTelegramMessage(
       botToken,
@@ -2244,12 +2534,12 @@ async function handleUserCommand(botToken, chatId, text) {
   }
 
   // Record user turn in the rolling context buffer
-  await recordChatTurn('user', trimmed);
+  await recordChatTurn('user', trimmed, chatId);
 
   if (trimmed === '/start' || trimmed === '/help') {
     const activeCand = await getActiveCandidate().catch(() => null);
     const welcome =
-      `🦊 *OutFox Mobile AI Copilot Ready!*\n\n` +
+      `🌿 *Crafture Network Mobile AI Copilot Ready!*\n\n` +
       `Active Persona: *${activeCand?.name || 'Default'}* (\`${activeCand?.slug || 'default'}\`)\n\n` +
       `📌 *Conversation Memory:*\n` +
       `• \`/clear\` or \`/reset\` — Wipe memory buffer & start fresh\n\n` +
@@ -2360,7 +2650,7 @@ async function handleCallback(botToken, chatId, callbackData) {
     await sendTelegramMessage(botToken, chatId, `🚀 *Launching campaign sequence...*`);
     try {
       const res = await launchBlueprintInternal(blueprintId);
-      await recordChatTurn('assistant', `Campaign "${res.campaign.name}" launched for list "${res.blueprint.listName}" with ${res.enrolledCount} enrolled leads.`);
+      await recordChatTurn('assistant', `Campaign "${res.campaign.name}" launched for list "${res.blueprint.listName}" with ${res.enrolledCount} enrolled leads.`, chatId);
 
       const launchMsg =
         `🚀 *Campaign Successfully Launched!*\n\n` +
@@ -2368,7 +2658,7 @@ async function handleCallback(botToken, chatId, callbackData) {
         `• Target List: *${res.blueprint.listName}*\n` +
         `• Enrolled Leads: *${res.enrolledCount}*\n` +
         `• Sequence Steps: *${res.blueprint.steps.length}*\n\n` +
-        `_OutFox background runner is now active!_`;
+        `_Crafture Network background runner is now active!_`;
 
       const replyMarkup = {
         inline_keyboard: [
@@ -2678,7 +2968,7 @@ async function handleCallback(botToken, chatId, callbackData) {
       return sendTelegramMessage(
         botToken,
         chatId,
-        `⚠️ *No Resume URL Configured:*\nPlease set the resume URL in OutFox Dashboard ➔ *Templates ➔ Objections Playbook*.`
+        `⚠️ *No Resume URL Configured:*\nPlease set the resume URL in Crafture Network Dashboard ➔ *Templates ➔ Objections Playbook*.`
       );
     }
     const cal = activeCand?.bookingLink ? ` You can also pick a 10-min slot on my calendar if helpful: ${activeCand.bookingLink}` : '';
@@ -2981,7 +3271,7 @@ onEvent(async (name, payload = {}) => {
 
       const alertMsg =
         `⚠️ *DAILY OUTREACH LIMIT REACHED for ${kind}*\n\n` +
-        `OutFox has paused ${kind} automation until morning to protect your LinkedIn account reputation.`;
+        `Crafture Network has paused ${kind} automation until morning to protect your LinkedIn account reputation.`;
 
       const replyMarkup = {
         inline_keyboard: [

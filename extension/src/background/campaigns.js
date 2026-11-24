@@ -1,5 +1,5 @@
 /**
- * OutFox — sequence engine v2.
+ * Crafture Network — sequence engine v2.
  *
  * A campaign is a tree of steps; an enrollment is one person's position in
  * that tree (`path` names the branch arms taken, `stepIndex` the position
@@ -45,7 +45,7 @@ const STOP_THE_TICK = new Set([
   ERROR.NOT_LOGGED_IN,
 ]);
 
-/** Max actions executed per tick to prevent burst firing (OutFox-style distributed drip) */
+/** Max actions executed per tick to prevent burst firing (Crafture-style distributed drip) */
 export const DEFAULT_MAX_ACTIONS_PER_TICK = 1;
 let maxActionsPerTick = DEFAULT_MAX_ACTIONS_PER_TICK;
 
@@ -77,7 +77,7 @@ export function clearProspectLocks() {
   clearRecentConnectionsCache();
 }
 
-export const CAMPAIGN_TICK_ALARM_NAME = 'outfox-campaign-tick';
+export const CAMPAIGN_TICK_ALARM_NAME = 'crafture-campaign-tick';
 
 /** Schedule next tick alarm with human spacing */
 export function scheduleNextTickAlarm(minutes = null) {
@@ -94,7 +94,7 @@ export function scheduleNextTickAlarm(minutes = null) {
 }
 
 /**
- * Lightweight Watchdog: if any active campaign exists and the 'outfox-campaign-tick'
+ * Lightweight Watchdog: if any active campaign exists and the 'crafture-campaign-tick'
  * alarm is missing, automatically re-create it.
  * @returns {Promise<boolean>} whether an alarm was re-created
  */
@@ -131,7 +131,7 @@ export function addTickHook(fn) {
 }
 
 /** Global execution lock preventing concurrent tick execution across tabs/alarms */
-export const TICK_LOCK_KEY = K.TICK_LOCK || 'outfox_tick_lock';
+export const TICK_LOCK_KEY = K.TICK_LOCK || 'crafture_tick_lock';
 export const TICK_LOCK_TTL_MS = 60 * 1000; // 60-second TTL
 
 let isTickRunning = false;
@@ -607,23 +607,19 @@ export async function getCampaignLiveStatus(campaignId) {
       const step = campaign.steps?.[stepIndex];
       const stepNumber = stepIndex + 1;
 
-      let currentStepLabel = '';
-      if (enr.status === 'completed' || (enr.accepted && stepIndex >= totalSteps && totalSteps > 0)) {
-        currentStepLabel = `Completed (${totalSteps}/${totalSteps})`;
-      } else if (step) {
-        const typeLabel = STEP_TYPE_LABELS[step.type] || (step.type ? step.type.toUpperCase() : 'Action');
-        currentStepLabel = `Step ${stepNumber}/${totalSteps}: ${typeLabel}`;
-      } else {
-        currentStepLabel = totalSteps > 0 ? `Step ${stepNumber}/${totalSteps}` : 'No steps';
-      }
+      const isReplied = enr.status === 'replied' || enr.replied === true || enr.stoppedReason === 'replied';
+      const isCompleted =
+        enr.status === 'completed' ||
+        enr.status === 'done' ||
+        (enr.status === 'accepted' && (stepIndex >= totalSteps - 1 || totalSteps <= 1)) ||
+        (stepIndex >= totalSteps && totalSteps > 0) ||
+        (Boolean(enr.accepted) && (stepIndex >= totalSteps || totalSteps <= 1));
 
       let status = enr.status || 'active';
-      if (status === 'active') {
-        if (enr.nextAt && enr.nextAt > now) {
-          status = 'waiting';
-        } else if (isRunning) {
-          status = 'running';
-        }
+      if (isReplied) {
+        status = 'replied';
+      } else if (isCompleted) {
+        status = 'completed';
       } else if (
         status === 'stopped' ||
         status === 'failed' ||
@@ -631,6 +627,32 @@ export async function getCampaignLiveStatus(campaignId) {
         status === 'email_skipped_no_email'
       ) {
         status = 'failed';
+      } else if (
+        enr.parkReason === 'waiting_acceptance' ||
+        /waiting for invite acceptance/i.test(enr.lastError || '') ||
+        (enr.nextAt && enr.nextAt > now)
+      ) {
+        status = 'waiting';
+      } else if (isRunning) {
+        status = 'running';
+      } else {
+        status = 'active';
+      }
+
+      let currentStepLabel = '';
+      if (status === 'completed') {
+        currentStepLabel = `Completed (${totalSteps}/${totalSteps})`;
+      } else if (status === 'replied') {
+        currentStepLabel = `Replied (${Math.min(stepNumber, totalSteps)}/${totalSteps})`;
+      } else if (status === 'failed') {
+        currentStepLabel = `Failed at Step ${Math.min(stepNumber, totalSteps)}/${totalSteps}`;
+      } else if (status === 'waiting' && (enr.parkReason === 'waiting_acceptance' || /waiting for invite acceptance/i.test(enr.lastError || ''))) {
+        currentStepLabel = `Waiting for Accept (Step ${Math.min(stepNumber, totalSteps)}/${totalSteps})`;
+      } else if (step) {
+        const typeLabel = STEP_TYPE_LABELS[step.type] || (step.type ? step.type.toUpperCase() : 'Action');
+        currentStepLabel = `Step ${stepNumber}/${totalSteps}: ${typeLabel}`;
+      } else {
+        currentStepLabel = totalSteps > 0 ? `Step ${stepNumber}/${totalSteps}` : 'No steps';
       }
 
       let leadHistory = Array.isArray(enr.history) && enr.history.length > 0 ? [...enr.history] : [];
@@ -664,13 +686,16 @@ export async function getCampaignLiveStatus(campaignId) {
         status, // 'active' | 'waiting' | 'running' | 'completed' | 'replied' | 'failed' | 'paused'
         rawStatus: enr.status || 'active',
         currentStepLabel,
+        stepIndex,
         stepNumber,
         totalSteps,
+        parkReason: enr.parkReason || '',
+        stoppedReason: enr.stoppedReason || '',
         nextRunAt: enr.nextAt || 0,
         lastError: enr.error || enr.lastError || '',
         lastActionAt: enr.lastActionAt || enr.enrolledAt || 0,
-        accepted: Boolean(enr.accepted),
-        replied: enr.status === 'replied',
+        accepted: Boolean(enr.accepted || enr.status === 'accepted'),
+        replied: isReplied,
         history: leadHistory,
       };
     }),
@@ -843,6 +868,8 @@ export async function isConnected(publicId, enrollment = null, { forceFresh = fa
 
     if (enrollment && !enrollment.accepted) {
       enrollment.parkReason = 'waiting_acceptance';
+      enrollment.retries = 0;
+      enrollment.retryCount = 0;
       enrollment.nextAt = Date.now() + 12 * 3600 * 1000;
     }
   } catch (err) {
@@ -1809,6 +1836,8 @@ export async function tick() {
               enrollment.nextAt = Date.now() + wait12h;
               enrollment.parkReason = 'waiting_acceptance';
               enrollment.lastError = 'Waiting for invite acceptance';
+              enrollment.retries = 0;
+              enrollment.retryCount = 0;
               enrollment.updatedAt = Date.now();
               recordHistory(enrollment, {
                 step: 'message',
@@ -1945,6 +1974,8 @@ export async function tick() {
             enrollment.nextAt = Date.now() + wait12h;
             enrollment.parkReason = 'waiting_acceptance';
             enrollment.lastError = 'Waiting for invite acceptance';
+            enrollment.retries = 0;
+            enrollment.retryCount = 0;
             enrollment.updatedAt = Date.now();
             recordHistory(enrollment, {
               step: 'message',

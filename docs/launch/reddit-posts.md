@@ -104,9 +104,9 @@ two hours. Never argue with the ToS comment — agree with it, because it is cor
 
 ## r/selfhosted
 
-**Title:** Self-hosted LinkedIn automation — replaces OutFox/PhantomBuster, no cloud, no subscription
+**Title:** Self-hosted LinkedIn automation — replaces Waalaxy/PhantomBuster, no cloud, no subscription
 
-> **What it replaces:** OutFox (~€70/mo), PhantomBuster (~$69/mo), Sales-Mind (~$99/mo). All three
+> **What it replaces:** Crafture Network (~€70/mo), PhantomBuster (~$69/mo), Sales-Mind (~$99/mo). All three
 > run your LinkedIn session on their infrastructure. This runs on yours.
 >
 > **What it is:** a Chrome MV3 extension plus a local Node process. `npx linkedin-toolkit-mcp`,
@@ -144,7 +144,7 @@ two hours. Never argue with the ToS comment — agree with it, because it is cor
 
 ## r/sales
 
-**Title:** Free open-source alternative to OutFox — runs on your own machine, no subscription
+**Title:** Free open-source alternative to Waalaxy — runs on your own machine, no subscription
 
 > I got tired of paying a monthly subscription for connection requests on a timer, so I built the
 > thing and gave it away.

@@ -1,5 +1,5 @@
 /**
- * OutFox — full-page capture driver.
+ * Crafture Network — full-page capture driver.
  *
  * `profile.get { full: true }` needs what the Voyager API does not return: the
  * rendered page text and the profile photo. That only exists in a tab, so this

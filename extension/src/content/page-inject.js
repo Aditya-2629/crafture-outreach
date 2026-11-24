@@ -1,5 +1,5 @@
 /**
- * OutFox — MAIN world page inject
+ * Crafture Network — MAIN world page inject
  *
  * This script runs in the MAIN world (same JS context as LinkedIn's own code).
  * It sets a flag so that other scripts can detect the toolkit is installed,

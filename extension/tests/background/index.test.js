@@ -36,8 +36,8 @@ describe('service worker wiring', () => {
     expect(QUEUE_TICK_ALARM).not.toBe(CAMPAIGN_TICK_ALARM);
   });
 
-  it('registers the 5-minute outfox-accept-watcher alarm', () => {
-    expect(ACCEPT_WATCHER_ALARM).toBe('outfox-accept-watcher');
+  it('registers the 5-minute crafture-accept-watcher alarm', () => {
+    expect(ACCEPT_WATCHER_ALARM).toBe('crafture-accept-watcher');
     for (const fn of mock().listeners.onStartup) fn();
     const alarm = mock().alarms.get(ACCEPT_WATCHER_ALARM);
     expect(alarm).toBeDefined();

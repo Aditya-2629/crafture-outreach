@@ -1,13 +1,13 @@
 {
-  "name": "outfox-mcp",
+  "name": "crafture-network-mcp",
   "version": "1.0.0",
   "author": "Aditya Chaudhary",
-  "description": "OutFox — MCP server, localhost bridge, and HTTP action API.",
+  "description": "Crafture Network — MCP server, localhost bridge, and HTTP action API.",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "outfox-mcp": "./dist/server.js",
-    "outfox-mcp-setup": "./dist/setup.js",
+    "crafture-network-mcp": "./dist/server.js",
+    "crafture-network-mcp-setup": "./dist/setup.js",
     "linkedin-toolkit-mcp": "./dist/server.js",
     "lit": "./dist/cli.js"
   },

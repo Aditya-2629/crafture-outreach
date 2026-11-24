@@ -1,8 +1,8 @@
 {
-  "name": "n8n-nodes-outfox",
+  "name": "n8n-nodes-crafture-network",
   "version": "1.0.0",
   "author": "Aditya Chaudhary",
-  "description": "n8n community node for OutFox: outreach actions and webhook trigger.",
+  "description": "n8n community node for Crafture Network: outreach actions and webhook trigger.",
   "license": "MIT",
   "keywords": [
     "n8n-community-node-package",

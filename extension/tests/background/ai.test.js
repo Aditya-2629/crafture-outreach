@@ -220,3 +220,232 @@ describe('ai.complete action', () => {
     expect(res.data).toEqual({ output: 'Hi Ada.', provider: 'anthropic', model: 'claude-sonnet-5' });
   });
 });
+
+describe('sanitizeGeminiContents', () => {
+  it('strips thoughtSignature and invalid keys from inside functionCall while preserving sibling thoughtSignature', () => {
+    const uncleanedContents = [
+      {
+        role: 'user',
+        parts: [{ text: 'Search for leads' }],
+      },
+      {
+        role: 'model',
+        parts: [
+          {
+            text: 'Thinking about tools...',
+            thought: true,
+            'thought signature': 'sig_thought_1',
+          },
+          {
+            functionCall: {
+              name: 'search_and_save_leads',
+              args: { keywords: 'Data Analyst', count: 10 },
+              'thought signature': 'sig_fc_invalid_space',
+              thoughtSignature: 'sig_fc_valid',
+              thought_signature: 'sig_fc_snake',
+              id: 'call_123',
+            },
+            'thought signature': 'sig_part_space',
+          },
+        ],
+      },
+      {
+        role: 'user',
+        parts: [
+          {
+            functionResponse: {
+              name: 'search_and_save_leads',
+              response: { result: { count: 10 } },
+            },
+          },
+        ],
+      },
+    ];
+
+    const sanitized = ai.sanitizeGeminiContents(uncleanedContents);
+
+    // Turn 1
+    expect(sanitized[0]).toEqual({
+      role: 'user',
+      parts: [{ text: 'Search for leads' }],
+    });
+
+    // Turn 2
+    const modelTurn = sanitized[1];
+    expect(modelTurn.role).toBe('model');
+    expect(modelTurn.parts).toHaveLength(2);
+
+    // Thought text part
+    expect(modelTurn.parts[0]).toEqual({
+      text: 'Thinking about tools...',
+      thought: true,
+      thoughtSignature: 'sig_thought_1',
+    });
+
+    // Function call part
+    const fcPart = modelTurn.parts[1];
+    expect(fcPart.functionCall).toEqual({
+      name: 'search_and_save_leads',
+      args: { keywords: 'Data Analyst', count: 10 },
+    });
+    // Sibling thoughtSignature at the part level
+    expect(fcPart.thoughtSignature).toBeDefined();
+    // NEVER thought signature or thoughtSignature inside functionCall
+    expect(fcPart.functionCall['thought signature']).toBeUndefined();
+    expect(fcPart.functionCall.thoughtSignature).toBeUndefined();
+    expect(fcPart.functionCall.thought_signature).toBeUndefined();
+    expect(fcPart.functionCall.id).toBeUndefined();
+    // NEVER invalid keys with spaces at the part level
+    expect(fcPart['thought signature']).toBeUndefined();
+    expect(fcPart.thought_signature).toBeUndefined();
+
+    // Turn 3
+    expect(sanitized[2]).toEqual({
+      role: 'user',
+      parts: [
+        {
+          functionResponse: {
+            name: 'search_and_save_leads',
+            response: { result: { count: 10 } },
+          },
+        },
+      ],
+    });
+  });
+
+  it('handles empty and malformed content safely', () => {
+    expect(ai.sanitizeGeminiContents(null)).toEqual([]);
+    expect(ai.sanitizeGeminiContents([])).toEqual([]);
+    expect(ai.sanitizeGeminiContents('invalid')).toEqual([]);
+    expect(ai.sanitizeGeminiContents([{ role: 'assistant', parts: [{}] }])).toEqual([
+      { role: 'model', parts: [{ text: '' }] },
+    ]);
+  });
+});
+
+describe('Gemini Schema and Tools Sanitizer', () => {
+  it('strips unsupported schema properties ($schema, additionalProperties, default) and normalizes types', () => {
+    const rawSchema = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        keywords: {
+          type: 'string',
+          description: 'Search keywords',
+          default: 'Software Engineer',
+        },
+        count: {
+          type: ['integer', 'null'],
+          description: 'Number of results',
+        },
+        level: {
+          type: 'integer',
+          enum: [1, 2, 3], // non-string enum should be removed
+        },
+        tags: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['tech', 'sales'],
+          },
+        },
+      },
+      required: ['keywords'],
+    };
+
+    const sanitized = ai.sanitizeGeminiSchema(rawSchema);
+
+    expect(sanitized.$schema).toBeUndefined();
+    expect(sanitized.additionalProperties).toBeUndefined();
+    expect(sanitized.type).toBe('OBJECT');
+    expect(sanitized.properties.keywords.default).toBeUndefined();
+    expect(sanitized.properties.keywords.type).toBe('STRING');
+    // Union type normalized
+    expect(sanitized.properties.count.type).toBe('INTEGER');
+    // Non-string enum stripped
+    expect(sanitized.properties.level.enum).toBeUndefined();
+    // String enum preserved
+    expect(sanitized.properties.tags.items.enum).toEqual(['tech', 'sales']);
+    expect(sanitized.required).toEqual(['keywords']);
+  });
+
+  it('sanitizeGeminiTools converts OpenAI tool format to clean Gemini declarations', () => {
+    const tools = [
+      {
+        type: 'function',
+        function: {
+          name: 'search_leads',
+          description: 'Searches LinkedIn leads',
+          parameters: {
+            $schema: 'http://json-schema.org/draft-07/schema#',
+            type: 'object',
+            properties: {
+              query: { type: 'string' },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+    ];
+
+    const decls = ai.sanitizeGeminiTools(tools);
+    expect(decls).toHaveLength(1);
+    expect(decls[0].name).toBe('search_leads');
+    expect(decls[0].description).toBe('Searches LinkedIn leads');
+    expect(decls[0].parameters.type).toBe('OBJECT');
+    expect(decls[0].parameters.$schema).toBeUndefined();
+    expect(decls[0].parameters.additionalProperties).toBeUndefined();
+  });
+});
+
+describe('extractJsonFromAiResponse', () => {
+  it('extracts JSON from markdown code fences', () => {
+    const fenced = '```json\n{"candidates": [1, 2, 3], "status": "ok"}\n```';
+    expect(ai.extractJsonFromAiResponse(fenced)).toEqual({
+      candidates: [1, 2, 3],
+      status: 'ok',
+    });
+  });
+
+  it('extracts outermost JSON object or array from conversational prose', () => {
+    const prose = 'Sure! Here is the data: {"id": "c1", "enrolled": 10} Let me know if you need anything else.';
+    expect(ai.extractJsonFromAiResponse(prose)).toEqual({
+      id: 'c1',
+      enrolled: 10,
+    });
+
+    const arrayProse = 'Candidates matching criteria:\n[{"i": 0}, {"i": 2}]\nHope this helps!';
+    expect(ai.extractJsonFromAiResponse(arrayProse)).toEqual([{ i: 0 }, { i: 2 }]);
+  });
+
+  it('returns fallback safely when parsing fails or input is null', () => {
+    expect(ai.extractJsonFromAiResponse(null, { fallback: true })).toEqual({ fallback: true });
+    expect(ai.extractJsonFromAiResponse('No json here whatsoever', null)).toBeNull();
+  });
+});
+
+describe('listProviderModels & ACTIONS.AI_LIST_MODELS', () => {
+  it('returns curated models with recommended tags when no API key provided', async () => {
+    const geminiRes = await ai.listProviderModels({ provider: 'gemini' });
+    expect(geminiRes.provider).toBe('gemini');
+    expect(geminiRes.models.length).toBeGreaterThan(0);
+    expect(geminiRes.models.some((m) => m.id === 'gemini-2.5-flash' && m.recommended)).toBe(true);
+
+    const groqRes = await ai.listProviderModels({ provider: 'groq' });
+    expect(groqRes.provider).toBe('groq');
+    expect(groqRes.models.some((m) => m.id === 'llama-3.3-70b-versatile' && m.recommended)).toBe(true);
+
+    const claudeRes = await ai.listProviderModels({ provider: 'claude' });
+    expect(claudeRes.provider).toBe('anthropic');
+    expect(claudeRes.models.some((m) => m.id.includes('claude-3-5') && m.recommended)).toBe(true);
+  });
+
+  it('handles ACTIONS.AI_LIST_MODELS action via engine handle', async () => {
+    const res = await handle(ACTIONS.AI_LIST_MODELS, { provider: 'gemini' });
+    expect(res.ok).toBe(true);
+    expect(res.data.provider).toBe('gemini');
+    expect(res.data.models.length).toBeGreaterThan(0);
+    expect(res.data.models[0].recommended).toBe(true);
+  });
+});

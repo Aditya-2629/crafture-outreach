@@ -1,5 +1,5 @@
 /**
- * OutFox — OutFox Messages Management & Template Editor
+ * Crafture Network — Messages Management & Template Editor
  * Fully working Emoji Picker, Image Uploader, File Attachment, and GIF Selector.
  */
 
@@ -56,17 +56,17 @@ export function openEditMessageModal({ template = null, category = 'message', on
     const hasSpamPoliteness = /\b(sincerely|best regards|warm regards|yours truly|cheers)\b/i.test(content);
 
     let previewText = resolveSpintax(content || 'Your message will appear here...')
-      .replace(/\{\{firstName\}\}/g, '<strong style="color:#ff6b00;">Alex</strong>')
-      .replace(/\{\{lastName\}\}/g, '<strong style="color:#ff6b00;">Rivera</strong>')
-      .replace(/\{\{fullName\}\}/g, '<strong style="color:#ff6b00;">Alex Rivera</strong>')
-      .replace(/\{\{company(?:Name)?\}\}/g, '<strong style="color:#ff6b00;">CloudScale Technologies</strong>')
-      .replace(/\{\{jobTitle\}\}/g, '<strong style="color:#ff6b00;">Head of Growth</strong>')
-      .replace(/\{\{headline\}\}/g, '<strong style="color:#ff6b00;">Head of Growth at CloudScale Technologies</strong>')
-      .replace(/\{\{location\}\}/g, '<strong style="color:#ff6b00;">San Francisco, CA</strong>')
-      .replace(/\{\{industry\}\}/g, '<strong style="color:#ff6b00;">Information Technology</strong>')
-      .replace(/\{\{email\}\}/g, '<strong style="color:#ff6b00;">alex@cloudscale.io</strong>')
-      .replace(/\{\{icebreaker\}\}/g, '<strong style="color:#ff6b00;">Saw your recent post on scaling SaaS sales teams — really resonated!</strong>')
-      .replace(/\{\{mutualCount\}\}/g, '<strong style="color:#ff6b00;">14</strong>');
+      .replace(/\{\{firstName\}\}/g, '<strong style="color:#104B35;">Alex</strong>')
+      .replace(/\{\{lastName\}\}/g, '<strong style="color:#104B35;">Rivera</strong>')
+      .replace(/\{\{fullName\}\}/g, '<strong style="color:#104B35;">Alex Rivera</strong>')
+      .replace(/\{\{company(?:Name)?\}\}/g, '<strong style="color:#104B35;">CloudScale Technologies</strong>')
+      .replace(/\{\{jobTitle\}\}/g, '<strong style="color:#104B35;">Head of Growth</strong>')
+      .replace(/\{\{headline\}\}/g, '<strong style="color:#104B35;">Head of Growth at CloudScale Technologies</strong>')
+      .replace(/\{\{location\}\}/g, '<strong style="color:#104B35;">San Francisco, CA</strong>')
+      .replace(/\{\{industry\}\}/g, '<strong style="color:#104B35;">Information Technology</strong>')
+      .replace(/\{\{email\}\}/g, '<strong style="color:#104B35;">alex@cloudscale.io</strong>')
+      .replace(/\{\{icebreaker\}\}/g, '<strong style="color:#104B35;">Saw your recent post on scaling SaaS sales teams — really resonated!</strong>')
+      .replace(/\{\{mutualCount\}\}/g, '<strong style="color:#104B35;">14</strong>');
 
     backdrop.innerHTML = `
       <div class="edit-msg-modal-card">
@@ -247,7 +247,7 @@ export function openEditMessageModal({ template = null, category = 'message', on
                   <span class="preview-title">Preview</span>
                   <span class="preview-sub">How your prospect will see your message</span>
                 </div>
-                <button type="button" id="btn-shuffle-preview" title="Shuffle Spintax Preview" style="background: #fff7ed; border: 1px solid #ffedd5; color: #ff6b00; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                <button type="button" id="btn-shuffle-preview" title="Shuffle Spintax Preview" style="background: #E6EFE9; border: 1px solid #DCE5DE; color: #104B35; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;">
                   ${ICONS.refresh} Shuffle Preview
                 </button>
               </div>
@@ -531,7 +531,7 @@ function escapeHtml(str = '') {
 }
 
 function ensureTemplatesStyles() {
-  const STYLE_ID = 'OutFox-templates-view-css';
+  const STYLE_ID = 'cn-templates-view-css';
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
@@ -544,7 +544,7 @@ function ensureTemplatesStyles() {
     .group-label { font-size: 10.5px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; padding: 0 8px; margin-bottom: 8px; }
     .template-nav-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; border-radius: 8px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #475569; cursor: pointer; transition: all 0.12s; text-align: left; }
     .template-nav-btn:hover { background: #f1f5f9; color: #14142b; }
-    .template-nav-btn.is-active { background: #fff7ed; color: #ff6b00; font-weight: 700; }
+    .template-nav-btn.is-active { background: #E6EFE9; color: #104B35; font-weight: 700; }
     .cat-icon { display: flex; align-items: center; justify-content: center; }
     .templates-main-canvas { flex: 1; padding: 32px 40px; overflow-y: auto; box-sizing: border-box; }
     .templates-head-bar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
@@ -552,11 +552,11 @@ function ensureTemplatesStyles() {
     .category-heading-row { display: flex; align-items: center; gap: 8px; }
     .cat-main-name { font-size: 14px; font-weight: 700; color: #64748b; }
     .badge-total-count { font-size: 11px; font-weight: 700; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; }
-    .btn-primary-create { background: #ff6b00; color: #ffffff; border: none; border-radius: 20px; padding: 9px 20px; font-size: 12.5px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25); transition: background 0.15s; }
+    .btn-primary-create { background: #104B35; color: #ffffff; border: none; border-radius: 20px; padding: 9px 20px; font-size: 12.5px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 75, 53, 0.25); transition: background 0.15s; }
     .btn-primary-create:hover { background: #e05a00; }
     .templates-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
     .template-item-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 2px 6px rgba(0,0,0,0.02); transition: all 0.2s ease; }
-    .template-item-card:hover { border-color: #c7d2fe; box-shadow: 0 6px 18px rgba(255, 107, 0, 0.08); transform: translateY(-1px); }
+    .template-item-card:hover { border-color: #c7d2fe; box-shadow: 0 6px 18px rgba(16, 75, 53, 0.08); transform: translateY(-1px); }
     .template-card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
     .template-name { font-size: 14px; font-weight: 700; color: #14142b; margin: 0; }
     .template-type-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; background: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; }
@@ -565,33 +565,33 @@ function ensureTemplatesStyles() {
     .template-char-badge { font-size: 11px; color: #94a3b8; font-weight: 600; }
     .template-actions { display: flex; gap: 8px; }
     .btn-card-action { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 10px; font-size: 11.5px; font-weight: 600; color: #475569; cursor: pointer; display: flex; align-items: center; gap: 4px; }
-    .btn-card-action:hover { background: #fff7ed; color: #ff6b00; border-color: #ff6b00; }
+    .btn-card-action:hover { background: #E6EFE9; color: #104B35; border-color: #104B35; }
     .btn-del-tmpl:hover { background: #fef2f2; color: #ef4444; border-color: #ef4444; }
 
     .edit-msg-modal-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; }
     .edit-msg-modal-card { width: 920px; max-width: 95vw; max-height: 90vh; background: #ffffff; border-radius: 20px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; overflow: hidden; }
-    .edit-msg-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 20px 28px; border-bottom: 1px solid #fff7ed; }
+    .edit-msg-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 20px 28px; border-bottom: 1px solid #E6EFE9; }
     .edit-msg-title { font-size: 18px; font-weight: 800; color: #14142b; margin: 0; }
     .btn-close-modal { background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
     .btn-close-modal:hover { color: #14142b; background: #f1f5f9; }
     .edit-msg-modal-grid { display: grid; grid-template-columns: 1fr 340px; flex: 1; overflow: hidden; }
-    .edit-msg-left-col { padding: 24px 28px; overflow-y: auto; border-right: 1px solid #fff7ed; display: flex; flex-direction: column; gap: 18px; }
+    .edit-msg-left-col { padding: 24px 28px; overflow-y: auto; border-right: 1px solid #E6EFE9; display: flex; flex-direction: column; gap: 18px; }
     .edit-msg-inputs-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     .edit-msg-label { font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; display: block; }
     .select-model-pill { background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 600; color: #14142b; }
     .input-text-model { width: 100%; box-sizing: border-box; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 600; color: #14142b; outline: none; }
-    .input-text-model:focus { border-color: #ff6b00; }
+    .input-text-model:focus { border-color: #104B35; }
     .textarea-wrapper { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; min-height: 200px; }
     .composer-textarea-full { flex: 1; border: none; outline: none; font-size: 13.5px; line-height: 1.5; color: #14142b; resize: none; font-family: inherit; }
     .edit-msg-toolbar { display: flex; justify-content: space-between; align-items: center; }
-    .btn-pill-variable { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 6px 14px; font-size: 12px; font-weight: 600; color: #ff6b00; cursor: pointer; }
+    .btn-pill-variable { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 6px 14px; font-size: 12px; font-weight: 600; color: #104B35; cursor: pointer; }
     .var-menu-dropdown { position: absolute; bottom: 100%; left: 0; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); padding: 6px; min-width: 180px; z-index: 20; margin-bottom: 6px; }
     .var-menu-dropdown.hidden { display: none; }
     .var-menu-item { padding: 8px 12px; border-radius: 6px; font-size: 12.5px; font-weight: 600; color: #14142b; cursor: pointer; display: flex; justify-content: space-between; }
-    .var-menu-item:hover { background: #fff7ed; color: #ff6b00; }
+    .var-menu-item:hover { background: #E6EFE9; color: #104B35; }
     .toolbar-media-icons { display: flex; gap: 8px; align-items: center; }
     .tool-icon-btn { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #475569; }
-    .tool-icon-btn:hover { background: #fff7ed; color: #ff6b00; border-color: #ff6b00; }
+    .tool-icon-btn:hover { background: #E6EFE9; color: #104B35; border-color: #104B35; }
     .emoji-picker-popover { position: absolute; bottom: 100%; right: 0; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); padding: 12px; width: 280px; z-index: 30; margin-bottom: 8px; }
     .emoji-picker-popover.hidden { display: none; }
     .emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
@@ -602,7 +602,7 @@ function ensureTemplatesStyles() {
     .gif-popover-head { font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px; }
     .gif-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
     .gif-choice-btn { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px; font-size: 11px; font-weight: 600; color: #14142b; cursor: pointer; text-align: left; }
-    .gif-choice-btn:hover { background: #fff7ed; border-color: #ff6b00; color: #ff6b00; }
+    .gif-choice-btn:hover { background: #E6EFE9; border-color: #104B35; color: #104B35; }
     .attachments-chips-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .att-chip { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: #14142b; }
     .btn-remove-att { background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 0; display: flex; align-items: center; }
@@ -617,13 +617,13 @@ function ensureTemplatesStyles() {
     .check-danger { background: #fef2f2; color: #dc2626; }
     .preview-card-box { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px; }
     .preview-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-    .preview-avatar { width: 34px; height: 34px; border-radius: 50%; background: #ff6b00; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
+    .preview-avatar { width: 34px; height: 34px; border-radius: 50%; background: #104B35; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
     .preview-prospect-name { font-size: 13px; font-weight: 700; color: #14142b; }
     .preview-content-bubble { background: #f1f5f9; border-radius: 10px; padding: 12px; font-size: 12.5px; color: #334155; line-height: 1.5; white-space: pre-wrap; }
-    .edit-msg-modal-foot { padding: 16px 28px; border-top: 1px solid #fff7ed; display: flex; justify-content: flex-end; gap: 12px; }
+    .edit-msg-modal-foot { padding: 16px 28px; border-top: 1px solid #E6EFE9; display: flex; justify-content: flex-end; gap: 12px; }
     .btn-modal-ghost { background: transparent; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 8px 18px; font-size: 12.5px; font-weight: 700; color: #64748b; cursor: pointer; }
     .btn-modal-ghost:hover { background: #f1f5f9; color: #14142b; }
-    .btn-modal-primary { background: #ff6b00; border: none; border-radius: 10px; padding: 8px 22px; font-size: 12.5px; font-weight: 700; color: #ffffff; cursor: pointer; box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25); }
+    .btn-modal-primary { background: #104B35; border: none; border-radius: 10px; padding: 8px 22px; font-size: 12.5px; font-weight: 700; color: #ffffff; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 75, 53, 0.25); }
     .btn-modal-primary:hover { background: #e05a00; }
   `;
   document.head.appendChild(style);
@@ -719,7 +719,7 @@ export async function renderTemplatesView(container, ctx = {}) {
             <!-- Active Candidate Resume Asset Bar -->
             <div style="background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:18px 22px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.02); display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px;">
               <div style="display:flex; align-items:center; gap:12px;">
-                <span style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:10px; background:#fff7ed; color:#ff6b00;">
+                <span style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:10px; background:#E6EFE9; color:#104B35;">
                   ${ICONS.fileText}
                 </span>
                 <div>
@@ -739,29 +739,29 @@ export async function renderTemplatesView(container, ctx = {}) {
             </div>
 
             <!-- Live Interactive AI Tester -->
-            <div style="background:#ffffff; border:1px solid #fed7aa; border-radius:14px; padding:18px 22px; margin-bottom:24px; box-shadow:0 4px 14px rgba(255,107,0,0.05);">
+            <div style="background:#ffffff; border:1px solid #DCE5DE; border-radius:14px; padding:18px 22px; margin-bottom:24px; box-shadow:0 4px 14px rgba(16, 75, 53,0.05);">
               <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-                <span style="display:inline-flex; color:#ff6b00;">${ICONS.lightning}</span>
+                <span style="display:inline-flex; color:#104B35;">${ICONS.lightning}</span>
                 <h3 style="margin:0; font-size:13.5px; font-weight:700; color:#14142b;">Live AI Objection Matcher & Intent Tester</h3>
               </div>
-              <p style="margin:0 0 12px 0; font-size:12px; color:#64748b;">Type any simulated inbound message to test how OutFox matches the intent against your playbook rules and adapts the response.</p>
+              <p style="margin:0 0 12px 0; font-size:12px; color:#64748b;">Type any simulated inbound message to test how Crafture matches the intent against your playbook rules and adapts the response.</p>
               <div style="display:flex; gap:10px; align-items:center;">
                 <input type="text" id="input-test-objection-msg" placeholder="e.g. Could you shoot over your resume or CV?" style="flex:1; padding:9px 14px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; outline:none;" />
                 <button type="button" id="btn-run-objection-test" class="btn-primary-create" style="padding:9px 18px; font-size:12.5px; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
                   ${ICONS.sparkles} Test Match
                 </button>
               </div>
-              <div id="objection-test-result" style="display:none; margin-top:14px; padding:14px; background:#fff7ed; border:1px solid #ffedd5; border-radius:10px;">
+              <div id="objection-test-result" style="display:none; margin-top:14px; padding:14px; background:#E6EFE9; border:1px solid #DCE5DE; border-radius:10px;">
               </div>
             </div>
 
             <!-- Playbook Rules Grid -->
             <div class="templates-grid">
               ${objections.map((o) => `
-                <div class="template-item-card" style="border-left: 4px solid #ff6b00;">
+                <div class="template-item-card" style="border-left: 4px solid #104B35;">
                   <div class="template-card-head" style="align-items: flex-start;">
                     <div>
-                      <span style="display:inline-block; font-size:10.5px; font-weight:800; background:#fff7ed; color:#ff6b00; border:1px solid #ffedd5; padding:2px 8px; border-radius:6px; margin-bottom:6px;">
+                      <span style="display:inline-block; font-size:10.5px; font-weight:800; background:#E6EFE9; color:#104B35; border:1px solid #DCE5DE; padding:2px 8px; border-radius:6px; margin-bottom:6px;">
                         ${escapeHtml(o.tag)}
                       </span>
                       <h4 class="template-name" style="font-size:14px; font-weight:700; color:#14142b;">${escapeHtml(o.title)}</h4>
@@ -803,12 +803,12 @@ export async function renderTemplatesView(container, ctx = {}) {
             <div class="templates-body-content">
               ${filtered.length === 0 ? `
                 <div class="templates-empty-state">
-                  <div class="outfox-logo-illustration-wrap" style="margin-bottom: 16px;">
-                    <img src="../../icons/icon128.png" width="84" height="84" style="border-radius: 22px; box-shadow: 0 10px 28px rgba(255, 107, 0, 0.28); display: inline-block;" alt="OutFox" />
+                  <div class="cn-logo-illustration-wrap" style="margin-bottom: 16px;">
+                    <img src="../../icons/icon128.png" width="84" height="84" style="border-radius: 22px; box-shadow: 0 10px 28px rgba(16, 75, 53, 0.28); display: inline-block;" alt="Crafture Network" />
                   </div>
                   <h3 class="empty-title">No templates</h3>
                   <p class="empty-sub">Save high-converting message snippets to reuse across all outreach sequences.</p>
-                  <button type="button" class="btn-create-template-blue" id="btn-empty-create-template" style="background: linear-gradient(135deg, #ff741f 0%, #ff4d00 100%);">
+                  <button type="button" class="btn-create-template-blue" id="btn-empty-create-template" style="background: #104B35;">
                     Create a template
                   </button>
                 </div>
@@ -1065,7 +1065,7 @@ export async function renderTemplatesView(container, ctx = {}) {
         resultEl.innerHTML = `
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
             <div style="display:flex; align-items:center; gap:8px;">
-              <span style="font-size:11px; font-weight:800; background:#fff7ed; color:#ff6b00; border:1px solid #fed7aa; padding:2px 8px; border-radius:6px;">
+              <span style="font-size:11px; font-weight:800; background:#E6EFE9; color:#104B35; border:1px solid #DCE5DE; padding:2px 8px; border-radius:6px;">
                 ${escapeHtml(tag)}
               </span>
               <span style="font-size:12.5px; font-weight:700; color:#14142b;">
@@ -1079,7 +1079,7 @@ export async function renderTemplatesView(container, ctx = {}) {
           <div style="font-size:11.5px; color:#64748b; margin-bottom:8px;">
             Simulated Lead: <strong>Sarah</strong> · Company: <strong>Google</strong>
           </div>
-          <div style="background:#ffffff; border:1px solid #fed7aa; border-radius:8px; padding:12px; font-size:12.5px; color:#1e293b; line-height:1.5; white-space:pre-wrap;">${escapeHtml(reply)}</div>
+          <div style="background:#ffffff; border:1px solid #DCE5DE; border-radius:8px; padding:12px; font-size:12.5px; color:#1e293b; line-height:1.5; white-space:pre-wrap;">${escapeHtml(reply)}</div>
         `;
       } catch (err) {
         if (resultEl) {

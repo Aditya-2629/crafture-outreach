@@ -1,5 +1,5 @@
 /**
- * OutFox — Voyager transport.
+ * Crafture Network — Voyager transport.
  *
  * CSRF, the authenticated fetch, and the mapping from LinkedIn's stand-down
  * responses onto contract error codes and the quota module's backoff state.
@@ -155,9 +155,10 @@ export async function voyagerFetch(path, options = {}) {
     url = `${VOYAGER_BASE}${cleanPath}`;
   }
 
+  const isFlagshipRsc = path.startsWith('/flagship-web');
   const headers = {
     'csrf-token': csrf,
-    'x-restli-protocol-version': '2.0.0',
+    ...(!isFlagshipRsc ? { 'x-restli-protocol-version': '2.0.0' } : {}),
     accept: 'application/vnd.linkedin.normalized+json+2.1',
     'x-li-lang': 'en_US',
     ...(options.headers || {}),

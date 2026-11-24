@@ -31,6 +31,7 @@ describe('domWithdrawInPage in-page automation', { timeout: 15000 }, () => {
     const result = await domWithdrawInPage(targets);
 
     expect(result.initialWithdrawButtons).toBe(1);
+    expect(result.finalWithdrawButtons).toBe(1);
     expect(result.pageTitle).toBe('Manage Invitations | LinkedIn');
     expect(result.matchedInDom).toBe(1);
     expect(result.results).toHaveLength(1);

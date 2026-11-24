@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * OutFox — Microsoft Edge / Chrome Web Store Zip Builder
+ * Crafture Network — Microsoft Edge / Chrome Web Store Zip Builder
  * Builds a clean, compliant store package without modifying the working extension/manifest.json.
  */
 
@@ -30,10 +30,12 @@ const repoRoot = existsSync(join(scriptDir, '..', 'extension', 'manifest.json'))
 
 const distStoreDir = resolve(repoRoot, 'dist-store');
 const stagingDir = resolve(distStoreDir, 'staging');
-const repoZipPath = resolve(repoRoot, 'outfox-store.zip');
-const distZipPath = resolve(distStoreDir, 'outfox-store.zip');
+const repoZipPath = resolve(repoRoot, 'crafture-network-store.zip');
+const distZipPath = resolve(distStoreDir, 'crafture-network-store.zip');
+const legacyRepoZipPath = resolve(repoRoot, 'crafture-network-store.zip');
+const legacyDistZipPath = resolve(distStoreDir, 'crafture-network-store.zip');
 
-console.log('\nBuilding OutFox Store Package (Edge / Chrome Web Store)...');
+console.log('\nBuilding Crafture Network Store Package (Edge / Chrome Web Store)...');
 console.log(`   Extension: ${extRoot}`);
 console.log(`   Repo Root: ${repoRoot}`);
 
@@ -138,8 +140,12 @@ try {
     execSync(`cd "${stagingDir}" && zip -r -q "${distZipPath}" .`, { stdio: 'inherit' });
   }
 
-  // Copy to repo root outfox-store.zip as well
+  // Copy to repo root crafture-network-store.zip and keep fallback copy
   cpSync(distZipPath, repoZipPath, { force: true });
+  try {
+    cpSync(distZipPath, legacyRepoZipPath, { force: true });
+    cpSync(distZipPath, legacyDistZipPath, { force: true });
+  } catch {}
 
   // 5. Clean up temporary staging directory
   rmSync(stagingDir, { recursive: true, force: true });

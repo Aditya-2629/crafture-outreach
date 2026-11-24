@@ -1,5 +1,5 @@
 /**
- * OutFox — Voyager response normalizers.
+ * Crafture Network — Voyager response normalizers.
  *
  * Every function here is pure: raw Voyager JSON in, a contract type out
  * (`Profile`, `Company`, `Engager`, `Thread`, `Message`).
@@ -76,7 +76,7 @@ export function fsdProfileUrnIn(urn) {
  */
 /**
  * Concat vector image rootUrl and artifact path segment adhering to LinkedIn formatting:
- * Only insert '/' if rootUrl does not end with '-' or '/' and segment does not start with '/'.
+ * Only insert '/' if rootUrl does not end with '_', '-', or '/' and segment does not start with '/'.
  */
 export function concatVectorUrl(rootUrl, segment) {
   if (!rootUrl) return segment || '';
@@ -84,7 +84,7 @@ export function concatVectorUrl(rootUrl, segment) {
   if (rootUrl.endsWith('/') && segment.startsWith('/')) {
     return `${rootUrl}${segment.slice(1)}`;
   }
-  if (!rootUrl.endsWith('-') && !rootUrl.endsWith('/') && !segment.startsWith('/')) {
+  if (!rootUrl.endsWith('_') && !rootUrl.endsWith('-') && !rootUrl.endsWith('/') && !segment.startsWith('/')) {
     return `${rootUrl}/${segment}`;
   }
   return `${rootUrl}${segment}`;
@@ -1166,6 +1166,36 @@ export function normalizeSentInvitations(raw) {
   const idx = index(raw);
   const out = [];
 
+  // Multi-key profile lookup index across included entities (matching *toMember, toMemberId, publicIdentifier)
+  const profileLookup = new Map();
+  const rawIncluded = (raw && raw.included) || [];
+  for (const ent of rawIncluded) {
+    if (!ent || typeof ent !== 'object') continue;
+    const isProfile =
+      ent.publicIdentifier ||
+      /Profile|Member/i.test(ent.$type || '') ||
+      /ACoAA/.test(ent.entityUrn || ent.dashEntityUrn || '');
+    if (isProfile) {
+      if (ent.entityUrn) profileLookup.set(ent.entityUrn, ent);
+      if (ent.dashEntityUrn) profileLookup.set(ent.dashEntityUrn, ent);
+      if (ent.objectUrn) profileLookup.set(ent.objectUrn, ent);
+      const memberNum = (String(ent.objectUrn || ent.entityUrn || '').match(/urn:li:member:(\d+)/) || [])[1];
+      if (memberNum) {
+        profileLookup.set(memberNum, ent);
+        profileLookup.set(`urn:li:member:${memberNum}`, ent);
+      }
+      const aco = (String(ent.dashEntityUrn || ent.entityUrn || '').match(/ACoAA[A-Za-z0-9_-]+/) || [])[0];
+      if (aco) {
+        profileLookup.set(aco, ent);
+        profileLookup.set(`urn:li:fsd_profile:${aco}`, ent);
+        profileLookup.set(`urn:li:fs_miniProfile:${aco}`, ent);
+      }
+      if (ent.publicIdentifier) {
+        profileLookup.set(ent.publicIdentifier, ent);
+      }
+    }
+  }
+
   for (const element of elements(raw, idx)) {
     const invitation = field(element, 'invitation', idx) || element.invitation || element;
     const rawMini =
@@ -1178,7 +1208,29 @@ export function normalizeSentInvitations(raw) {
       invitation.inviteeProfile ||
       invitation.toMember ||
       {};
-    const mini = field(rawMini, 'miniProfile', idx) || rawMini.miniProfile || rawMini;
+    let mini = field(rawMini, 'miniProfile', idx) || rawMini.miniProfile || rawMini;
+
+    // Cross-resolve against profileLookup using all candidate pointers
+    const candidatePointers = [
+      invitation['*toMember'],
+      invitation.toMemberId,
+      invitation['*toMemberId'],
+      invitation.toMember,
+      invitation.inviteeMemberResolutionResult,
+      element['*toMember'],
+      element.toMemberId,
+      element.toMember,
+      element.cardActionTarget ? publicIdFromUrl(element.cardActionTarget) : '',
+    ].filter(Boolean);
+
+    for (const ptr of candidatePointers) {
+      const match = profileLookup.get(ptr) || profileLookup.get(String(ptr).replace(/^urn:li:[^:]+:/, ''));
+      if (match) {
+        mini = { ...match, ...mini };
+        break;
+      }
+    }
+
     // The GraphQL view carries no vanity name on the profile it includes; the
     // card's own link is where it is written.
     const publicId =
@@ -1223,8 +1275,30 @@ export function normalizeSentInvitations(raw) {
       undefined;
     const sentTime = typeof rawSent === 'number' ? rawSent : (Number(rawSent) || undefined);
 
-    const profileUrn = (mini.dashEntityUrn || mini.entityUrn || toMemberUrn || invitation.toMemberId || '')
-      .replace(/^urn:li:(?:fsd?_profile|member):/, '');
+    const rawProfileCandidates = [
+      mini.dashEntityUrn,
+      mini.entityUrn,
+      mini.objectUrn,
+      toMemberUrn,
+      invitation['*toMember'],
+      invitation.toMemberId,
+      invitation.inviteeMemberResolutionResult,
+    ].filter(Boolean);
+
+    let profileUrn = '';
+    for (const cand of rawProfileCandidates) {
+      const match = String(cand).match(/ACoAA[A-Za-z0-9_-]+/);
+      if (match) {
+        profileUrn = match[0];
+        break;
+      }
+    }
+    if (!profileUrn && rawProfileCandidates.length > 0) {
+      profileUrn = String(rawProfileCandidates[0])
+        .replace(/^urn:li:(?:fsd?_profile|fs_miniProfile|member):/i, '')
+        .split(':')
+        .pop();
+    }
     const titleParts = (element.title?.text || '').trim().split(/\s+/);
     const miniFirst = textOf(mini.firstName) || (typeof mini.firstName === 'string' ? mini.firstName : '');
     const miniLast = textOf(mini.lastName) || (typeof mini.lastName === 'string' ? mini.lastName : '');

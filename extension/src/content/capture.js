@@ -1,5 +1,5 @@
 /**
- * OutFox — page capture and DOM actions (content script).
+ * Crafture Network — page capture and DOM actions (content script).
  *
  * A classic script, not a module: MV3 content scripts cannot be ES modules.
  * Everything is hung off `globalThis.LITK` so `linkedin.js` (loaded after it)

@@ -1,5 +1,5 @@
 /**
- * OutFox — Authentic OutFox Dashboard Controller
+ * Crafture Network — Authentic Dashboard Controller
  * Wires sidebar navigation, view mounting, live account status, and toasts.
  */
 
@@ -21,7 +21,7 @@ let currentRenderToken = 0;
 let currentViewContext = null;
 
 /**
- * Display a floating modern OutFox toast notification
+ * Display a floating modern Crafture Network toast notification
  * @param {string} message
  * @param {'success'|'error'|'warn'|'info'} type
  */
@@ -50,20 +50,20 @@ export function showToast(message, type = 'info') {
   }, 3200);
 }
 
-const UI_STATE_KEY = 'outfox_ui_state';
+const UI_STATE_KEY = 'crafture_ui_state';
 
 export const NOISY_STORAGE_KEYS = new Set([
   'logs',
-  'outfox_debug_logs',
+  'crafture_debug_logs',
   'debug_logs',
-  'outfox_logs',
+  'crafture_logs',
   'lastTick',
-  'outfox_remote_endpoints',
-  'outfox_dev_logs_enabled',
-  'outfox_logs_cache',
+  'crafture_remote_endpoints',
+  'crafture_dev_logs_enabled',
+  'crafture_logs_cache',
   'terminal_logs',
   'audit_logs',
-  'outfox_chat_history',
+  'crafture_chat_history',
 ]);
 
 /**
@@ -206,7 +206,7 @@ export function updateHash(viewId, subState = null) {
 export function getScrollPosition(element) {
   const mainCanvas = typeof document !== 'undefined' ? document.querySelector('.main-canvas') : null;
   const innerScroll = element?.querySelector?.(
-    '.crm-table-container, .inbox-threads-list, .queue-table-container, .queue-table-scroll, .OutFox-settings-layout, .campaigns-view-shell, .templates-view-shell'
+    '.crm-table-container, .inbox-threads-list, .queue-table-container, .queue-table-scroll, .cn-settings-layout, .campaigns-view-shell, .templates-view-shell'
   );
   return {
     windowTop: typeof window !== 'undefined' ? (window.scrollY || document.documentElement?.scrollTop || 0) : 0,
@@ -229,7 +229,7 @@ export function restoreScrollPosition(element, pos) {
     }
     if (pos.innerTop != null) {
       const innerScroll = element?.querySelector?.(
-        '.crm-table-container, .inbox-threads-list, .queue-table-container, .queue-table-scroll, .OutFox-settings-layout, .campaigns-view-shell, .templates-view-shell'
+        '.crm-table-container, .inbox-threads-list, .queue-table-container, .queue-table-scroll, .cn-settings-layout, .campaigns-view-shell, .templates-view-shell'
       );
       if (innerScroll && typeof innerScroll.scrollTop === 'number') {
         innerScroll.scrollTop = pos.innerTop;
@@ -276,7 +276,7 @@ export function setSidebarCollapsed(collapsed, manual = false) {
   if (manual) {
     userSidebarPinned = collapsed ? 'collapsed' : 'expanded';
     try {
-      sessionStorage.setItem('outfox_sidebar_pinned', userSidebarPinned);
+      sessionStorage.setItem('crafture_sidebar_pinned', userSidebarPinned);
     } catch (_) {}
   }
   sidebar.classList.toggle('is-collapsed', Boolean(collapsed));
@@ -492,10 +492,10 @@ function renderLinkedInStatusBanner(connected) {
   }
 
   // If already rendered, don't duplicate
-  if (bannerContainer.querySelector('.outfox-not-logged-in-banner')) return;
+  if (bannerContainer.querySelector('.cn-not-logged-in-banner')) return;
 
   bannerContainer.innerHTML = `
-    <div class="outfox-not-logged-in-banner" id="not-logged-in-banner-card">
+    <div class="cn-not-logged-in-banner" id="not-logged-in-banner-card">
       <div class="not-logged-in-banner-content">
         <div class="not-logged-in-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -586,7 +586,7 @@ export async function syncUserProfile() {
         accountStatusEl.style.color = 'var(--success)';
       }
 
-      const name = profile.name || profile.fullName || 'OutFox User';
+      const name = profile.name || profile.fullName || 'Crafture User';
       const initials = profile.initials || name.split(/[\s-_]+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase() || 'U';
       const avatarUrl = profile.avatarUrl || '';
 
@@ -633,7 +633,7 @@ async function initDashboard() {
 
   // 1a. Hook Sidebar Pin/Collapse Toggle Button & saved preference
   try {
-    const savedPin = sessionStorage.getItem('outfox_sidebar_pinned');
+    const savedPin = sessionStorage.getItem('crafture_sidebar_pinned');
     if (savedPin === 'expanded' || savedPin === 'collapsed') {
       userSidebarPinned = savedPin;
       setSidebarCollapsed(savedPin === 'collapsed', false);
@@ -763,12 +763,12 @@ async function initDashboard() {
     let globalStorageTimer = null;
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
-      if (!isStorageChangeRelevant(changes, ['outfox_dev_logs_enabled', 'profile', 'status', 'auth'])) return;
+      if (!isStorageChangeRelevant(changes, ['crafture_dev_logs_enabled', 'profile', 'status', 'auth'])) return;
       clearTimeout(globalStorageTimer);
       globalStorageTimer = setTimeout(() => {
-        if (changes.outfox_dev_logs_enabled) {
-          const pill = document.getElementById('outfox-logs-pill');
-          if (pill) pill.classList.toggle('hidden', !changes.outfox_dev_logs_enabled.newValue);
+        if (changes.crafture_dev_logs_enabled) {
+          const pill = document.getElementById('cn-logs-pill');
+          if (pill) pill.classList.toggle('hidden', !changes.crafture_dev_logs_enabled.newValue);
         }
         if (changes.profile || changes.status) {
           syncUserProfile();
@@ -782,8 +782,8 @@ async function initDashboard() {
  * Initialize Centralized Real-Time Terminal Drawer (Non-intrusive floating pill)
  */
 function initTerminalDrawer() {
-  const pill = document.getElementById('outfox-logs-pill') || document.getElementById('btn-toggle-terminal');
-  const modal = document.getElementById('outfox-terminal-modal');
+  const pill = (document.getElementById('cn-logs-pill')) || document.getElementById('btn-toggle-terminal');
+  const modal = (document.getElementById('cn-terminal-modal'));
   const stream = document.getElementById('terminal-log-stream');
   const countBadge = document.getElementById('terminal-log-count');
   const closeBtn = document.getElementById('btn-close-terminal');
@@ -806,8 +806,8 @@ function initTerminalDrawer() {
 
   // Expose toggle helpers for Settings and developer shortcuts
   if (typeof window !== 'undefined') {
-    window.outfoxToggleTerminal = toggleTerminal;
-    window.outfoxOpenTerminal = openTerminal;
+    window.cnToggleTerminal = toggleTerminal;
+    window.cnOpenTerminal = openTerminal;
   }
 
   // Keyboard shortcut: Ctrl+Shift+L or Alt+L toggles terminal drawer anytime
@@ -820,8 +820,8 @@ function initTerminalDrawer() {
 
   // Check if developer logs pill is explicitly enabled in storage
   if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-    chrome.storage.local.get('outfox_dev_logs_enabled', (res) => {
-      if (res?.outfox_dev_logs_enabled && pill) {
+    chrome.storage.local.get('crafture_dev_logs_enabled', (res) => {
+      if (res?.crafture_dev_logs_enabled && pill) {
         pill.classList.remove('hidden');
       }
     });

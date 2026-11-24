@@ -2,8 +2,8 @@ import { get, set, K } from '../lib/storage.js';
 import { ACTIONS, ERROR, EngineError } from '../lib/actions.js';
 import { register } from './engine.js';
 
-const CANDIDATES_KEY = 'outfox_candidates';
-const ACTIVE_CANDIDATE_KEY = 'outfox_active_candidate';
+const CANDIDATES_KEY = 'crafture_candidates';
+const ACTIVE_CANDIDATE_KEY = 'crafture_active_candidate';
 
 export const DEFAULT_CANDIDATES = [
   {
@@ -78,7 +78,7 @@ export async function getActiveCandidate() {
   if (cand && (cand.id === 'cand_default' || cand.slug === 'default' || cand.name === 'Default Persona')) {
     try {
       const storedUser = await get('user_profile', null);
-      if (storedUser?.name && storedUser.name !== 'OutFox User') {
+      if (storedUser?.name && storedUser.name !== 'Crafture User' ) {
         return { ...cand, name: storedUser.name };
       }
     } catch {}

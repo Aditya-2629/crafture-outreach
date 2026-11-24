@@ -1,5 +1,5 @@
 /**
- * OutFox — client-side CSV, used by the Extract, Lists and Research
+ * Crafture Network — client-side CSV, used by the Extract, Lists and Research
  * tabs. Files are parsed and built in the popup; nothing is uploaded anywhere.
  */
 

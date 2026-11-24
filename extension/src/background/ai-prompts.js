@@ -1,5 +1,5 @@
 /**
- * OutFox — AI prompts.
+ * Crafture Network — AI prompts.
  *
  * One prompt per contract task. Every prompt is fed *only* facts that came out
  * of LinkedIn, and every prompt forbids inventing anything: an opener that

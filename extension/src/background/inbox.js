@@ -1,5 +1,5 @@
 /**
- * OutFox — inbox.
+ * Crafture Network — inbox.
  *
  * Threads and messages are mirrored into local storage so `sync.pull`,
  * `export.csv` and campaign stop-on-reply can read them without another
@@ -48,7 +48,10 @@ async function classify(body) {
 /* ================================================================== */
 
 export async function storedThreads() {
-  return get(K.THREADS, []);
+  const list = await get(K.THREADS, []);
+  return list.sort((a, b) =>
+    Number(b.lastMessageAt || b.updatedAt || 0) - Number(a.lastMessageAt || a.updatedAt || 0)
+  );
 }
 
 async function saveThreads(incoming) {
@@ -58,7 +61,9 @@ async function saveThreads(incoming) {
     const previous = byId.get(thread.threadId) || {};
     byId.set(thread.threadId, { ...previous, ...thread, updatedAt: thread.lastMessageAt || Date.now() });
   }
-  const all = [...byId.values()];
+  const all = [...byId.values()].sort((a, b) =>
+    Number(b.lastMessageAt || b.updatedAt || 0) - Number(a.lastMessageAt || a.updatedAt || 0)
+  );
   await set(K.THREADS, all);
   return all;
 }
@@ -132,21 +137,55 @@ async function fetchThreads(count, since = 0) {
 
 /**
  * Refresh from LinkedIn, then filter.
+ * Supports { refresh: true } or { force: true } to explicitly fetch fresh
+ * conversations from LinkedIn, falling back to cached threads if offline.
  * @returns {Promise<{threads: Thread[]}>}
  */
-export async function threads({ since = 0, unreadOnly = false, count = 20 } = {}) {
-  const fetched = await fetchThreads(count, since);
-  const stored = await saveThreads(fetched);
+export async function threads({ since = 0, unreadOnly = false, count = 20, refresh = false, force = false } = {}) {
+  let stored = await storedThreads();
+
+  // If fresh sync requested or no local cache exists, fetch from LinkedIn
+  if (refresh || force || !stored.length) {
+    try {
+      const fetched = await fetchThreads(count, since);
+      stored = await saveThreads(fetched);
+    } catch (err) {
+      if ((refresh || force) && !stored.length) throw err;
+    }
+  } else {
+    try {
+      const fetched = await fetchThreads(count, since);
+      stored = await saveThreads(fetched);
+    } catch {
+      // Offline fallback: keep existing stored
+    }
+  }
 
   let out = stored;
   if (since) out = out.filter((t) => (t.lastMessageAt || 0) > since);
   if (unreadOnly) out = out.filter((t) => t.unread);
+  out.sort((a, b) =>
+    Number(b.lastMessageAt || b.updatedAt || 0) - Number(a.lastMessageAt || a.updatedAt || 0)
+  );
   return { threads: out };
 }
 
-export async function messages(threadId, { since = 0, count = 20 } = {}) {
-  const { messages: fetched } = await voyager.getConversationMessages({ threadId, count });
-  const stored = await saveMessages(threadId, fetched);
+export const getThreads = threads;
+
+/**
+ * Fetch messages for thread. Supports { refresh: true } or { force: true }
+ * to fetch fresh messages from LinkedIn voyager API.
+ */
+export async function messages(threadId, { since = 0, count = 20, refresh = false, force = false } = {}) {
+  let stored = await storedMessages(threadId);
+
+  try {
+    const { messages: fetched } = await voyager.getConversationMessages({ threadId, count });
+    stored = await saveMessages(threadId, fetched);
+  } catch (err) {
+    if ((refresh || force) && !stored.length) throw err;
+  }
+
   return { messages: since ? stored.filter((m) => m.sentAt > since) : stored };
 }
 
@@ -242,5 +281,5 @@ export async function detectReplies({ count = 20 } = {}) {
 /* ================================================================== */
 
 register(ACTIONS.INBOX_THREADS, (params) => threads(params));
-register(ACTIONS.INBOX_MESSAGES, ({ threadId, since }) => messages(threadId, { since }));
+register(ACTIONS.INBOX_MESSAGES, (params) => messages(params?.threadId, params));
 register(ACTIONS.INBOX_EXPORT, (params) => exportAll(params));

@@ -1,5 +1,5 @@
 /**
- * OutFox — Official Google Workspace & Decoupled Gmail Integration.
+ * Crafture Network — Official Google Workspace & Decoupled Gmail Integration.
  * Uses chrome.identity.launchWebAuthFlow with standard OAuth 2.0 Web Client
  * and permanent refresh_token via https://outfox-auth.crafture.workers.dev
  *
@@ -24,8 +24,8 @@ export const OUTREACH_GMAIL_SCOPES = [
 ];
 
 export const STORAGE_KEYS = {
-  WORKSPACE_TOKEN: 'outfox_google_workspace_token',
-  OUTREACH_TOKEN: 'outfox_outreach_gmail_token',
+  WORKSPACE_TOKEN: 'crafture_google_workspace_token',
+  OUTREACH_TOKEN: 'crafture_outreach_gmail_token',
 };
 
 export const DEFAULT_CLIENT_ID = '567155036878-t4bm7btrqe9joju5uqdmq9ml2funkdap.apps.googleusercontent.com';

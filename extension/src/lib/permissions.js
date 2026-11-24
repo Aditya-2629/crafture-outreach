@@ -1,5 +1,5 @@
 /**
- * OutFox — optional host permissions.
+ * Crafture Network — optional host permissions.
  *
  * An MV3 service worker may only `fetch` an origin the extension holds a host
  * permission for. LinkedIn is granted at install time; every other host — the

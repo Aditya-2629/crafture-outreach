@@ -31,7 +31,7 @@ Show HN: An open-source MCP layer that lets agents use LinkedIn from your Chrome
 > and there is no retry loop in the codebase, because retrying after a challenge is what turns a
 > warning into a restriction.
 >
-> It is also a complete OutFox/PhantomBuster replacement if you never touch an agent — extraction,
+> It is also a complete Waalaxy/PhantomBuster replacement if you never touch an agent — extraction,
 > lists, sequences with branching, inbox, 20 templates.
 >
 > On the thing that actually broke the last generation of these extensions: LinkedIn now serves

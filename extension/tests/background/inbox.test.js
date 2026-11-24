@@ -68,6 +68,30 @@ describe('inbox.threads', () => {
     expect((await handle(ACTIONS.INBOX_THREADS, {})).data.threads).toHaveLength(2);
   });
 
+  it('supports refresh: true to fetch fresh threads from LinkedIn', async () => {
+    net.push(conversations);
+    const res = await handle(ACTIONS.INBOX_THREADS, { refresh: true, count: 20 });
+    expect(res.ok).toBe(true);
+    expect(res.data.threads).toHaveLength(2);
+
+    net.push(conversations);
+    const forced = await handle(ACTIONS.INBOX_THREADS, { force: true });
+    expect(forced.ok).toBe(true);
+    expect(forced.data.threads).toHaveLength(2);
+  });
+
+  it('always sorts threads descending by lastMessageAt / updatedAt', async () => {
+    net.push(conversations);
+    const res = await handle(ACTIONS.INBOX_THREADS, {});
+    const threads = res.data.threads;
+    expect(threads).toHaveLength(2);
+    for (let i = 0; i < threads.length - 1; i++) {
+      const timeCurrent = Number(threads[i].lastMessageAt || threads[i].updatedAt || 0);
+      const timeNext = Number(threads[i + 1].lastMessageAt || threads[i + 1].updatedAt || 0);
+      expect(timeCurrent).toBeGreaterThanOrEqual(timeNext);
+    }
+  });
+
   it('filters on since and unreadOnly', async () => {
     net.push(conversations);
     expect((await handle(ACTIONS.INBOX_THREADS, { unreadOnly: true })).data.threads).toHaveLength(1);
@@ -131,6 +155,18 @@ describe('inbox.messages', () => {
     net.push(conversationEvents);
     const since = await handle(ACTIONS.INBOX_MESSAGES, { threadId: '2-abc123', since: 1757150000000 });
     expect(since.data.messages).toHaveLength(1);
+  });
+
+  it('supports refresh: true and force: true on messages', async () => {
+    net.push(conversationEvents);
+    const res = await handle(ACTIONS.INBOX_MESSAGES, { threadId: '2-abc123', refresh: true, count: 50 });
+    expect(res.ok).toBe(true);
+    expect(res.data.messages).toHaveLength(2);
+
+    net.push(conversationEvents);
+    const forced = await handle(ACTIONS.INBOX_MESSAGES, { threadId: '2-abc123', force: true });
+    expect(forced.ok).toBe(true);
+    expect(forced.data.messages).toHaveLength(2);
   });
 });
 

@@ -3,18 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OutFox — Outreach Platform</title>
+    <title>Crafture Network — Outreach Platform</title>
     <link rel="stylesheet" href="../ui/theme.css" />
     <link rel="stylesheet" href="dashboard.css" />
     <script src="../vendor/apexcharts.min.js"></script>
   </head>
-  <body class="OutFox-layout">
+  <body class="cn-layout crafture-layout">
     <!-- Left Navigation Sidebar (240px Pure White / Collapsible to 68px) -->
     <aside class="sidebar">
       <div class="sidebar-logo">
         <div class="sidebar-brand">
-          <img src="../../icons/icon48.png" width="28" height="28" alt="OutFox" style="border-radius:6px; object-fit:contain; flex-shrink:0;" />
-          <span class="logo-text" style="font-size:16px; font-weight:800; color:#0f172a; letter-spacing:-0.3px;">OutFox</span>
+          <img src="../../icons/icon48.png" width="28" height="28" alt="Crafture Network" style="border-radius:6px; object-fit:contain; flex-shrink:0;" />
+          <span class="logo-text" style="font-size:16px; font-weight:800; color:#191D1B; letter-spacing:-0.3px;">Crafture</span>
         </div>
         <button type="button" id="btn-sidebar-toggle" class="sidebar-toggle-btn" title="Toggle sidebar" aria-label="Toggle sidebar">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9-3 3 3 3"/></svg>
@@ -67,7 +67,7 @@
         <div class="profile-card">
           <div class="profile-avatar" id="sidebar-user-avatar">U</div>
           <div class="profile-meta">
-            <span class="profile-name" id="sidebar-user-fullname">OutFox User</span>
+            <span class="profile-name" id="sidebar-user-fullname">Crafture User</span>
             <span class="profile-status" id="sidebar-account-status"><span class="status-dot-circle is-active"></span> Currently Active</span>
           </div>
         </div>
@@ -87,7 +87,7 @@
           </button>
           <div class="user-pill" id="topbar-user-pill">
             <div class="user-avatar-mini" id="topbar-user-avatar">U</div>
-            <span id="topbar-user-fullname">OutFox User</span>
+            <span id="topbar-user-fullname">Crafture User</span>
             <span class="user-chevron"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
           </div>
         </div>
@@ -104,14 +104,14 @@
     <div class="toast-container" id="toast-container"></div>
 
     <!-- Floating Live Logs Pill Badge (Non-intrusive 32px pill in bottom-right; hidden by default for clean UX) -->
-    <button type="button" id="outfox-logs-pill" class="outfox-logs-pill hidden" title="Toggle Live Engine Logs (Ctrl+Shift+L / Alt+L)">
+    <button type="button" id="cn-logs-pill" class="cn-logs-pill hidden" data-alias="cn-logs-pill" title="Toggle Live Engine Logs (Ctrl+Shift+L / Alt+L)">
       <span class="pulse-dot"></span>
       <span class="logs-pill-label">Live Logs</span>
       <span class="log-count-badge" id="terminal-log-count">0</span>
     </button>
 
     <!-- Slide-up Floating Terminal Modal / Drawer -->
-    <div id="outfox-terminal-modal" class="terminal-modal hidden">
+    <div id="cn-terminal-modal" class="terminal-modal hidden">
       <div class="terminal-header">
         <div class="terminal-title">
           <span class="pulse-dot"></span>

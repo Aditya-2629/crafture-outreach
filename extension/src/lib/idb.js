@@ -1,9 +1,10 @@
 /**
- * OutFox — IndexedDB High-Scale Fast Store
- * Manages 'outfox_db_v1' with 'profiles' and 'actions' object stores.
+ * Crafture Network — IndexedDB High-Scale Fast Store
+ * Manages 'crafture_db_v1' with 'profiles' and 'actions' object stores.
  */
 
-const DB_NAME = 'outfox_db_v1';
+const DB_NAME = 'crafture_db_v1';
+const LEGACY_DB_NAME = 'outfox_db_v1';
 const DB_VERSION = 1;
 
 let dbPromise = null;

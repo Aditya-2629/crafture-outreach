@@ -1,5 +1,5 @@
 /**
- * OutFox — the localhost bridge.
+ * Crafture Network — the localhost bridge.
  *
  * A WebSocket client to the MCP server on 127.0.0.1. The extension always
  * dials out; nothing listens inside Chrome. The server sends requests, the

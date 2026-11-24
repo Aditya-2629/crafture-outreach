@@ -1,5 +1,5 @@
 /**
- * OutFox — Authentic OutFox Settings View
+ * Crafture Network — Authentic Crafture Network Settings View
  * Production Settings UI: 4 Core Tabs, Dynamic Timezone Engine & Real Integrations Hub
  * 100% Manifest V3 CSP Compliant · Zero Core Emojis · Vector SVGs · Native in-UI Modals
  */
@@ -29,7 +29,7 @@ const SETTINGS_RELEVANT_KEYS = new Set([
   'webhookUrl',
   'apolloApiKey',
   'hunterApiKey',
-  'outfox_withdraw_cleanup_state',
+  'crafture_withdraw_cleanup_state',
 ]);
 
 let activeSettingsTab = 'activity';
@@ -217,7 +217,7 @@ export async function testAiConnection(provider, modelId, apiKey) {
 }
 
 function ensureSettingsStyles() {
-  const STYLE_ID = 'OutFox-settings-injected-styles';
+  const STYLE_ID = 'cn-settings-injected-styles';
   let style = document.getElementById(STYLE_ID);
   if (!style) {
     style = document.createElement('style');
@@ -225,27 +225,27 @@ function ensureSettingsStyles() {
     document.head.appendChild(style);
   }
   style.textContent = `
-    .OutFox-settings-layout { display: flex; min-height: 100%; background: #f8fafc; font-family: inherit; }
+    .cn-settings-layout { display: flex; min-height: 100%; background: #f8fafc; font-family: inherit; }
     .settings-subsidebar { width: 240px; min-width: 240px; background: #ffffff; border-right: 1px solid #e2e8f0; padding: 24px 16px; box-sizing: border-box; }
     .subsidebar-header { margin-bottom: 20px; padding: 0 8px; }
     .subsidebar-title { font-size: 18px; font-weight: 800; color: #14142b; margin: 0; }
     .subsidebar-menu { display: flex; flex-direction: column; gap: 6px; }
     .settings-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid transparent; background: transparent; font-size: 13px; font-weight: 600; color: #475569; cursor: pointer; transition: all 0.15s ease; text-align: left; box-sizing: border-box; }
     .settings-menu-item:hover { background: #f1f5f9; color: #14142b; }
-    .settings-menu-item.is-active { background: #ffffff; border-color: #e2e8f0; color: #ff6b00; font-weight: 700; box-shadow: 0 2px 8px rgba(255, 107, 0, 0.08); }
+    .settings-menu-item.is-active { background: #ffffff; border-color: #e2e8f0; color: #104B35; font-weight: 700; box-shadow: 0 2px 8px rgba(16, 75, 53, 0.08); }
     .menu-icon-circle { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .icon-bg-blue { background: #ff6b00; color: #ffffff; }
+    .icon-bg-blue { background: #104B35; color: #ffffff; }
     .icon-bg-teal { background: #00bfa5; color: #ffffff; }
     .icon-bg-purple { background: #8b5cf6; color: #ffffff; }
     .icon-bg-pink { background: #ec4899; color: #ffffff; }
-    .badge-tab-new { font-size: 10px; font-weight: 700; background: #fff7ed; color: #ff6b00; padding: 2px 8px; border-radius: 9999px; margin-left: auto; }
+    .badge-tab-new { font-size: 10px; font-weight: 700; background: #E6EFE9; color: #104B35; padding: 2px 8px; border-radius: 9999px; margin-left: auto; }
     .settings-main-canvas { flex: 1; padding: 32px 40px; overflow-y: auto; box-sizing: border-box; }
     
     .activity-head-row { margin-bottom: 28px; }
     .activity-title-group { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
     .activity-main-title { font-size: 22px; font-weight: 800; color: #14142b; margin: 0; }
     .activity-sub-text { font-size: 13px; color: #64748b; margin: 6px 0 0 0; }
-    .tz-live-clock-badge { display: inline-flex; align-items: center; gap: 6px; background: #fff7ed; color: #ff6b00; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; border: 1px solid rgba(49,90,231,0.15); }
+    .tz-live-clock-badge { display: inline-flex; align-items: center; gap: 6px; background: #E6EFE9; color: #104B35; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; border: 1px solid rgba(49,90,231,0.15); }
     .live-activity-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 9999px; font-size: 11.5px; font-weight: 700; }
     .live-activity-pill.is-running { background: #ecfdf5; color: #059669; }
     .live-activity-pill.is-paused { background: #fef2f2; color: #dc2626; }
@@ -254,7 +254,7 @@ function ensureSettingsStyles() {
     .settings-block-section { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
     .settings-section-heading { font-size: 14px; font-weight: 700; color: #14142b; margin: 0 0 14px 0; display: block; }
     .timezone-picker-wrap { max-width: 440px; }
-    .OutFox-select-large { width: 100%; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; font-size: 13.5px; font-weight: 500; color: #14142b; outline: none; cursor: pointer; }
+    .cn-select-large { width: 100%; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; font-size: 13.5px; font-weight: 500; color: #14142b; outline: none; cursor: pointer; }
     
     .working-days-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
     .custom-mode-toggle { display: flex; align-items: center; gap: 10px; }
@@ -263,7 +263,7 @@ function ensureSettingsStyles() {
     .ios-switch input { opacity: 0; width: 0; height: 0; }
     .ios-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: 0.2s; border-radius: 24px; }
     .ios-slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: 0.2s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-    .ios-switch input:checked + .ios-slider { background-color: #ff6b00; }
+    .ios-switch input:checked + .ios-slider { background-color: #104B35; }
     .ios-switch input:checked + .ios-slider:before { transform: translateX(20px); }
     
     .days-toggle-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
@@ -272,12 +272,12 @@ function ensureSettingsStyles() {
     .day-toggle-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
     .day-card-name { font-size: 11px; font-weight: 700; color: #475569; letter-spacing: 0.5px; }
     
-    .slider-labels-top { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; color: #ff6b00; margin-bottom: 12px; }
+    .slider-labels-top { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; color: #104B35; margin-bottom: 12px; }
     .dual-range-track-wrap { position: relative; height: 24px; margin: 12px 0; }
     .dual-range-track { position: absolute; top: 8px; left: 0; right: 0; height: 8px; background: #e2e8f0; border-radius: 4px; }
-    .dual-range-fill { position: absolute; height: 100%; background: #ff6b00; border-radius: 4px; }
+    .dual-range-fill { position: absolute; height: 100%; background: #104B35; border-radius: 4px; }
     .range-slider-input { position: absolute; top: 0; left: 0; width: 100%; height: 24px; pointer-events: none; -webkit-appearance: none; background: transparent; margin: 0; }
-    .range-slider-input::-webkit-slider-thumb { pointer-events: all; width: 22px; height: 22px; border-radius: 50%; background: #ffffff; border: 2.5px solid #ff6b00; box-shadow: 0 2px 6px rgba(0,0,0,0.2); cursor: pointer; -webkit-appearance: none; }
+    .range-slider-input::-webkit-slider-thumb { pointer-events: all; width: 22px; height: 22px; border-radius: 50%; background: #ffffff; border: 2.5px solid #104B35; box-shadow: 0 2px 6px rgba(0,0,0,0.2); cursor: pointer; -webkit-appearance: none; }
     .slider-labels-bottom { display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; font-weight: 600; margin-top: 6px; }
     
     .quotas-section-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
@@ -292,7 +292,7 @@ function ensureSettingsStyles() {
     @media (max-width: 550px) { .quota-cards-row { grid-template-columns: 1fr; } }
     .quota-input-card, .quota-edit-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 14px; min-width: 0; display: flex; align-items: center; gap: 12px; }
     .q-card-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .icon-circle-blue { background: #fff7ed; color: #ff6b00; }
+    .icon-circle-blue { background: #E6EFE9; color: #104B35; }
     .icon-circle-coral { background: #fff1ee; color: #ff7a59; }
     .icon-circle-purple { background: #f5f3ff; color: #8b5cf6; }
     .q-card-content { flex: 1; min-width: 0; }
@@ -302,10 +302,10 @@ function ensureSettingsStyles() {
     .quota-max-label, .q-input-total { font-size: 13px; font-weight: 700; color: #94a3b8; white-space: nowrap; }
     
     .settings-save-bar { margin-top: 24px; display: flex; justify-content: flex-end; }
-    .btn-primary-settings { background: #ff6b00; color: #ffffff; border: none; border-radius: 10px; padding: 10px 24px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25); transition: background 0.15s; }
+    .btn-primary-settings { background: #104B35; color: #ffffff; border: none; border-radius: 10px; padding: 10px 24px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 75, 53, 0.25); transition: background 0.15s; }
     .btn-primary-settings:hover { background: #e05a00; }
 
-    .OutFox-white-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
+    .cn-white-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
     .card-header-with-icon { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
     .card-black-icon-box { width: 40px; height: 40px; border-radius: 10px; background: #14142b; color: #ffffff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .card-title-bold { font-size: 16px; font-weight: 800; color: #14142b; margin: 0; }
@@ -320,18 +320,18 @@ function ensureSettingsStyles() {
     .badge-status-running { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; background: #ecfdf5; color: #059669; }
     .btn-disconnect-acc { background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
     .btn-disconnect-acc:hover { color: #ef4444; background: #fee2e2; }
-    .btn-link-add-email { background: transparent; border: none; color: #ff6b00; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 0; }
+    .btn-link-add-email { background: transparent; border: none; color: #104B35; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 0; }
     .btn-link-add-email:hover { text-decoration: underline; }
 
     .signatures-split-view { display: grid; grid-template-columns: 260px 1fr; gap: 24px; margin-top: 10px; }
     .sig-left-pane { display: flex; flex-direction: column; gap: 12px; border-right: 1px solid #f1f5f9; padding-right: 20px; }
     .sig-pane-label { font-size: 12px; font-weight: 600; color: #64748b; }
-    .OutFox-select-small { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #14142b; outline: none; cursor: pointer; }
+    .cn-select-small { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #14142b; outline: none; cursor: pointer; }
     .sig-list-header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: #14142b; margin-top: 8px; }
-    .btn-sig-link { background: transparent; border: none; color: #ff6b00; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .btn-sig-link { background: transparent; border: none; color: #104B35; font-size: 12px; font-weight: 700; cursor: pointer; }
     .sig-nav-list { display: flex; flex-direction: column; gap: 6px; }
     .sig-nav-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; cursor: pointer; transition: all 0.12s; }
-    .sig-nav-item:hover, .sig-nav-item.is-active { background: #fff7ed; border-color: #ff6b00; color: #ff6b00; font-weight: 600; }
+    .sig-nav-item:hover, .sig-nav-item.is-active { background: #E6EFE9; border-color: #104B35; color: #104B35; font-weight: 600; }
     .btn-del-sig { background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 12px; }
     .btn-del-sig:hover { color: #ef4444; }
     .empty-sig-txt { font-size: 12px; color: #94a3b8; font-style: italic; }
@@ -340,7 +340,7 @@ function ensureSettingsStyles() {
     .sig-empty-canvas { display: flex; flex-direction: column; align-items: center; text-align: center; }
     .sig-empty-title { font-size: 16px; font-weight: 800; color: #14142b; margin: 0 0 6px 0; }
     .sig-empty-sub { font-size: 13px; color: #64748b; max-width: 320px; line-height: 1.5; margin: 0 0 18px 0; }
-    .btn-create-sig-blue { background: #ff6b00; color: #ffffff; border: none; padding: 10px 24px; border-radius: 20px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(255, 107, 0, 0.25); transition: background 0.15s; }
+    .btn-create-sig-blue { background: #104B35; color: #ffffff; border: none; padding: 10px 24px; border-radius: 20px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(16, 75, 53, 0.25); transition: background 0.15s; }
     .btn-create-sig-blue:hover { background: #e05a00; }
     .sig-editor-box { width: 100%; display: flex; flex-direction: column; gap: 8px; }
     .input-text-sig { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: #ffffff; }
@@ -351,15 +351,15 @@ function ensureSettingsStyles() {
     .integrations-cards-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
     @media (max-width: 800px) { .integrations-cards-grid { grid-template-columns: 1fr; } }
     .integration-item-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 2px 6px rgba(0,0,0,0.02); transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); position: relative; }
-    .integration-item-card:hover { border-color: #c7d2fe; box-shadow: 0 8px 24px rgba(255, 107, 0, 0.08); transform: translateY(-1px); }
+    .integration-item-card:hover { border-color: #c7d2fe; box-shadow: 0 8px 24px rgba(16, 75, 53, 0.08); transform: translateY(-1px); }
     .int-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .int-card-head-left { display: flex; align-items: center; gap: 12px; }
     .int-logo-ico { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; flex-shrink: 0; }
     .int-card-title { font-size: 15px; font-weight: 700; color: #14142b; margin: 0; }
     .int-card-desc { font-size: 12.5px; color: #64748b; line-height: 1.5; margin: 12px 0 20px 0; min-height: 48px; }
-    .btn-int-action { background: #ffffff; border: 1.5px solid #ff6b00; color: #ff6b00; border-radius: 20px; padding: 8px 18px; font-size: 12.5px; font-weight: 600; cursor: pointer; align-self: flex-start; transition: all 0.15s ease; }
-    .btn-int-action:hover { background: #fff7ed; }
-    .btn-int-active { background: #ff6b00; color: #ffffff; border: none; box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25); }
+    .btn-int-action { background: #ffffff; border: 1.5px solid #104B35; color: #104B35; border-radius: 20px; padding: 8px 18px; font-size: 12.5px; font-weight: 600; cursor: pointer; align-self: flex-start; transition: all 0.15s ease; }
+    .btn-int-action:hover { background: #E6EFE9; }
+    .btn-int-active { background: #104B35; color: #ffffff; border: none; box-shadow: 0 4px 12px rgba(16, 75, 53, 0.25); }
     .btn-int-active:hover { background: #e05a00; }
 
     .history-table-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
@@ -372,7 +372,7 @@ function ensureSettingsStyles() {
     .empty-history-cell { text-align: center; padding: 36px; color: #94a3b8; font-size: 13px; }
 
     .btn-connect-provider { width: 100%; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 14px 20px; display: flex; align-items: center; justify-content: center; gap: 12px; cursor: pointer; transition: all 0.15s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
-    .btn-connect-provider:hover { border-color: #ff6b00; background: #f8fafc; box-shadow: 0 4px 12px rgba(255, 107, 0, 0.1); transform: translateY(-1px); }
+    .btn-connect-provider:hover { border-color: #104B35; background: #f8fafc; box-shadow: 0 4px 12px rgba(16, 75, 53, 0.1); transform: translateY(-1px); }
   `;
 }
 
@@ -391,13 +391,13 @@ export async function renderSettingsView(container, ctx = {}) {
     liveClockInterval = null;
   }
 
-  const hasExistingSettings = Boolean(container.querySelector('.OutFox-settings-layout'));
+  const hasExistingSettings = Boolean(container.querySelector('.cn-settings-layout'));
   const isInitial = !hasExistingSettings && !ctx.silent && ctx.isInitialRender !== false;
 
   if (isInitial) {
     container.innerHTML = `
       <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
-        <div style="width:34px; height:34px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+        <div style="width:34px; height:34px; border:3px solid #E6EFE9; border-top-color:#104B35; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
       </div>
       <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
     `;
@@ -458,7 +458,7 @@ export async function renderSettingsView(container, ctx = {}) {
       storage = sRes || {};
       storageHealth = sHealth || { isIdbActive: false, profileCount: 0 };
       statusData = statRes || {};
-      autoCleanState = autoCleanRes || storage.outfox_withdraw_cleanup_state || { active: false, totalWithdrawnToday: 0 };
+      autoCleanState = autoCleanRes || (storage.crafture_withdraw_cleanup_state || storage.outfox_withdraw_cleanup_state) || { active: false, totalWithdrawnToday: 0 };
 
       activeProfileName = storage.user_profile?.name || storage.user_profile?.fullName || '';
 
@@ -558,7 +558,7 @@ export async function renderSettingsView(container, ctx = {}) {
     const bridgePort = statusData.bridge?.port || config.bridge?.port || 47829;
     const bridgeConnected = Boolean(statusData.bridge?.connected);
 
-    const wsTokenRecord = storage.outfox_google_workspace_token || storage.outfox_outreach_gmail_token || null;
+    const wsTokenRecord = storage.crafture_google_workspace_token || storage.outfox_google_workspace_token || storage.crafture_outreach_gmail_token || storage.outfox_outreach_gmail_token || null;
     const hasStoredWsToken = Boolean(
       wsTokenRecord?.accessToken ||
       wsTokenRecord?.token ||
@@ -566,10 +566,10 @@ export async function renderSettingsView(container, ctx = {}) {
     );
     const isWsConnected = Boolean(googleWorkspace.connected || hasStoredWsToken);
     const wsEmail = googleWorkspace.email || wsTokenRecord?.email || mailbox.email || 'Connected Google Account';
-    const wsSheetUrl = googleWorkspace.spreadsheetUrl || storage.outfox_sheets_crm_meta?.spreadsheetUrl || storage.outfox_sheets_crm?.spreadsheetUrl || '';
+    const wsSheetUrl = googleWorkspace.spreadsheetUrl || storage.crafture_sheets_crm_meta?.spreadsheetUrl || storage.crafture_sheets_crm?.spreadsheetUrl || storage.outfox_sheets_crm_meta?.spreadsheetUrl || storage.outfox_sheets_crm?.spreadsheetUrl || '';
 
     container.innerHTML = `
-      <div class="OutFox-settings-layout">
+      <div class="cn-settings-layout">
         <!-- SUB-SIDEBAR (4 Working Tabs Only) -->
         <aside class="settings-subsidebar">
           <div class="subsidebar-header">
@@ -616,14 +616,14 @@ export async function renderSettingsView(container, ctx = {}) {
                     <span id="status-activity-text">${isCurrentlyActive ? 'Currently active' : 'Outside schedule'}</span>
                   </span>
                 </div>
-                <p class="activity-sub-text">Choose when you want your OutFox actions to be sent</p>
+                <p class="activity-sub-text">Choose when you want your Crafture Network actions to be sent</p>
               </div>
 
               <!-- Timezone Selector -->
               <div class="settings-block-section">
                 <label class="settings-section-heading">Select time zone</label>
                 <div class="timezone-picker-wrap">
-                  <select id="select-timezone" class="OutFox-select-large">
+                  <select id="select-timezone" class="cn-select-large">
                     <option value="Asia/Kolkata" ${selectedTz === 'Asia/Kolkata' ? 'selected' : ''}>(GMT+05:30) Asia/Kolkata (IST)</option>
                     <option value="UTC" ${selectedTz === 'UTC' ? 'selected' : ''}>(GMT+00:00) UTC Universal Time</option>
                     <option value="America/New_York" ${selectedTz === 'America/New_York' ? 'selected' : ''}>(GMT-05:00) America/New_York (EST)</option>
@@ -698,7 +698,7 @@ export async function renderSettingsView(container, ctx = {}) {
                   </div>
 
                   <div style="display: flex; gap: 8px;">
-                    <button type="button" class="btn-restore-defaults" id="btn-reset-daily-quota" style="color: #ea580c; border-color: #ffedd5; background: #fff7ed;">
+                    <button type="button" class="btn-restore-defaults" id="btn-reset-daily-quota" style="color: #167448; border-color: #DCE5DE; background: #E6EFE9;">
                       ↻ Reset Today's Quota
                     </button>
                     <button type="button" class="btn-restore-defaults" id="btn-restore-quotas">
@@ -725,7 +725,7 @@ export async function renderSettingsView(container, ctx = {}) {
                     </label>
                     <label class="switch-toggle" style="position: relative; display: inline-block; width: 40px; height: 22px; margin: 0;">
                       <input type="checkbox" id="toggle-warmup-enabled" ${warmupEnabled ? 'checked' : ''} style="opacity: 0; width: 0; height: 0;" />
-                      <span class="slider-round" style="position: absolute; cursor: pointer; inset: 0; background-color: ${warmupEnabled ? '#ff6b00' : '#cbd5e1'}; transition: .3s; border-radius: 22px;"></span>
+                      <span class="slider-round" style="position: absolute; cursor: pointer; inset: 0; background-color: ${warmupEnabled ? '#104B35' : '#cbd5e1'}; transition: .3s; border-radius: 22px;"></span>
                     </label>
                   </div>
                 </div>
@@ -789,7 +789,7 @@ export async function renderSettingsView(container, ctx = {}) {
                   </div>
 
                   <div class="quota-input-card">
-                    <div class="q-card-icon" style="color: #ff6b00; background: #fff7ed; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">${ICONS.email}</div>
+                    <div class="q-card-icon" style="color: #104B35; background: #E6EFE9; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">${ICONS.email}</div>
                     <div class="q-card-content">
                       <span class="q-card-label">COLD EMAILS</span>
                       <div class="quota-input-group">
@@ -826,7 +826,7 @@ export async function renderSettingsView(container, ctx = {}) {
                     <div class="quotas-title-with-info">
                       <h3 class="settings-section-heading" style="margin:0;">Cross-Campaign Deduplication</h3>
                     </div>
-                    <p class="quotas-caption">Prevent enrolling a prospect who is already active, completed, or replied in another OutFox campaign.</p>
+                    <p class="quotas-caption">Prevent enrolling a prospect who is already active, completed, or replied in another Crafture campaign.</p>
                   </div>
                   <div style="display: flex; align-items: center; gap: 10px;">
                     <label class="ios-switch">
@@ -864,7 +864,7 @@ export async function renderSettingsView(container, ctx = {}) {
                   </div>
 
                   <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                    <button type="button" class="btn-primary-settings" id="btn-run-withdraw-now" style="padding: 7px 16px; font-size: 12.5px; background: #fff7ed; color: #ff6b00; border: 1px solid #ffedd5; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+                    <button type="button" class="btn-primary-settings" id="btn-run-withdraw-now" style="padding: 7px 16px; font-size: 12.5px; background: #E6EFE9; color: #104B35; border: 1px solid #DCE5DE; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
                       ${ICONS.trash} Withdraw Stale Now
                     </button>
                     <button type="button" class="btn-primary-settings" id="btn-toggle-auto-clean" style="padding: 7px 16px; font-size: 12.5px; background: ${autoCleanState.active ? '#fef2f2' : '#f0fdf4'}; color: ${autoCleanState.active ? '#dc2626' : '#16a34a'}; border: 1px solid ${autoCleanState.active ? '#fecaca' : '#bbf7d0'}; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
@@ -900,10 +900,10 @@ export async function renderSettingsView(container, ctx = {}) {
               </div>
 
               <!-- Active Cold Outreach Sender Card -->
-              <div class="OutFox-white-card" style="margin-bottom: 24px; border: 1.5px solid #ffedd5; background: linear-gradient(180deg, #ffffff 0%, #fffbf7 100%);">
+              <div class="cn-white-card" style="margin-bottom: 24px; border: 1.5px solid #DCE5DE; background: linear-gradient(180deg, #ffffff 0%, #fffbf7 100%);">
                 <div class="card-header-with-icon" style="justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
                   <div style="display: flex; align-items: flex-start; gap: 12px;">
-                    <div class="card-black-icon-box" style="background: #fff7ed; color: #ff6b00; border: 1px solid #ffedd5;">${ICONS.email}</div>
+                    <div class="card-black-icon-box" style="background: #E6EFE9; color: #104B35; border: 1px solid #DCE5DE;">${ICONS.email}</div>
                     <div>
                       <div style="display: flex; align-items: center; gap: 8px;">
                         <h3 class="card-title-bold" style="margin: 0;">Active Cold Outreach Sender</h3>
@@ -918,14 +918,14 @@ export async function renderSettingsView(container, ctx = {}) {
                   </div>
                   <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 11.5px; font-weight: 700; color: #64748b; background: #f1f5f9; padding: 4px 10px; border-radius: 8px;">
-                      Mode: <strong style="color: #ff6b00;">${mailbox.mode === 'custom_gmail' ? 'Custom Outreach Gmail' : mailbox.mode === 'disabled' ? 'Disabled' : 'Default Google Account'}</strong>
+                      Mode: <strong style="color: #104B35;">${mailbox.mode === 'custom_gmail' ? 'Custom Outreach Gmail' : mailbox.mode === 'disabled' ? 'Disabled' : 'Default Google Account'}</strong>
                     </span>
                   </div>
                 </div>
 
                 <div style="margin-top: 16px; padding: 14px 18px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">
                   <div style="display: flex; align-items: center; gap: 12px;">
-                    <span style="width: 36px; height: 36px; border-radius: 50%; background: #fff7ed; color: #ff6b00; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800;">
+                    <span style="width: 36px; height: 36px; border-radius: 50%; background: #E6EFE9; color: #104B35; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800;">
                       ${ICONS.email}
                     </span>
                     <div>
@@ -957,7 +957,7 @@ export async function renderSettingsView(container, ctx = {}) {
               </div>
 
               <!-- Card 1: Accounts Table -->
-              <div class="OutFox-white-card">
+              <div class="cn-white-card">
                 <div class="card-header-with-icon">
                   <div class="card-black-icon-box">${ICONS.email}</div>
                   <div>
@@ -1008,7 +1008,7 @@ export async function renderSettingsView(container, ctx = {}) {
               </div>
 
               <!-- Card 2: Signatures -->
-              <div class="OutFox-white-card">
+              <div class="cn-white-card">
                 <div class="card-header-with-icon">
                   <div class="card-black-icon-box">${ICONS.edit}</div>
                   <div>
@@ -1020,7 +1020,7 @@ export async function renderSettingsView(container, ctx = {}) {
                 <div class="signatures-split-view">
                   <div class="sig-left-pane">
                     <label class="sig-pane-label">Default signature</label>
-                    <select id="select-default-signature" class="OutFox-select-small">
+                    <select id="select-default-signature" class="cn-select-small">
                       <option value="none">No signature</option>
                       ${signatures.map((s) => `<option value="${s.id}" ${s.id === defaultSigId ? 'selected' : ''}>${s.name}</option>`).join('')}
                     </select>
@@ -1087,12 +1087,12 @@ export async function renderSettingsView(container, ctx = {}) {
                       : `<span class="live-activity-pill is-paused" style="font-size:11px;">○ Not Connected</span>`}
                   </div>
                   <p class="int-card-desc" style="margin-bottom: 12px; min-height: 40px;">
-                    Auto-creates "OutFox Live CRM" Sheet with frozen headers and syncs campaign steps, invites, and replies in real-time.
+                    Auto-creates "Crafture Live CRM" Sheet with frozen headers and syncs campaign steps, invites, and replies in real-time.
                   </p>
                   ${isWsConnected ? `
                     <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:12px; color:#475569;">
                       <div><strong>Account:</strong> ${wsEmail}</div>
-                      ${wsSheetUrl ? `<div style="margin-top:4px;"><strong>Sheet:</strong> <a href="${wsSheetUrl}" target="_blank" style="color:#ff6b00; text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:3px;">OutFox Live CRM ${ICONS.arrowUpRight}</a></div>` : ''}
+                      ${wsSheetUrl ? `<div style="margin-top:4px;"><strong>Sheet:</strong> <a href="${wsSheetUrl}" target="_blank" style="color:#104B35; text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:3px;">Crafture Live CRM ${ICONS.arrowUpRight}</a></div>` : ''}
                       <div style="margin-top:4px; font-size:11px; color:#94a3b8;">Last synced: ${googleWorkspace.lastSyncAt ? new Date(googleWorkspace.lastSyncAt).toLocaleString() : 'Never'}</div>
                     </div>
                   ` : ''}
@@ -1129,7 +1129,7 @@ export async function renderSettingsView(container, ctx = {}) {
                       : `<span class="live-activity-pill is-paused" style="font-size:11px;">○ Local Only</span>`}
                   </div>
                   <p class="int-card-desc" style="margin-bottom: 12px; min-height: 40px;">
-                    Safeguards campaigns, prospects, lists and templates. Daily 24h automated backup to "OutFox Backups" in Google Drive + instant local JSON snapshots.
+                    Safeguards campaigns, prospects, lists and templates. Daily 24h automated backup to "Crafture Backups" in Google Drive + instant local JSON snapshots.
                   </p>
                   <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:12px; color:#475569;">
                     <div><strong>Cloud Storage:</strong> ${isWsConnected ? `Google Drive (${wsEmail})` : 'Connect Google Workspace for cloud backups'}</div>
@@ -1175,16 +1175,16 @@ export async function renderSettingsView(container, ctx = {}) {
                 <div class="integration-item-card">
                   <div class="int-card-head">
                     <div class="int-card-head-left">
-                      <span class="int-logo-ico" style="background:#ff6b00; color:#fff;">${ICONS.terminal || ICONS.sparkles}</span>
+                      <span class="int-logo-ico" style="background:#104B35; color:#fff;">${ICONS.terminal || ICONS.sparkles}</span>
                       <h3 class="int-card-title">AI Desktop Bridge (Optional MCP)</h3>
                     </div>
                     ${bridgeConnected
                       ? `<span class="badge-status-running"><span class="live-dot-circle"></span> Connected (Port ${bridgePort})</span>`
                       : `<span class="live-activity-pill is-paused" style="font-size:11px;">○ Standby (Port ${bridgePort})</span>`}
                   </div>
-                  <p class="int-card-desc">Connect Cursor, Claude Desktop, or Antigravity IDE directly to OutFox to control outreach, search leads, and inspect quotas in real time.</p>
+                  <p class="int-card-desc">Connect Cursor, Claude Desktop, or Antigravity IDE directly to Crafture Network to control outreach, search leads, and inspect quotas in real time.</p>
                   <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin:10px 0; font-size:11.5px; color:#64748b; line-height:1.4;">
-                    <span style="display:inline-flex; vertical-align:middle; margin-right:4px; color:#ff6b00;">${ICONS.sparkles}</span> <em>All OutFox features (Telegram, Campaigns, Gmail, Sheets) work automatically without MCP. Enable this only to control OutFox from Cursor or Claude Desktop.</em>
+                    <span style="display:inline-flex; vertical-align:middle; margin-right:4px; color:#104B35;">${ICONS.sparkles}</span> <em>All Crafture features (Telegram, Campaigns, Gmail, Sheets) work automatically without MCP. Enable this only to control Crafture from Cursor or Claude Desktop.</em>
                   </div>
                   <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:4px;">
                     <button type="button" class="btn-int-action btn-int-active" id="btn-copy-mcp-config" style="flex:1; min-width:140px; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
@@ -1207,7 +1207,7 @@ export async function renderSettingsView(container, ctx = {}) {
                       ? `<span class="badge-status-running"><span class="live-dot-circle"></span> Connected</span>`
                       : `<span class="live-activity-pill is-paused" style="font-size:11px;">○ Not Configured</span>`}
                   </div>
-                  <p class="int-card-desc">Connect OutFox MCP with Telegram. Control campaigns, search prospects, and trigger messages directly from your phone.</p>
+                  <p class="int-card-desc">Connect Crafture MCP with Telegram. Control campaigns, search prospects, and trigger messages directly from your phone.</p>
                   <button type="button" class="btn-int-action ${hasTelegram ? 'btn-int-active' : ''}" id="btn-setup-telegram" style="display:inline-flex; align-items:center; gap:5px;">
                     ${hasTelegram ? `Manage Telegram Assistant ${ICONS.settings}` : `Setup Telegram Assistant ${ICONS.arrowUpRight}`}
                   </button>
@@ -1422,9 +1422,9 @@ export async function renderSettingsView(container, ctx = {}) {
     liveClockInterval = setInterval(() => {
       updateLiveStatus();
       if (autoCleanState.active) {
-        chrome.storage?.local?.get?.(['outfox_withdraw_cleanup_state'], (data) => {
-          if (data?.outfox_withdraw_cleanup_state) {
-            autoCleanState = data.outfox_withdraw_cleanup_state;
+        chrome.storage?.local?.get?.(['crafture_withdraw_cleanup_state'], (data) => {
+          if ((data?.crafture_withdraw_cleanup_state || data?.outfox_withdraw_cleanup_state)) {
+            autoCleanState = data.crafture_withdraw_cleanup_state || data.outfox_withdraw_cleanup_state;
             const prog = container.querySelector('#auto-clean-progress-container');
             if (prog) prog.innerHTML = renderAutoCleanProgress(autoCleanState);
             const toggleBtn = container.querySelector('#btn-toggle-auto-clean');
@@ -1461,7 +1461,7 @@ export async function renderSettingsView(container, ctx = {}) {
     container.querySelector('#toggle-warmup-enabled')?.addEventListener('change', async (e) => {
       const isChecked = e.target.checked;
       const slider = e.target.nextElementSibling;
-      if (slider) slider.style.backgroundColor = isChecked ? '#ff6b00' : '#cbd5e1';
+      if (slider) slider.style.backgroundColor = isChecked ? '#104B35' : '#cbd5e1';
       try {
         await call(ACTIONS.CONFIG_SET, {
           config: {
@@ -1625,11 +1625,11 @@ export async function renderSettingsView(container, ctx = {}) {
     });
 
     container.querySelector('#btn-open-dev-logs')?.addEventListener('click', () => {
-      if (typeof window !== 'undefined' && typeof window.outfoxToggleTerminal === 'function') {
-        window.outfoxToggleTerminal();
+      if (typeof window !== 'undefined' && (typeof window.cnToggleTerminal === 'function')) {
+        (window.cnToggleTerminal)();
       } else {
-        const pill = document.getElementById('outfox-logs-pill') || document.getElementById('btn-toggle-terminal');
-        const modal = document.getElementById('outfox-terminal-modal');
+        const pill = (document.getElementById('cn-logs-pill')) || document.getElementById('btn-toggle-terminal');
+        const modal = (document.getElementById('cn-terminal-modal'));
         pill?.classList.remove('hidden');
         modal?.classList.remove('hidden');
       }
@@ -1888,7 +1888,7 @@ export async function renderSettingsView(container, ctx = {}) {
       }
       try {
         await call(ACTIONS.BACKUP_DRIVE_SAVE, {}, { timeoutMs: 90000 });
-        ctx.showToast?.('Saved snapshot to Google Drive (OutFox Backups/outfox-backup.json)!', 'success');
+        ctx.showToast?.('Saved snapshot to Google Drive (Crafture Network Backups/crafture-backup.json)!', 'success');
         await refreshSettingsData();
         paint();
       } catch (err) {
@@ -1906,7 +1906,7 @@ export async function renderSettingsView(container, ctx = {}) {
     const handleDriveRestore = async () => {
       const ok = await openUiConfirm({
         title: 'Restore from Google Drive',
-        message: 'Restore your OutFox data from the latest Google Drive backup? This will update local collections.',
+        message: 'Restore your Crafture Network data from the latest Google Drive backup? This will update local collections.',
         confirmText: 'Restore from Drive',
         confirmDanger: false,
       });
@@ -1932,7 +1932,7 @@ export async function renderSettingsView(container, ctx = {}) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `outfox-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        a.download = `crafture-backup-${new Date().toISOString().slice(0, 10)}.json`;
         a.click();
         URL.revokeObjectURL(url);
         ctx.showToast?.('Local JSON backup downloaded!', 'success');
@@ -2009,9 +2009,9 @@ export async function renderSettingsView(container, ctx = {}) {
     container.querySelector('#btn-copy-mcp-config')?.addEventListener('click', async () => {
       const snippet = JSON.stringify({
         mcpServers: {
-          outfox: {
+          'crafture-network': {
             command: 'npx',
-            args: ['-y', 'outfox-mcp'],
+            args: ['-y', 'crafture-network-mcp'],
           },
         },
       }, null, 2);
@@ -2100,15 +2100,15 @@ export function openAiEngineRouterModal({ aiModels = [], onSave }) {
 
   function renderModal() {
     backdrop.innerHTML = `
-      <div class="OutFox-modal-card" style="width: 620px; max-width: 90vw; max-height: 85vh; overflow-y: auto; padding: 28px 32px; background:#fff; border-radius:16px; box-shadow: 0 10px 40px rgba(0,0,0,0.18);">
-        <div class="OutFox-modal-head" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 20px;">
+      <div class="cn-modal-card" style="width: 620px; max-width: 90vw; max-height: 85vh; overflow-y: auto; padding: 28px 32px; background:#fff; border-radius:16px; box-shadow: 0 10px 40px rgba(0,0,0,0.18);">
+        <div class="cn-modal-head" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 20px;">
           <div>
-            <h2 class="OutFox-modal-title" style="font-size:18px; margin:0; font-weight:800; color:#14142b;">AI Engine & Fallback Chain Router</h2>
-            <p class="OutFox-modal-subtitle" style="margin:4px 0 0; font-size:12.5px; color:#64748b; line-height: 1.4;">
-              Configure multiple AI models ordered by priority. If your primary model hits a rate limit or runs out of credits, OutFox automatically falls back to the next model in the chain.
+            <h2 class="cn-modal-title" style="font-size:18px; margin:0; font-weight:800; color:#14142b;">AI Engine & Fallback Chain Router</h2>
+            <p class="cn-modal-subtitle" style="margin:4px 0 0; font-size:12.5px; color:#64748b; line-height: 1.4;">
+              Configure multiple AI models ordered by priority. If your primary model hits a rate limit or runs out of credits, Crafture automatically falls back to the next model in the chain.
             </p>
           </div>
-          <button type="button" class="OutFox-modal-close" id="btn-close-ai-modal" style="background:transparent; border:none; color:#94a3b8; cursor:pointer; font-size:16px;">${ICONS.x}</button>
+          <button type="button" class="cn-modal-close" id="btn-close-ai-modal" style="background:transparent; border:none; color:#94a3b8; cursor:pointer; font-size:16px;">${ICONS.x}</button>
         </div>
 
         <!-- Priority-Ordered Models Chain -->
@@ -2122,7 +2122,7 @@ export function openAiEngineRouterModal({ aiModels = [], onSave }) {
             return `
               <div class="ai-model-card" data-idx="${idx}" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px; display:flex; align-items:center; justify-content:space-between; gap:14px; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
                 <div style="display:flex; align-items:center; gap:12px; min-width:0;">
-                  <span style="font-size:11px; font-weight:800; padding:4px 10px; border-radius:6px; flex-shrink:0; background:${idx === 0 ? '#fff7ed' : '#f1f5f9'}; color:${idx === 0 ? '#ff6b00' : '#64748b'};">${priorityBadge}</span>
+                  <span style="font-size:11px; font-weight:800; padding:4px 10px; border-radius:6px; flex-shrink:0; background:${idx === 0 ? '#E6EFE9' : '#f1f5f9'}; color:${idx === 0 ? '#104B35' : '#64748b'};">${priorityBadge}</span>
                   <div style="min-width:0;">
                     <div style="display:flex; align-items:center; gap:8px;">
                       <strong style="font-size:14px; color:#14142b; text-transform:capitalize;">${m.provider}</strong>
@@ -2147,7 +2147,7 @@ export function openAiEngineRouterModal({ aiModels = [], onSave }) {
         <!-- + Add AI Model to Chain -->
         <div style="margin-top:22px; padding:18px; background:#f8fafc; border-radius:12px; border:1px solid #e2e8f0;">
           <h4 style="margin:0 0 14px 0; font-size:13.5px; font-weight:800; color:#14142b;">+ Add AI Model to Chain</h4>
-          <div style="display:grid; grid-template-columns: 140px 1fr 1fr auto; gap:10px; align-items:flex-end;">
+          <div style="display:grid; grid-template-columns: 130px 1.4fr 1fr auto; gap:10px; align-items:flex-end;">
             <div>
               <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">PROVIDER</label>
               <select id="new-ai-provider" style="width:100%; padding:8px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:12.5px; background:#fff; font-weight:600; outline:none; cursor:pointer;">
@@ -2159,15 +2159,19 @@ export function openAiEngineRouterModal({ aiModels = [], onSave }) {
               </select>
             </div>
             <div>
-              <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">MODEL ID</label>
-              <input type="text" id="new-ai-model-id" value="llama-3.3-70b-versatile" style="width:100%; box-sizing:border-box; padding:8px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:12.5px; outline:none;" />
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <label style="font-size:11px; font-weight:700; color:#64748b;">MODEL</label>
+                <button type="button" id="btn-fetch-models" title="Fetch live models from API" style="background:transparent; border:none; color:#104B35; font-size:11px; font-weight:700; cursor:pointer; padding:0;">Fetch Models</button>
+              </div>
+              <select id="new-ai-model-select" style="width:100%; padding:8px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:12.5px; background:#fff; font-weight:500; outline:none; cursor:pointer;"></select>
+              <input type="text" id="new-ai-model-id" placeholder="Custom Model ID..." style="display:none; margin-top:6px; width:100%; box-sizing:border-box; padding:8px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:12.5px; outline:none;" />
             </div>
             <div>
               <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">API KEY (or Host)</label>
               <input type="password" id="new-ai-api-key" placeholder="gsk_..." style="width:100%; box-sizing:border-box; padding:8px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:12.5px; outline:none;" />
             </div>
             <div>
-              <button type="button" id="btn-add-ai-model" style="padding:9px 18px; background:#ff6b00; color:#fff; border:none; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; white-space:nowrap;">
+              <button type="button" id="btn-add-ai-model" style="padding:9px 18px; background:#104B35; color:#fff; border:none; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; white-space:nowrap;">
                 + Add
               </button>
             </div>
@@ -2194,29 +2198,139 @@ export function openAiEngineRouterModal({ aiModels = [], onSave }) {
     });
 
     const providerSelect = backdrop.querySelector('#new-ai-provider');
+    const modelSelect = backdrop.querySelector('#new-ai-model-select');
     const modelInput = backdrop.querySelector('#new-ai-model-id');
     const keyInput = backdrop.querySelector('#new-ai-api-key');
+    const btnFetchModels = backdrop.querySelector('#btn-fetch-models');
 
-    const presets = {
-      groq: { model: 'llama-3.3-70b-versatile', placeholder: 'gsk_...' },
-      gemini: { model: 'gemini-1.5-flash', placeholder: 'AIzaSy...' },
-      openai: { model: 'gpt-4o-mini', placeholder: 'sk-...' },
-      claude: { model: 'claude-3-5-haiku-20241022', placeholder: 'sk-ant-...' },
-      ollama: { model: 'llama3.2', placeholder: 'http://localhost:11434' },
+    const CURATED_MODELS = {
+      groq: [
+        { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile', recommended: true },
+        { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B (Groq)', recommended: true },
+        { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant', recommended: false },
+        { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B 32k', recommended: false },
+      ],
+      gemini: [
+        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', recommended: true },
+        { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', recommended: true },
+        { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', recommended: false },
+        { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', recommended: false },
+      ],
+      openai: [
+        { id: 'gpt-4o-mini', name: 'GPT-4o Mini', recommended: true },
+        { id: 'gpt-4o', name: 'GPT-4o', recommended: true },
+        { id: 'o1-mini', name: 'o1 Mini', recommended: false },
+        { id: 'o3-mini', name: 'o3 Mini', recommended: false },
+      ],
+      claude: [
+        { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', recommended: true },
+        { id: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku', recommended: true },
+        { id: 'claude-3-7-sonnet-latest', name: 'Claude 3.7 Sonnet', recommended: false },
+      ],
+      ollama: [
+        { id: 'llama3.2', name: 'Llama 3.2', recommended: true },
+        { id: 'llama3.1:8b', name: 'Llama 3.1 8B', recommended: true },
+        { id: 'mistral', name: 'Mistral 7B', recommended: false },
+      ],
     };
+
+    const keyPlaceholders = {
+      groq: 'gsk_...',
+      gemini: 'AIzaSy...',
+      openai: 'sk-...',
+      claude: 'sk-ant-...',
+      ollama: 'http://localhost:11434',
+    };
+
+    function syncCustomInput() {
+      if (modelSelect && modelInput) {
+        if (modelSelect.value === '__custom__') {
+          modelInput.style.display = 'block';
+          modelInput.focus();
+        } else {
+          modelInput.style.display = 'none';
+        }
+      }
+    }
+
+    function populateModelDropdown(models = [], selectedId = null) {
+      if (!modelSelect) return;
+      const rec = models.filter((m) => m.recommended);
+      const other = models.filter((m) => !m.recommended);
+
+      let html = '';
+      if (rec.length > 0) {
+        html += '<optgroup label="⭐ Recommended">';
+        for (const m of rec) {
+          html += `<option value="${m.id}">${m.name || m.id}</option>`;
+        }
+        html += '</optgroup>';
+      }
+      if (other.length > 0) {
+        html += '<optgroup label="Other Models">';
+        for (const m of other) {
+          html += `<option value="${m.id}">${m.name || m.id}</option>`;
+        }
+        html += '</optgroup>';
+      }
+      html += '<option value="__custom__">Custom Model ID...</option>';
+      modelSelect.innerHTML = html;
+
+      if (selectedId && models.some((m) => m.id === selectedId)) {
+        modelSelect.value = selectedId;
+      } else if (rec.length > 0) {
+        modelSelect.value = rec[0].id;
+      } else if (models.length > 0) {
+        modelSelect.value = models[0].id;
+      }
+      syncCustomInput();
+    }
+
+    modelSelect?.addEventListener('change', syncCustomInput);
 
     providerSelect?.addEventListener('change', (e) => {
       const p = e.target.value;
-      if (presets[p]) {
-        modelInput.value = presets[p].model;
-        keyInput.placeholder = presets[p].placeholder;
+      if (keyPlaceholders[p] && keyInput) {
+        keyInput.placeholder = keyPlaceholders[p];
+      }
+      populateModelDropdown(CURATED_MODELS[p] || []);
+    });
+
+    // Initial populate
+    populateModelDropdown(CURATED_MODELS[providerSelect?.value || 'groq'] || []);
+
+    // Live Fetch Models from Provider
+    btnFetchModels?.addEventListener('click', async () => {
+      const provider = providerSelect?.value || 'groq';
+      const apiKey = keyInput?.value?.trim() || '';
+      btnFetchModels.textContent = 'Fetching...';
+      try {
+        const res = await call(ACTIONS.AI_LIST_MODELS, { provider, apiKey });
+        if (res?.models && res.models.length > 0) {
+          populateModelDropdown(res.models);
+          btnFetchModels.textContent = `✓ Fetched (${res.models.length})`;
+          setTimeout(() => {
+            if (btnFetchModels) btnFetchModels.textContent = 'Fetch Models';
+          }, 2500);
+        } else {
+          btnFetchModels.textContent = 'Fetch Models';
+        }
+      } catch (err) {
+        console.warn('Failed to fetch live models:', err);
+        btnFetchModels.textContent = 'Fetch Models';
       }
     });
 
     // Add model
     backdrop.querySelector('#btn-add-ai-model')?.addEventListener('click', () => {
       const provider = providerSelect?.value || 'groq';
-      const modelId = modelInput?.value?.trim() || presets[provider]?.model;
+      let modelId = modelSelect?.value;
+      if (modelId === '__custom__') {
+        modelId = modelInput?.value?.trim();
+      }
+      if (!modelId) {
+        modelId = CURATED_MODELS[provider]?.[0]?.id || 'llama-3.3-70b-versatile';
+      }
       const apiKey = keyInput?.value?.trim() || (provider === 'ollama' ? 'http://localhost:11434' : '');
 
       if (!apiKey) {
@@ -2299,13 +2413,13 @@ function openConnectEmailModal({ onSuccess, defaultSenderName = '' }) {
   backdrop.className = 'edit-msg-modal-backdrop';
 
   backdrop.innerHTML = `
-    <div class="OutFox-modal-card" style="width: 480px; padding: 28px 32px; background:#fff; border-radius:16px; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
-      <div class="OutFox-modal-head" style="display:flex; justify-content:space-between; align-items:flex-start;">
+    <div class="cn-modal-card" style="width: 480px; padding: 28px 32px; background:#fff; border-radius:16px; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
+      <div class="cn-modal-head" style="display:flex; justify-content:space-between; align-items:flex-start;">
         <div>
-          <h2 class="OutFox-modal-title" style="font-size:18px; margin:0; font-weight:800; color:#14142b;">Connect a new email address</h2>
-          <p class="OutFox-modal-subtitle" style="margin:4px 0 0; font-size:12px; color:#64748b;">Connect an email account to send personalized cold email campaigns.</p>
+          <h2 class="cn-modal-title" style="font-size:18px; margin:0; font-weight:800; color:#14142b;">Connect a new email address</h2>
+          <p class="cn-modal-subtitle" style="margin:4px 0 0; font-size:12px; color:#64748b;">Connect an email account to send personalized cold email campaigns.</p>
         </div>
-        <button type="button" class="OutFox-modal-close" id="btn-close-connect-modal" style="background:transparent; border:none; color:#94a3b8; cursor:pointer;">${ICONS.x}</button>
+        <button type="button" class="cn-modal-close" id="btn-close-connect-modal" style="background:transparent; border:none; color:#94a3b8; cursor:pointer;">${ICONS.x}</button>
       </div>
 
       <div class="connect-options-list" style="margin-top:20px; display:flex; flex-direction:column; gap:12px;">

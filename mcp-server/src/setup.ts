@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `lit setup` / `npx outfox-mcp-setup` — OutFox MCP auto-configuration tool.
+ * `lit setup` / `npx crafture-network-mcp-setup` — Crafture Network MCP auto-configuration tool.
  *
  * The old path was: find the Releases page, download a zip, unzip it somewhere
  * you will not delete, turn on Developer mode, Load unpacked, run a server,
@@ -505,11 +505,11 @@ export const CLIENTS = [
 
 export type ClientId = (typeof CLIENTS)[number];
 
-export const SERVER_KEY = 'outfox';
+export const SERVER_KEY = 'crafture-network';
 
 /** The stdio entry every MCP client gets, in that client's spelling. */
 export function serverEntry(client: ClientId): Record<string, unknown> {
-  const base = { command: 'npx', args: ['-y', 'outfox-mcp'] };
+  const base = { command: 'npx', args: ['-y', 'crafture-network-mcp'] };
   // VS Code's own schema wants the transport named; the rest infer stdio.
   return client === 'vscode' ? { type: 'stdio', ...base } : base;
 }
@@ -788,7 +788,7 @@ export function pairingTimeoutMessage(seconds: number): string {
 }
 
 /* ------------------------------------------------------------------ *
- * Standalone 1-Command Auto-Installer (`npx outfox-mcp-setup`)
+ * Standalone 1-Command Auto-Installer (`npx crafture-network-mcp-setup`)
  * ------------------------------------------------------------------ */
 
 export async function runAutoInstaller(): Promise<void> {
@@ -796,8 +796,8 @@ export async function runAutoInstaller(): Promise<void> {
   const home = homedir();
   const env = process.env;
 
-  process.stdout.write('\n🦊 OutFox MCP Auto-Installer\n');
-  process.stdout.write('Connecting OutFox to your AI agents (Claude Desktop, Cursor)...\n\n');
+  process.stdout.write('\n🌿 Crafture Network MCP Auto-Installer\n');
+  process.stdout.write('Connecting Crafture Network to your AI agents (Claude Desktop, Cursor)...\n\n');
 
   const targets: { name: string; path: string; key: 'mcpServers' }[] = [];
 
@@ -818,7 +818,7 @@ export async function runAutoInstaller(): Promise<void> {
 
   const serverEntryObj = {
     command: 'npx',
-    args: ['-y', 'outfox-mcp'],
+    args: ['-y', 'crafture-network-mcp'],
   };
 
   let configuredCount = 0;
@@ -846,8 +846,11 @@ export async function runAutoInstaller(): Promise<void> {
         existingConfig.mcpServers = {};
       }
 
-      // Add/update "outfox" entry
-      existingConfig.mcpServers['outfox'] = serverEntryObj;
+      // Add/update "crafture-network" entry (and clean legacy "outfox" entry if present)
+      existingConfig.mcpServers['crafture-network'] = serverEntryObj;
+      if (existingConfig.mcpServers['outfox']) {
+        delete existingConfig.mcpServers['outfox'];
+      }
 
       mkdirSync(dirname(target.path), { recursive: true });
       writeFileSync(target.path, `${JSON.stringify(existingConfig, null, 2)}\n`, 'utf8');
@@ -859,12 +862,12 @@ export async function runAutoInstaller(): Promise<void> {
     }
   }
 
-  process.stdout.write(`\n🎉 OutFox MCP successfully configured for ${configuredCount} client(s)!\n`);
+  process.stdout.write(`\n🎉 Crafture Network MCP successfully configured for ${configuredCount} client(s)!\n`);
   process.stdout.write('------------------------------------------------------------\n');
   process.stdout.write('Next Steps:\n');
-  process.stdout.write('  1. Ensure OutFox Chrome Extension is running (Bridge port: 47829)\n');
+  process.stdout.write('  1. Ensure Crafture Network Chrome Extension is running (Bridge port: 47829)\n');
   process.stdout.write('  2. Restart Cursor and/or Claude Desktop\n');
-  process.stdout.write('  3. In chat, ask your agent: "Search 5 founders in NYC using OutFox"\n');
+  process.stdout.write('  3. In chat, ask your agent: "Search 5 founders in NYC using Crafture Network"\n');
   process.stdout.write('------------------------------------------------------------\n\n');
 }
 
@@ -876,7 +879,7 @@ const invokedDirectly = process.argv[1]
 
 if (invokedDirectly) {
   runAutoInstaller().catch((err) => {
-    process.stderr.write(`OutFox setup error: ${err?.message || err}\n`);
+    process.stderr.write(`Crafture Network setup error: ${err?.message || err}\n`);
     process.exit(1);
   });
 }

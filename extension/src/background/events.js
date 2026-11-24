@@ -1,5 +1,5 @@
 /**
- * OutFox — event emitter.
+ * Crafture Network — event emitter.
  *
  * `emit(name, payload)` fans one contract event out to:
  *   1. the bridge, when connected (installed with `setSink`, so this module
@@ -25,7 +25,7 @@ const NOTIFY = {
   },
   [EVENTS.QUOTA_HIT]: {
     title: 'Daily limit reached',
-    message: 'OutFox has paused this action type until the quota resets.',
+    message: 'Crafture Network has paused this action type until the quota resets.',
   },
   [EVENTS.POSITIVE_REPLY]: {
     title: 'Positive reply',
@@ -156,7 +156,7 @@ async function dispatchWebhook(name, payload = {}) {
     });
   } catch (err) {
     /* webhooks are best-effort: failure must never break action emission */
-    console.warn('[OutFox] Webhook dispatch error:', err && err.message);
+    console.warn('[Crafture Network] Webhook dispatch error:', err && err.message);
   }
 }
 

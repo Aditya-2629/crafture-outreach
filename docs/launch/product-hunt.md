@@ -24,7 +24,7 @@ LinkedIn blocks AI agents. This one runs in your own Chrome   (59)
 ```
 
 ```
-The free, local-first OutFox alternative built for agents    (57)
+The free, local-first outreach engine built for agents         (54)
 ```
 
 ## Description
@@ -34,7 +34,7 @@ _(260 characters max)_
 ```
 LinkedIn blocks AI browser agents. This runs inside the Chrome you're already logged into —
 giving any agent a real API to LinkedIn, with hard caps and a human approval queue. Also a
-complete free replacement for OutFox and PhantomBuster. MIT, local, no cloud.
+complete free replacement for Waalaxy and PhantomBuster. MIT, local, no cloud.
 ```
 
 ## Topics
@@ -90,7 +90,7 @@ complete free replacement for OutFox and PhantomBuster. MIT, local, no cloud.
 > challenge it stops completely — there is no retry loop in the codebase, because retrying after a
 > challenge is what turns a warning into a restriction.
 >
-> 💸 **It is free.** OutFox Pro is about €70/month, PhantomBuster around $69, Sales-Mind about $99.
+> 💸 **It is free.** Waalaxy Pro is about €70/month, PhantomBuster around $69, Sales-Mind about $99.
 > This is £0 and always will be — there is no paid tier planned, because there is no server to pay
 > for.
 >
@@ -103,7 +103,7 @@ complete free replacement for OutFox and PhantomBuster. MIT, local, no cloud.
 
 ## Prepared answers
 
-**"How is this different from OutFox?"**
+**"How is this different from Waalaxy or PhantomBuster?"**
 
 > Three ways. It runs on your machine rather than their cloud, so your session never sits on
 > someone else's server. It is built for AI agents from the ground up — 39 MCP tools, an OpenAPI

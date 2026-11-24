@@ -1,5 +1,5 @@
 /**
- * OutFox — message templating.
+ * Crafture Network — message templating.
  *
  * `{{field}}` placeholders with an optional inline fallback (`{{firstName|there}}`).
  * Only profile fields are substituted: nothing here can invent a fact.

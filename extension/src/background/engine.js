@@ -1,5 +1,5 @@
 /**
- * OutFox — engine.
+ * Crafture Network — engine.
  *
  * One entry point for every action, whatever the origin: the popup, an alarm,
  * the localhost bridge (MCP server / CLI / clients). Feature modules register

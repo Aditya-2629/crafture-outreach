@@ -1,5 +1,5 @@
 /**
- * OutFox — the approval queue (Copilot mode).
+ * Crafture Network — the approval queue (Copilot mode).
  *
  * Agent-originated writes land here instead of going to LinkedIn, and wait for
  * a human. Approving one runs it through the outreach send path with origin

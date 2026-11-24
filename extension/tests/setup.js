@@ -8,7 +8,7 @@
  */
 import { beforeEach, vi } from 'vitest';
 
-const MANIFEST = { version: '2.0.0', name: 'OutFox', manifest_version: 3 };
+const MANIFEST = { version: '2.0.0', name: 'Crafture Network', manifest_version: 3 };
 
 /** Mutable backing state; also reachable from tests via `chrome.__mock`. */
 const mock = {

@@ -1,5 +1,5 @@
 /**
- * OutFox — the write path.
+ * Crafture Network — the write path.
  *
  * One rule for every outreach action, whatever asked for it:
  *
@@ -300,10 +300,10 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
       // NOTE: Withdrawing stale invitations MUST NEVER call getProfile, getProfileNormalized,
       // or reserve profileView/visit quota.
       const res = await voyager.withdrawInvitation(inv.invitationId || inv.invitationUrn || inv.entityUrn, {
-        profileUrn: inv.toMemberUrn || inv.profileUrn || '',
+        profileUrn: inv.profileUrn || inv.toMemberUrn || '',
         entityUrn: inv.entityUrn || inv.invitationUrn || '',
         toMemberUrn: inv.toMemberUrn || '',
-        publicId: inv.toPublicId || inv.publicId || inv.vanityName || '',
+        publicId: inv.publicId || inv.toPublicId || inv.vanityName || '',
         firstName: inv.firstName || '',
         lastName: inv.lastName || '',
         fullName: inv.fullName || '',
@@ -346,20 +346,32 @@ export async function withdrawStaleInvites(params = {}, origin = 'popup') {
         status >= 500 ||
         /400|404|410|422|500|502|503/i.test(String(err?.message || err.message));
 
-      // If SDUI API fails twice with 400/404/422, hand off remaining eligible batch to single DOM fallback session
+      // If SDUI API fails twice with 400/404/422, hand off failed invites + remaining eligible batch to single DOM fallback session
       if (consecutiveFailures >= 2 && isSduiRejection) {
         reportBrokenEndpoint('withdrawInvitation', status, '', err).catch(() => {});
+        const failedBatch = toProcess.slice(Math.max(0, i + 1 - consecutiveFailures), i + 1);
         const remainingBatch = toProcess.slice(i + 1);
+        const handoffBatch = failedBatch.concat(remainingBatch);
+
+        // Roll back skippedCount and errors for the failedBatch being handed off to DOM fallback
+        skippedCount = Math.max(0, skippedCount - failedBatch.length);
+        const failedIds = new Set(failedBatch.map((inv) => String(inv.invitationId || inv.invitationUrn || '')).filter(Boolean));
+        for (let e = errors.length - 1; e >= 0; e--) {
+          if (failedIds.has(String(errors[e]?.invitationId || ''))) {
+            errors.splice(e, 1);
+          }
+        }
+
         logDebug(
           'warn',
           'Outreach',
-          `[AutoWithdraw] SDUI API failed twice (${err.message}). Handoff of remaining ${remainingBatch.length} invites to single background DOM-click session...`,
+          `[AutoWithdraw] SDUI API failed twice (${err.message}). Handoff of ${handoffBatch.length} invites (${failedBatch.length} failed + ${remainingBatch.length} remaining) to single background DOM-click session...`,
         );
 
-        if (remainingBatch.length > 0) {
+        if (handoffBatch.length > 0) {
           try {
             usedMethod = withdrawnCount > 0 ? 'hybrid' : 'dom_fallback';
-            const domRes = await voyager.withdrawViaDomFallback(remainingBatch, {
+            const domRes = await voyager.withdrawViaDomFallback(handoffBatch, {
               olderThanDays,
               maxCount: Math.max(1, maxCount - withdrawnCount),
             });
@@ -445,8 +457,8 @@ register(ACTIONS.NETWORK_WITHDRAW_STALE_INVITES, (params, ctx) =>
   withdrawStaleInvites(params, ctx.origin),
 );
 
-export const WITHDRAW_CLEANUP_ALARM = 'outfox-withdraw-cleanup';
-export const WITHDRAW_CLEANUP_STORAGE_KEY = 'outfox_withdraw_cleanup_state';
+export const WITHDRAW_CLEANUP_ALARM = 'crafture-withdraw-cleanup';
+export const WITHDRAW_CLEANUP_STORAGE_KEY = 'crafture_withdraw_cleanup_state';
 
 /**
  * Retrieve current status of the auto-withdraw cleanup background scheduler.
@@ -852,8 +864,8 @@ register(ACTIONS.GMAIL_TEST, async (params = {}) => {
   }
   const result = await sendEmail({
     to,
-    subject: 'OutFox — Gmail Integration Test',
-    body: 'Hello! Your Gmail integration with OutFox is active and working properly.',
+    subject: 'Crafture Network — Gmail Integration Test',
+    body: 'Hello! Your Gmail integration with Crafture Network is active and working properly.',
   });
   return { status: 'sent', to, messageId: result.messageId };
 });

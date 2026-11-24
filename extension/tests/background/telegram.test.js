@@ -12,10 +12,20 @@ import {
   launchBlueprintInternal,
   sendChatAction,
   sendTelegramMessage,
+  startTypingIndicator,
+  editTelegramMessage,
+  deleteTelegramMessage,
+  getToolProgressDescription,
+  LiveProgressTracker,
   extractErrorMessage,
   getActiveAiProviders,
   callDynamicAi,
   transcribeVoice,
+  recordChatTurn,
+  getRecentChatTurns,
+  getChatHistoryKey,
+  sanitizeGeminiTools,
+  sanitizeGeminiSchema,
 } from '../../src/background/telegram.js';
 import * as campaigns from '../../src/background/campaigns.js';
 import * as lists from '../../src/background/lists.js';
@@ -25,8 +35,8 @@ import { get, set } from '../../src/lib/storage.js';
 describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    await set('outfox_chat_history', []);
-    await set('outfox_pending_blueprints', {});
+    await set('crafture_chat_history', []);
+    await set('crafture_pending_blueprints', {});
     await set('ai_models', null);
     await set('aiProviders', null);
   });
@@ -62,7 +72,7 @@ describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
       expect(ctx.quotasRemaining.invitesLeft).toBeGreaterThanOrEqual(0);
 
       const prompt = buildSystemPrompt(ctx);
-      expect(prompt).toContain('OutFox AI SDR');
+      expect(prompt).toContain('Crafture Network AI SDR');
       expect(prompt).toContain('USA Data Analysts');
       expect(prompt).toContain('Tech Outreach');
       expect(prompt).toContain('Aditya');
@@ -491,7 +501,7 @@ describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
                             name: 'list_prospect_lists',
                             args: {},
                           },
-                          thought_signature: 'sig_crypto_hash_12345',
+                          thoughtSignature: 'sig_crypto_hash_12345',
                         },
                       ],
                     },
@@ -503,10 +513,13 @@ describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
 
           // Turn 2: model content + user functionResponse sent back
           if (lastTurn.role === 'user' && lastTurn.parts?.[0]?.functionResponse) {
-            // Verify model content in history preserved the thought_signature
+            // Verify model content in history preserved the thoughtSignature
             const modelTurn = contents[contents.length - 2];
             expect(modelTurn.role).toBe('model');
-            expect(modelTurn.parts[1].thought_signature).toBe('sig_crypto_hash_12345');
+            expect(modelTurn.parts[1].thoughtSignature).toBe('sig_crypto_hash_12345');
+            expect(modelTurn.parts[1].thought_signature).toBeUndefined();
+            expect(modelTurn.parts[1].functionCall.thought_signature).toBeUndefined();
+            expect(modelTurn.parts[1].functionCall.thoughtSignature).toBeUndefined();
 
             return {
               ok: true,
@@ -541,7 +554,10 @@ describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
       const modelStep = secondCallContents.find((c) => c.role === 'model');
       expect(modelStep).toBeDefined();
       expect(modelStep.parts[1].functionCall.name).toBe('list_prospect_lists');
-      expect(modelStep.parts[1].thought_signature).toBe('sig_crypto_hash_12345');
+      expect(modelStep.parts[1].thoughtSignature).toBe('sig_crypto_hash_12345');
+      expect(modelStep.parts[1].thought_signature).toBeUndefined();
+      expect(modelStep.parts[1].functionCall.thought_signature).toBeUndefined();
+      expect(modelStep.parts[1].functionCall.thoughtSignature).toBeUndefined();
     });
   });
 
@@ -812,6 +828,332 @@ describe('Telegram Gemini-Grade Multi-Turn ReAct Agent Copilot', () => {
       const res = await callDynamicAi('Write a welcome note for lead');
       expect(res.content).toBe('Warm personalized message');
       expect(res.provider).toBe('groq');
+    });
+  });
+
+  describe('6. Live Telegram Typing Indicator & Live Progress Tracking', () => {
+    it('startTypingIndicator sends typing action immediately and cleans up on stop()', () => {
+      vi.useFakeTimers();
+      const fetchCalls = [];
+      global.fetch = vi.fn(async (url, opts) => {
+        fetchCalls.push({ url, body: opts?.body ? JSON.parse(opts.body) : null });
+        return { ok: true, json: async () => ({ ok: true, result: true }) };
+      });
+
+      const stop = startTypingIndicator('test_token', '12345');
+
+      // Immediate call
+      expect(fetchCalls.length).toBe(1);
+      expect(fetchCalls[0].url).toContain('sendChatAction');
+      expect(fetchCalls[0].body.action).toBe('typing');
+
+      // 4500ms later -> second call
+      vi.advanceTimersByTime(4500);
+      expect(fetchCalls.length).toBe(2);
+
+      // Another 4500ms -> third call
+      vi.advanceTimersByTime(4500);
+      expect(fetchCalls.length).toBe(3);
+
+      // Stop typing
+      stop();
+      vi.advanceTimersByTime(9000);
+      expect(fetchCalls.length).toBe(3);
+
+      vi.useRealTimers();
+    });
+
+    it('editTelegramMessage calls editMessageText, handles markdown fallback and ignores unmodified error', async () => {
+      const calls = [];
+      global.fetch = vi.fn(async (url, opts) => {
+        const body = JSON.parse(opts.body);
+        calls.push({ url, body });
+
+        if (body.text.includes('unchanged text')) {
+          return {
+            ok: false,
+            status: 400,
+            json: async () => ({
+              ok: false,
+              description: 'Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message',
+            }),
+          };
+        }
+
+        if (body.parse_mode === 'Markdown' && body.text.includes('bad_entity')) {
+          return {
+            ok: false,
+            status: 400,
+            json: async () => ({
+              ok: false,
+              description: "Bad Request: can't parse entities: can't find end of entity at offset 10",
+            }),
+          };
+        }
+
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            result: { message_id: body.message_id, text: body.text },
+          }),
+        };
+      });
+
+      // 1. Normal edit
+      const res1 = await editTelegramMessage('token', 'chat1', 101, 'Hello *World*');
+      expect(res1.message_id).toBe(101);
+      expect(calls[0].url).toContain('editMessageText');
+      expect(calls[0].body.parse_mode).toBe('Markdown');
+
+      // 2. Benign unmodified error -> returns null without throwing
+      const res2 = await editTelegramMessage('token', 'chat1', 101, 'unchanged text');
+      expect(res2).toBeNull();
+
+      // 3. Markdown parse error -> retries as plain text
+      const res3 = await editTelegramMessage('token', 'chat1', 101, 'bad_entity *unclosed');
+      expect(res3.message_id).toBe(101);
+      const retryCall = calls[calls.length - 1];
+      expect(retryCall.body.parse_mode).toBeUndefined();
+      expect(retryCall.body.text).toBe('badentity unclosed');
+    });
+
+    it('deleteTelegramMessage calls deleteMessage and catches errors silently', async () => {
+      const calls = [];
+      global.fetch = vi.fn(async (url, opts) => {
+        const body = JSON.parse(opts.body);
+        calls.push({ url, body });
+        if (body.message_id === 999) {
+          return {
+            ok: false,
+            status: 400,
+            json: async () => ({ ok: false, description: 'Bad Request: message to delete not found' }),
+          };
+        }
+        return { ok: true, json: async () => ({ ok: true, result: true }) };
+      });
+
+      const success = await deleteTelegramMessage('token', 'chat1', 202);
+      expect(success).toBe(true);
+      expect(calls[0].url).toContain('deleteMessage');
+      expect(calls[0].body.message_id).toBe(202);
+
+      const failed = await deleteTelegramMessage('token', 'chat1', 999);
+      expect(failed).toBe(false);
+    });
+
+    it('getToolProgressDescription generates human-readable status for diverse tools', () => {
+      expect(getToolProgressDescription('search_prospects', { keywords: 'Product Manager' }))
+        .toContain('Product Manager');
+      expect(getToolProgressDescription('filter_prospects', { page: 2 }))
+        .toContain('page 2');
+      expect(getToolProgressDescription('design_campaign_blueprint', { campaignName: 'Outreach Q1' }))
+        .toContain('Outreach Q1');
+      expect(getToolProgressDescription('update_blueprint_steps'))
+        .toContain('Updating sequence steps');
+      expect(getToolProgressDescription('control_campaign', { action: 'resume' }))
+        .toContain('Resuming campaign');
+      expect(getToolProgressDescription('control_campaign', { action: 'pause' }))
+        .toContain('Pausing campaign');
+      expect(getToolProgressDescription('enrich_lead_email', { publicId: 'john-doe' }))
+        .toContain('john-doe');
+    });
+
+    it('LiveProgressTracker handles initialization, throttled edits, and cleanup', async () => {
+      const calls = [];
+      global.fetch = vi.fn(async (url, opts) => {
+        const body = JSON.parse(opts.body);
+        calls.push({ url, body });
+        if (url.includes('sendMessage')) {
+          return { ok: true, json: async () => ({ ok: true, result: { message_id: 555 } }) };
+        }
+        return { ok: true, json: async () => ({ ok: true, result: true }) };
+      });
+
+      const tracker = new LiveProgressTracker('token', 'chat1', 800);
+
+      // 1. Initial send
+      await tracker.init('⏳ Thinking...');
+      expect(tracker.messageId).toBe(555);
+      expect(calls[0].url).toContain('sendMessage');
+      expect(calls[0].body.text).toBe('⏳ Thinking...');
+
+      // 2. Immediate update (elapsed >= 800ms initial)
+      await tracker.update('🔍 Searching LinkedIn...');
+      expect(calls.some((c) => c.url.includes('editMessageText') && c.body.text.includes('Searching'))).toBe(true);
+
+      // 3. Cleanup deletes the message
+      await tracker.cleanup();
+      expect(tracker.messageId).toBeNull();
+      expect(calls.some((c) => c.url.includes('deleteMessage') && c.body.message_id === 555)).toBe(true);
+    });
+
+    it('runAgentLoop drives live typing indicator and updates progress message per tool call before final cleanup', async () => {
+      vi.spyOn(lists, 'getAll').mockResolvedValue([
+        { listId: 'l1', name: 'Engineers', count: 5 },
+      ]);
+
+      const calls = [];
+      global.fetch = vi.fn(async (url, opts) => {
+        const body = opts?.body ? JSON.parse(opts.body) : null;
+        calls.push({ url, body });
+
+        if (url.includes('api.telegram.org')) {
+          if (url.includes('sendMessage')) {
+            return { ok: true, json: async () => ({ ok: true, result: { message_id: 777 } }) };
+          }
+          return { ok: true, json: async () => ({ ok: true, result: true }) };
+        }
+
+        // Groq / OpenAI LLM format
+        const messages = body?.messages || [];
+        const lastMsg = messages[messages.length - 1];
+
+        if (lastMsg.role === 'user') {
+          return {
+            ok: true,
+            json: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: 'call_lists_1',
+                        function: { name: 'list_prospect_lists', arguments: '{}' },
+                      },
+                    ],
+                  },
+                },
+              ],
+            }),
+          };
+        }
+
+        if (lastMsg.role === 'tool') {
+          return {
+            ok: true,
+            json: async () => ({
+              choices: [
+                {
+                  message: { content: 'You have 1 prospect list: Engineers (5 leads).' },
+                },
+              ],
+            }),
+          };
+        }
+
+        return { ok: true, json: async () => ({}) };
+      });
+
+      await set('config', {
+        ai: { provider: 'groq', apiKey: 'gsk_key', model: 'llama-3.3-70b-versatile' },
+      });
+
+      await runAgentLoop('tok', '12345', 'Show my prospect lists');
+
+      // 1. Typing chat action sent
+      const typingCalls = calls.filter((c) => c.url.includes('sendChatAction'));
+      expect(typingCalls.length).toBeGreaterThanOrEqual(1);
+      expect(typingCalls[0].body.action).toBe('typing');
+
+      // 2. Initial progress status message sent
+      const sendMessages = calls.filter((c) => c.url.includes('sendMessage'));
+      expect(sendMessages.length).toBe(2);
+      expect(sendMessages[0].body.text).toBe('⏳ Thinking...');
+
+      // 3. Tool progress edited onto message_id 777
+      const editCalls = calls.filter((c) => c.url.includes('editMessageText'));
+      expect(editCalls.length).toBeGreaterThanOrEqual(1);
+      expect(editCalls[0].body.message_id).toBe(777);
+      expect(editCalls[0].body.text).toContain('Fetching prospect lists');
+
+      // 4. Temporary progress message deleted cleanly
+      const deleteCalls = calls.filter((c) => c.url.includes('deleteMessage'));
+      expect(deleteCalls.length).toBe(1);
+      expect(deleteCalls[0].body.message_id).toBe(777);
+
+      // 5. Final response delivered
+      const finalMsg = sendMessages[1];
+      expect(finalMsg.body.text).toContain('Engineers (5 leads)');
+    });
+  });
+
+  describe('6. Per-Chat Sliding Window Conversation Context & Gemini Schema Sanitization', () => {
+    it('isolates conversation history per chatId in chrome.storage.local', async () => {
+      const chatA = 'user_chat_101';
+      const chatB = 'user_chat_202';
+
+      await recordChatTurn('user', 'Find software engineers in London', chatA);
+      await recordChatTurn('assistant', 'Found 12 engineers in London.', chatA);
+
+      await recordChatTurn('user', 'Show me active campaigns', chatB);
+
+      const historyA = await getRecentChatTurns(chatA);
+      const historyB = await getRecentChatTurns(chatB);
+
+      expect(historyA).toHaveLength(2);
+      expect(historyA[0]).toEqual({ role: 'user', content: 'Find software engineers in London' });
+      expect(historyA[1]).toEqual({ role: 'assistant', content: 'Found 12 engineers in London.' });
+
+      expect(historyB).toHaveLength(1);
+      expect(historyB[0]).toEqual({ role: 'user', content: 'Show me active campaigns' });
+
+      // Verifies storage keys
+      expect(getChatHistoryKey(chatA)).toBe(`crafture_chat_history_${chatA}`);
+      expect(getChatHistoryKey(null)).toBe('crafture_chat_history');
+
+      const rawStorageA = await get(`crafture_chat_history_${chatA}`);
+      expect(rawStorageA).toHaveLength(2);
+      expect(rawStorageA[0].timestamp).toBeDefined();
+    });
+
+    it('enforces 10-12 turn sliding window and filters invalid turns', async () => {
+      const chatId = 'sliding_window_chat';
+
+      // Insert 15 turns
+      for (let i = 1; i <= 15; i++) {
+        await recordChatTurn(i % 2 === 1 ? 'user' : 'assistant', `Turn ${i}`, chatId);
+      }
+
+      const storageTurns = await get(`crafture_chat_history_${chatId}`);
+      // Stored max 12 turns
+      expect(storageTurns.length).toBeLessThanOrEqual(12);
+
+      // getRecentChatTurns returns up to 10 windowed turns
+      const recent = await getRecentChatTurns(chatId);
+      expect(recent.length).toBeLessThanOrEqual(10);
+      expect(recent[recent.length - 1].content).toBe('Turn 15');
+    });
+
+    it('exposes robust sanitizeGeminiTools and sanitizeGeminiSchema for Gemini tool declarations', () => {
+      const openAiTool = [
+        {
+          type: 'function',
+          function: {
+            name: 'enroll_candidate',
+            description: 'Enrolls candidate into campaign',
+            parameters: {
+              $schema: 'http://json-schema.org/draft-07/schema#',
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                candidateId: { type: 'string', default: 'c1' },
+                count: { type: ['number', 'null'] },
+              },
+            },
+          },
+        },
+      ];
+
+      const sanitized = sanitizeGeminiTools(openAiTool);
+      expect(sanitized).toHaveLength(1);
+      expect(sanitized[0].name).toBe('enroll_candidate');
+      expect(sanitized[0].parameters.type).toBe('OBJECT');
+      expect(sanitized[0].parameters.$schema).toBeUndefined();
+      expect(sanitized[0].parameters.additionalProperties).toBeUndefined();
+      expect(sanitized[0].parameters.properties.candidateId.default).toBeUndefined();
+      expect(sanitized[0].parameters.properties.count.type).toBe('NUMBER');
     });
   });
 });

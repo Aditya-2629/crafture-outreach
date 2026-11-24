@@ -1,6 +1,6 @@
 /**
- * OutFox — Authentic OutFox Light Theme Stylesheet
- * Cobalt Blue (#ff6b00), Clean Canvas (#f8fafc), Pure White Surface (#FFFFFF)
+ * Crafture Network — Authentic Crafture Network Light Theme Stylesheet
+ * Cobalt Blue (#104B35), Clean Canvas (#f8fafc), Pure White Surface (#FFFFFF)
  */
 
 * {
@@ -9,7 +9,7 @@
   padding: 0;
 }
 
-body.OutFox-layout {
+body.cn-layout {
   width: 100vw;
   height: 100vh;
   margin: 0;
@@ -22,7 +22,7 @@ body.OutFox-layout {
 }
 
 /* ==========================================================================
-   OutFox Left Navigation Sidebar (Crisp 240px Fixed SaaS Sidebar / Collapsible to 68px)
+   Crafture Network Left Navigation Sidebar (Crisp 240px Fixed SaaS Sidebar / Collapsible to 68px)
    ========================================================================== */
 .sidebar {
   width: 240px;
@@ -234,8 +234,8 @@ body.OutFox-layout {
 
 .sidebar .nav-item.is-active,
 .sidebar .nav-item.active {
-  background: #fff7ed !important;
-  color: #ea580c !important;
+  background: #E6EFE9 !important;
+  color: #167448 !important;
   font-weight: 600 !important;
   border-radius: 8px !important;
 }
@@ -376,7 +376,7 @@ body.OutFox-layout {
 }
 
 .time-filter:hover {
-  border-color: rgba(255, 107, 0, 0.3);
+  border-color: rgba(16, 75, 53, 0.3);
   color: var(--primary);
 }
 
@@ -419,9 +419,9 @@ body.OutFox-layout {
 }
 
 /* ==========================================================================
-   OutFox Pure White Cards & Metrics Grid
+   Crafture Network Pure White Cards & Metrics Grid
    ========================================================================== */
-.OutFox-card {
+.cn-card {
   background: var(--surface);
   border-radius: var(--radius-card);
   padding: 22px;
@@ -593,8 +593,8 @@ body.OutFox-layout {
 
 .camp-feed-item:hover {
   background: #ffffff;
-  box-shadow: 0px 4px 14px rgba(255, 107, 0, 0.06);
-  border-color: rgba(255, 107, 0, 0.2);
+  box-shadow: 0px 4px 14px rgba(16, 75, 53, 0.06);
+  border-color: rgba(16, 75, 53, 0.2);
 }
 
 .camp-item-left {
@@ -756,19 +756,19 @@ body.OutFox-layout {
 .btn-primary {
   background: var(--primary);
   color: #ffffff;
-  box-shadow: 0px 4px 14px rgba(255, 107, 0, 0.28);
+  box-shadow: 0px 4px 14px rgba(16, 75, 53, 0.28);
 }
 
 .btn-primary:hover {
   background: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0px 6px 18px rgba(255, 107, 0, 0.38);
+  box-shadow: 0px 6px 18px rgba(16, 75, 53, 0.38);
 }
 
 .btn-soft {
   background: var(--primary-soft);
   color: var(--primary);
-  border: 1px solid rgba(255, 107, 0, 0.15);
+  border: 1px solid rgba(16, 75, 53, 0.15);
 }
 
 .btn-soft:hover {
@@ -872,7 +872,7 @@ body.OutFox-layout {
 .form-input:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.15);
+  box-shadow: 0 0 0 3px rgba(16, 75, 53, 0.15);
 }
 
 /* Table styling for Prospects view */
@@ -1089,7 +1089,7 @@ table.prospects-table tr:hover td {
 
 .saas-camp-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0px 14px 30px rgba(255, 107, 0, 0.12);
+  box-shadow: 0px 14px 30px rgba(16, 75, 53, 0.12);
 }
 
 .saas-camp-head {
@@ -1500,7 +1500,7 @@ table.prospects-table tr:hover td {
 }
 
 /* ==========================================================================
-   Phase 2: OutFox Campaign Creator Wizard & Horizontal Node Canvas
+   Phase 2: Crafture Campaign Creator Wizard & Horizontal Node Canvas
    (Video Frames 11–17)
    ========================================================================== */
 
@@ -1638,7 +1638,7 @@ table.prospects-table tr:hover td {
 }
 
 .filter-pill:hover {
-  border-color: rgba(255, 107, 0, 0.3);
+  border-color: rgba(16, 75, 53, 0.3);
   color: var(--primary);
 }
 
@@ -1646,7 +1646,7 @@ table.prospects-table tr:hover td {
   background: var(--primary);
   color: #ffffff;
   border-color: var(--primary);
-  box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25);
+  box-shadow: 0 4px 12px rgba(16, 75, 53, 0.25);
 }
 
 .templates-grid {
@@ -1669,13 +1669,13 @@ table.prospects-table tr:hover td {
 
 .template-card:hover {
   transform: translateY(-2px);
-  border: 2px solid #ff6b00;
-  box-shadow: 0px 14px 30px rgba(255, 107, 0, 0.12);
+  border: 2px solid #104B35;
+  box-shadow: 0px 14px 30px rgba(16, 75, 53, 0.12);
 }
 
 .template-card.is-selected {
-  border: 2px solid #ff6b00;
-  box-shadow: 0px 10px 25px rgba(255, 107, 0, 0.15);
+  border: 2px solid #104B35;
+  box-shadow: 0px 10px 25px rgba(16, 75, 53, 0.15);
 }
 
 .tpl-head {
@@ -1833,10 +1833,10 @@ table.prospects-table tr:hover td {
 
 .flow-node-card {
   background: #ffffff;
-  border: 1.5px solid #fff7ed;
+  border: 1.5px solid #E6EFE9;
   border-radius: 14px;
   padding: 12px 18px;
-  box-shadow: 0px 4px 16px rgba(255, 107, 0, 0.06);
+  box-shadow: 0px 4px 16px rgba(16, 75, 53, 0.06);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1903,9 +1903,9 @@ table.prospects-table tr:hover td {
 
 .delay-select-pill:hover, .delay-select-pill:focus {
   background-color: #ffffff;
-  border-color: #ff6b00;
-  color: #ff6b00;
-  box-shadow: 0 2px 6px rgba(255, 107, 0, 0.15);
+  border-color: #104B35;
+  color: #104B35;
+  box-shadow: 0 2px 6px rgba(16, 75, 53, 0.15);
 }
 
 .flow-condition-pill {
@@ -1939,8 +1939,8 @@ table.prospects-table tr:hover td {
 }
 
 .btn-quick-add:hover {
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
   border-color: #fdba74;
   transform: translateY(-1px);
 }
@@ -1952,7 +1952,7 @@ table.prospects-table tr:hover td {
 .live-preview-box {
   padding: 16px 18px;
   background: #fdfefe;
-  border: 1.5px dashed #fed7aa;
+  border: 1.5px dashed #DCE5DE;
   border-radius: 14px;
   margin-bottom: 14px;
 }
@@ -2023,14 +2023,14 @@ table.prospects-table tr:hover td {
 }
 
 .variable-chip {
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
   font-size: 11px;
   font-weight: 600;
   padding: 4px 12px;
   border-radius: 9999px;
   cursor: pointer;
-  border: 1px solid rgba(255, 107, 0, 0.15);
+  border: 1px solid rgba(16, 75, 53, 0.15);
   transition: var(--transition);
 }
 
@@ -2314,7 +2314,7 @@ input:checked + .slider:before {
 }
 
 .crm-pill-btn:hover {
-  border-color: rgba(255, 107, 0, 0.3);
+  border-color: rgba(16, 75, 53, 0.3);
   color: var(--primary);
 }
 
@@ -2574,7 +2574,7 @@ input:checked + .slider:before {
 }
 
 /* ==========================================================================
-   Phase 2: OutFox Campaign Creator Wizard & Horizontal Node Canvas
+   Phase 2: Crafture Campaign Creator Wizard & Horizontal Node Canvas
    (Video Frames 11–17)
    ========================================================================== */
 
@@ -2712,7 +2712,7 @@ input:checked + .slider:before {
 }
 
 .filter-pill:hover {
-  border-color: rgba(255, 107, 0, 0.3);
+  border-color: rgba(16, 75, 53, 0.3);
   color: var(--primary);
 }
 
@@ -2720,7 +2720,7 @@ input:checked + .slider:before {
   background: var(--primary);
   color: #ffffff;
   border-color: var(--primary);
-  box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25);
+  box-shadow: 0 4px 12px rgba(16, 75, 53, 0.25);
 }
 
 .templates-grid {
@@ -2743,13 +2743,13 @@ input:checked + .slider:before {
 
 .template-card:hover {
   transform: translateY(-2px);
-  border: 2px solid #ff6b00;
-  box-shadow: 0px 14px 30px rgba(255, 107, 0, 0.12);
+  border: 2px solid #104B35;
+  box-shadow: 0px 14px 30px rgba(16, 75, 53, 0.12);
 }
 
 .template-card.is-selected {
-  border: 2px solid #ff6b00;
-  box-shadow: 0px 10px 25px rgba(255, 107, 0, 0.15);
+  border: 2px solid #104B35;
+  box-shadow: 0px 10px 25px rgba(16, 75, 53, 0.15);
 }
 
 .tpl-head {
@@ -2907,10 +2907,10 @@ input:checked + .slider:before {
 
 .flow-node-card {
   background: #ffffff;
-  border: 1.5px solid #fff7ed;
+  border: 1.5px solid #E6EFE9;
   border-radius: 14px;
   padding: 12px 18px;
-  box-shadow: 0px 4px 16px rgba(255, 107, 0, 0.06);
+  box-shadow: 0px 4px 16px rgba(16, 75, 53, 0.06);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -2977,9 +2977,9 @@ input:checked + .slider:before {
 
 .delay-select-pill:hover, .delay-select-pill:focus {
   background-color: #ffffff;
-  border-color: #ff6b00;
-  color: #ff6b00;
-  box-shadow: 0 2px 6px rgba(255, 107, 0, 0.15);
+  border-color: #104B35;
+  color: #104B35;
+  box-shadow: 0 2px 6px rgba(16, 75, 53, 0.15);
 }
 
 .flow-condition-pill {
@@ -3013,8 +3013,8 @@ input:checked + .slider:before {
 }
 
 .btn-quick-add:hover {
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
   border-color: #fdba74;
   transform: translateY(-1px);
 }
@@ -3026,7 +3026,7 @@ input:checked + .slider:before {
 .live-preview-box {
   padding: 16px 18px;
   background: #fdfefe;
-  border: 1.5px dashed #fed7aa;
+  border: 1.5px dashed #DCE5DE;
   border-radius: 14px;
   margin-bottom: 14px;
 }
@@ -3097,14 +3097,14 @@ input:checked + .slider:before {
 }
 
 .variable-chip {
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
   font-size: 11px;
   font-weight: 600;
   padding: 4px 12px;
   border-radius: 9999px;
   cursor: pointer;
-  border: 1px solid rgba(255, 107, 0, 0.15);
+  border: 1px solid rgba(16, 75, 53, 0.15);
   transition: var(--transition);
 }
 
@@ -3388,7 +3388,7 @@ input:checked + .slider:before {
 }
 
 .crm-pill-btn:hover {
-  border-color: rgba(255, 107, 0, 0.3);
+  border-color: rgba(16, 75, 53, 0.3);
   color: var(--primary);
 }
 
@@ -3652,7 +3652,7 @@ input:checked + .slider:before {
 /* ================================================================== */
 
 /* Compact Non-intrusive Floating Pill (32px height, 100% unobstructed) */
-.outfox-logs-pill {
+.cn-logs-pill {
   position: fixed;
   bottom: 16px;
   right: 20px;
@@ -3675,7 +3675,7 @@ input:checked + .slider:before {
   outline: none;
 }
 
-.outfox-logs-pill:hover {
+.cn-logs-pill:hover {
   background: #1f242c;
   transform: translateY(-1px);
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
@@ -3895,7 +3895,7 @@ input:checked + .slider:before {
 .delay-pill-badge:hover {
   background: var(--primary);
   color: #ffffff;
-  box-shadow: 0 2px 8px rgba(255, 107, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(16, 75, 53, 0.3);
 }
 
 .btn-insert-node {
@@ -3965,12 +3965,12 @@ input:checked + .slider:before {
 }
 
 .pipeline-popover-item:hover {
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
 }
 
 .pipeline-popover-item.is-selected {
-  background: #ffedd5;
+  background: #DCE5DE;
   color: #c2410c;
 }
 
@@ -4018,7 +4018,7 @@ input:checked + .slider:before {
 }
 
 .switch input:checked + .slider {
-  background-color: var(--primary, #ff6b00);
+  background-color: var(--primary, #104B35);
 }
 
 .switch input:checked + .slider:before {
@@ -4037,10 +4037,10 @@ input:checked + .slider:before {
 }
 
 /* ================================================================== */
-/*  Phase 2: OutFox Home Dashboard Visual Shell & Profile Widgets    */
+/*  Phase 2: Crafture Home Dashboard Visual Shell & Profile Widgets    */
 /* ================================================================== */
 
-.OutFox-home-grid {
+.cn-home-grid {
   display: grid;
   grid-template-columns: 1fr 340px;
   gap: 28px;
@@ -4083,7 +4083,7 @@ input:checked + .slider:before {
 
 /* Hero Blue Banner */
 .hero-blue-banner {
-  background: #ff6b00;
+  background: #104B35;
   border-radius: 16px;
   padding: 24px 32px;
   color: #ffffff;
@@ -4091,7 +4091,7 @@ input:checked + .slider:before {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
-  box-shadow: 0 12px 30px rgba(255, 107, 0, 0.22);
+  box-shadow: 0 12px 30px rgba(16, 75, 53, 0.22);
 }
 
 .hero-banner-badge {
@@ -4105,7 +4105,7 @@ input:checked + .slider:before {
 
 .li-icon-box {
   background: #ffffff;
-  color: #ff6b00;
+  color: #104B35;
   font-weight: 700;
   font-size: 11px;
   padding: 1px 5px;
@@ -4171,7 +4171,7 @@ input:checked + .slider:before {
 }
 
 .li-icon-box-small {
-  background: #ff6b00;
+  background: #104B35;
   color: #ffffff;
   font-weight: 700;
   font-size: 11px;
@@ -4197,7 +4197,7 @@ input:checked + .slider:before {
   border-radius: 14px;
   padding: 20px 24px;
   border: 1px solid rgba(20, 20, 43, 0.08);
-  box-shadow: 0 10px 25px rgba(255, 107, 0, 0.06);
+  box-shadow: 0 10px 25px rgba(16, 75, 53, 0.06);
   display: flex;
   align-items: center;
 }
@@ -4267,7 +4267,7 @@ input:checked + .slider:before {
   border-radius: 16px;
   padding: 24px;
   border: 1px solid rgba(20, 20, 43, 0.08);
-  box-shadow: 0 10px 25px rgba(255, 107, 0, 0.06);
+  box-shadow: 0 10px 25px rgba(16, 75, 53, 0.06);
   margin-bottom: 24px;
   position: relative;
 }
@@ -4276,8 +4276,8 @@ input:checked + .slider:before {
   position: absolute;
   top: 16px;
   right: 16px;
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
   padding: 4px 10px;
   border-radius: 9999px;
   font-size: 11px;
@@ -4295,7 +4295,7 @@ input:checked + .slider:before {
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: #ff6b00;
+  background: #104B35;
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -4303,7 +4303,7 @@ input:checked + .slider:before {
   font-size: 22px;
   font-weight: 700;
   position: relative;
-  box-shadow: 0 6px 18px rgba(255, 107, 0, 0.3);
+  box-shadow: 0 6px 18px rgba(16, 75, 53, 0.3);
 }
 
 .avatar-li-badge {
@@ -4415,8 +4415,8 @@ input:checked + .slider:before {
 }
 
 .icon-blue {
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
 }
 
 .icon-purple-soft {
@@ -4445,7 +4445,7 @@ input:checked + .slider:before {
   border-radius: 16px;
   padding: 24px;
   border: 1px solid rgba(20, 20, 43, 0.08);
-  box-shadow: 0 10px 25px rgba(255, 107, 0, 0.06);
+  box-shadow: 0 10px 25px rgba(16, 75, 53, 0.06);
 }
 
 .action-tabs-grid {
@@ -4467,8 +4467,8 @@ input:checked + .slider:before {
 
 .action-tab-box:hover,
 .action-tab-box.is-active {
-  border-color: #ff6b00;
-  background: #fff7ed;
+  border-color: #104B35;
+  background: #E6EFE9;
 }
 
 .action-tab-icon {
@@ -4505,8 +4505,8 @@ input:checked + .slider:before {
 }
 
 .action-export-btn:hover {
-  background: #fff7ed;
-  border-color: #ff6b00;
+  background: #E6EFE9;
+  border-color: #104B35;
 }
 
 .icon-cyan {
@@ -4520,7 +4520,7 @@ input:checked + .slider:before {
 }
 
 /* ================================================================== */
-/*  Phase A: OutFox Prospects CRM Styles                             */
+/*  Phase A: Crafture Prospects CRM Styles                             */
 /* ================================================================== */
 
 .list-nav-item {
@@ -4546,8 +4546,8 @@ input:checked + .slider:before {
 }
 
 .list-nav-item.is-active {
-  background: #fff7ed !important;
-  color: #ff6b00 !important;
+  background: #E6EFE9 !important;
+  color: #104B35 !important;
 }
 
 .list-nav-item.is-danger.is-active {
@@ -4563,7 +4563,7 @@ input:checked + .slider:before {
 }
 
 .custom-list-item.is-active .list-icon {
-  color: #ff6b00;
+  color: #104B35;
 }
 
 .custom-list-item .list-nav-name {
@@ -4679,7 +4679,7 @@ input:checked + .slider:before {
 
 .btn-bulk-action:hover {
   background: #f8fafc;
-  border-color: #ff6b00;
+  border-color: #104B35;
 }
 
 .bulk-deselect-btn {
@@ -4714,7 +4714,7 @@ input:checked + .slider:before {
 /* ================================================================== */
 
 .btn-import-prospects {
-  background: #ff6b00;
+  background: #104B35;
   color: #ffffff;
   border: none;
   padding: 8px 18px;
@@ -4725,14 +4725,14 @@ input:checked + .slider:before {
   display: flex;
   align-items: center;
   gap: 6px;
-  box-shadow: 0 4px 14px rgba(255, 107, 0, 0.25);
+  box-shadow: 0 4px 14px rgba(16, 75, 53, 0.25);
   transition: all 0.2s ease;
 }
 
 .btn-import-prospects:hover {
   background: #2548c7;
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(255, 107, 0, 0.35);
+  box-shadow: 0 6px 18px rgba(16, 75, 53, 0.35);
 }
 
 .import-method-card {
@@ -4743,16 +4743,16 @@ input:checked + .slider:before {
   background: #ffffff;
   border: 1px solid rgba(20, 20, 43, 0.08);
   border-radius: 14px;
-  box-shadow: 0 4px 14px rgba(255, 107, 0, 0.04);
+  box-shadow: 0 4px 14px rgba(16, 75, 53, 0.04);
   transition: all 0.2s ease;
   cursor: pointer;
   text-decoration: none;
 }
 
 .import-method-card:hover {
-  border-color: #ff6b00;
+  border-color: #104B35;
   transform: translateY(-2px);
-  box-shadow: 0 10px 25px rgba(255, 107, 0, 0.1);
+  box-shadow: 0 10px 25px rgba(16, 75, 53, 0.1);
 }
 
 .method-icon-box {
@@ -4786,7 +4786,7 @@ input:checked + .slider:before {
 }
 
 .import-method-card:hover .method-arrow {
-  color: #ff6b00;
+  color: #104B35;
   transform: translateX(4px);
 }
 
@@ -4818,8 +4818,8 @@ input:checked + .slider:before {
 }
 
 .icon-blue-soft {
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
 }
 
 .icon-amber {
@@ -4828,9 +4828,9 @@ input:checked + .slider:before {
 }
 
 /* ========================================================
-   OutFox NATIVE IN-UI MODAL & DIALOG SYSTEM
+   Crafture NATIVE IN-UI MODAL & DIALOG SYSTEM
    ======================================================== */
-.OutFox-modal-backdrop {
+.cn-modal-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.45);
@@ -4843,14 +4843,14 @@ input:checked + .slider:before {
   animation: modalFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.OutFox-modal-card {
+.cn-modal-card {
   background: #ffffff;
   border-radius: 16px;
   width: 440px;
   max-width: 92vw;
   padding: 24px 28px;
   box-shadow:
-    0 20px 45px -10px rgba(255, 107, 0, 0.2),
+    0 20px 45px -10px rgba(16, 75, 53, 0.2),
     0 0 1px 1px rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
@@ -4879,21 +4879,21 @@ input:checked + .slider:before {
   }
 }
 
-.OutFox-modal-head {
+.cn-modal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
 }
 
-.OutFox-modal-title {
+.cn-modal-title {
   font-size: 17px;
   font-weight: 700;
   color: #14142b;
   margin: 0;
 }
 
-.OutFox-modal-close {
+.cn-modal-close {
   background: transparent;
   border: none;
   font-size: 16px;
@@ -4904,26 +4904,26 @@ input:checked + .slider:before {
   transition: all 0.15s;
 }
 
-.OutFox-modal-close:hover {
+.cn-modal-close:hover {
   color: #14142b;
   background: #f1f5f9;
 }
 
-.OutFox-modal-subtitle {
+.cn-modal-subtitle {
   font-size: 13px;
   color: #64748b;
   margin: 0 0 16px 0;
   line-height: 1.45;
 }
 
-.OutFox-modal-body {
+.cn-modal-body {
   margin: 12px 0 24px 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.OutFox-input-label {
+.cn-input-label {
   font-size: 12px;
   font-weight: 600;
   color: #475569;
@@ -4931,7 +4931,7 @@ input:checked + .slider:before {
   letter-spacing: 0.3px;
 }
 
-.OutFox-modal-input {
+.cn-modal-input {
   width: 100%;
   box-sizing: border-box;
   padding: 11px 14px;
@@ -4944,20 +4944,20 @@ input:checked + .slider:before {
   transition: all 0.15s ease;
 }
 
-.OutFox-modal-input:focus {
-  border-color: #ff6b00;
+.cn-modal-input:focus {
+  border-color: #104B35;
   background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.12);
+  box-shadow: 0 0 0 3px rgba(16, 75, 53, 0.12);
 }
 
-.OutFox-confirm-message {
+.cn-confirm-message {
   font-size: 14px;
   line-height: 1.5;
   color: #334155;
 }
 
 /* Radio List Selector */
-.OutFox-select-list {
+.cn-select-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -4966,7 +4966,7 @@ input:checked + .slider:before {
   padding-right: 4px;
 }
 
-.OutFox-select-item {
+.cn-select-item {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -4978,13 +4978,13 @@ input:checked + .slider:before {
   transition: all 0.15s;
 }
 
-.OutFox-select-item:hover {
-  background: #fff7ed;
+.cn-select-item:hover {
+  background: #E6EFE9;
   border-color: #c7d2fe;
 }
 
-.OutFox-select-item input[type='radio'] {
-  accent-color: #ff6b00;
+.cn-select-item input[type='radio'] {
+  accent-color: #104B35;
 }
 
 .select-item-name {
@@ -5000,7 +5000,7 @@ input:checked + .slider:before {
 }
 
 /* Modal Action Buttons */
-.OutFox-modal-footer {
+.cn-modal-footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -5025,7 +5025,7 @@ input:checked + .slider:before {
 }
 
 .btn-modal-primary {
-  background: #ff6b00;
+  background: #104B35;
   border: none;
   color: #ffffff;
   font-size: 13px;
@@ -5034,7 +5034,7 @@ input:checked + .slider:before {
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s;
-  box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25);
+  box-shadow: 0 4px 12px rgba(16, 75, 53, 0.25);
 }
 
 .btn-modal-primary:hover {
@@ -5120,7 +5120,7 @@ input:checked + .slider:before {
 }
 
 /* ========================================================
-   OutFox QUEUE VIEW & SUB-NAV STYLES
+   Crafture QUEUE VIEW & SUB-NAV STYLES
    ======================================================== */
 .nav-accordion-group {
   display: flex;
@@ -5175,13 +5175,13 @@ input:checked + .slider:before {
 }
 
 .subnav-item.is-active {
-  color: #ff6b00 !important;
+  color: #104B35 !important;
   font-weight: 700;
-  background: #fff7ed;
+  background: #E6EFE9;
 }
 
 /* Queue Screen Layout */
-.OutFox-queue-layout {
+.cn-queue-layout {
   display: flex;
   gap: 24px;
   padding: 24px 32px;
@@ -5220,9 +5220,9 @@ input:checked + .slider:before {
 }
 
 .badge-quota-reached {
-  background: #fff7ed;
-  color: #ea580c;
-  border: 1px solid #ffedd5;
+  background: #E6EFE9;
+  color: #167448;
+  border: 1px solid #DCE5DE;
   padding: 2px 10px;
   border-radius: 12px;
   font-size: 11px;
@@ -5241,8 +5241,8 @@ input:checked + .slider:before {
 
 .btn-update-activity {
   background: #ffffff;
-  border: 1.5px solid #ff6b00;
-  color: #ff6b00;
+  border: 1.5px solid #104B35;
+  color: #104B35;
   padding: 8px 18px;
   border-radius: 20px;
   font-size: 13px;
@@ -5255,7 +5255,7 @@ input:checked + .slider:before {
 }
 
 .btn-update-activity:hover {
-  background: #fff7ed;
+  background: #E6EFE9;
 }
 
 .spin-icon-update.is-spinning {
@@ -5285,9 +5285,9 @@ input:checked + .slider:before {
 }
 
 .channel-tab.is-active {
-  background: #fff7ed;
+  background: #E6EFE9;
   border-color: #c7d2fe;
-  color: #ff6b00;
+  color: #104B35;
 }
 
 .tab-count-pill {
@@ -5417,7 +5417,7 @@ input:checked + .slider:before {
 }
 
 .status-postponed {
-  color: #ea580c;
+  color: #167448;
   font-weight: 700;
   font-size: 12px;
   display: inline-flex;
@@ -5473,8 +5473,8 @@ input:checked + .slider:before {
 }
 
 .quota-progress-card.is-warning {
-  background: #fff7ed;
-  border-color: #ffedd5;
+  background: #E6EFE9;
+  border-color: #DCE5DE;
 }
 
 .quota-card-top {
@@ -5499,11 +5499,11 @@ input:checked + .slider:before {
 }
 .icon-messages {
   background: #dbeafe;
-  color: #ff6b00;
+  color: #104B35;
 }
 .icon-visits {
-  background: #ffedd5;
-  color: #ea580c;
+  background: #DCE5DE;
+  color: #167448;
 }
 
 .quota-meta {
@@ -5543,14 +5543,14 @@ input:checked + .slider:before {
 }
 .quota-bar-fill.fill-visits {
   height: 100%;
-  background: #ea580c;
+  background: #167448;
   border-radius: 3px;
 }
 
 .quota-warning-line {
   font-size: 11px;
   font-weight: 700;
-  color: #ea580c;
+  color: #167448;
   text-align: center;
   margin-top: 4px;
 }
@@ -5562,7 +5562,7 @@ input:checked + .slider:before {
 }
 
 /* ========================================================
-   OutFox MESSAGE TEMPLATES & EDIT MODAL
+   Crafture MESSAGE TEMPLATES & EDIT MODAL
    ======================================================== */
 .templates-view-shell {
   display: flex;
@@ -5620,8 +5620,8 @@ input:checked + .slider:before {
   color: #14142b;
 }
 .template-nav-btn.is-active {
-  background: #fff7ed;
-  color: #ff6b00 !important;
+  background: #E6EFE9;
+  color: #104B35 !important;
   font-weight: 700;
 }
 .templates-main-canvas {
@@ -5656,15 +5656,15 @@ input:checked + .slider:before {
   color: #14142b;
 }
 .badge-total-count {
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 11px;
   font-weight: 700;
 }
 .btn-primary-create {
-  background: #ff6b00;
+  background: #104B35;
   color: #ffffff;
   border: none;
   padding: 9px 20px;
@@ -5672,7 +5672,7 @@ input:checked + .slider:before {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25);
+  box-shadow: 0 4px 12px rgba(16, 75, 53, 0.25);
 }
 .templates-empty-state {
   display: flex;
@@ -5699,7 +5699,7 @@ input:checked + .slider:before {
   margin: 0 0 20px 0;
 }
 .btn-create-template-blue {
-  background: #ff6b00;
+  background: #104B35;
   color: #ffffff;
   border: none;
   padding: 12px 28px;
@@ -5707,7 +5707,7 @@ input:checked + .slider:before {
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(255, 107, 0, 0.3);
+  box-shadow: 0 4px 14px rgba(16, 75, 53, 0.3);
 }
 .templates-grid {
   display: grid;
@@ -5726,7 +5726,7 @@ input:checked + .slider:before {
 }
 .template-item-card:hover {
   border-color: #c7d2fe;
-  box-shadow: 0 8px 20px rgba(255, 107, 0, 0.08);
+  box-shadow: 0 8px 20px rgba(16, 75, 53, 0.08);
 }
 .template-card-head {
   display: flex;
@@ -5918,8 +5918,8 @@ input:checked + .slider:before {
 }
 .btn-pill-variable {
   background: #ffffff;
-  border: 1.5px solid #ff6b00;
-  color: #ff6b00;
+  border: 1.5px solid #104B35;
+  color: #104B35;
   padding: 8px 16px;
   border-radius: 20px;
   font-size: 13px;
@@ -5951,10 +5951,10 @@ input:checked + .slider:before {
   align-items: center;
   font-size: 13px;
   font-weight: 600;
-  color: #ff6b00;
+  color: #104B35;
 }
 .var-menu-item:hover {
-  background: #fff7ed;
+  background: #E6EFE9;
 }
 .var-desc {
   font-size: 11px;
@@ -5969,7 +5969,7 @@ input:checked + .slider:before {
   cursor: pointer;
 }
 .btn-confirm-save {
-  background: #ff6b00;
+  background: #104B35;
   color: #ffffff;
   border: none;
   padding: 10px 28px;
@@ -5977,7 +5977,7 @@ input:checked + .slider:before {
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(255, 107, 0, 0.3);
+  box-shadow: 0 4px 14px rgba(16, 75, 53, 0.3);
 }
 
 /* Right Advice & Preview */
@@ -6040,7 +6040,7 @@ input:checked + .slider:before {
 }
 .advice-more-link {
   font-size: 11px;
-  color: #ff6b00;
+  color: #104B35;
   text-decoration: none;
   font-weight: 600;
 }
@@ -6080,7 +6080,7 @@ input:checked + .slider:before {
   overflow-y: auto;
 }
 
-/* OutFox MY CAMPAIGNS (SCREENSHOT 3) */
+/* Crafture MY CAMPAIGNS */
 .camp-tabs-and-search-row {
   display: flex;
   justify-content: space-between;
@@ -6111,8 +6111,8 @@ input:checked + .slider:before {
   color: #14142b;
 }
 .camp-state-tab.is-active {
-  color: #ff6b00 !important;
-  border-bottom-color: #ff6b00 !important;
+  color: #104B35 !important;
+  border-bottom-color: #104B35 !important;
   font-weight: 700;
 }
 .tab-count-badge {
@@ -6139,7 +6139,7 @@ input:checked + .slider:before {
   background: transparent;
 }
 .btn-primary-start-camp {
-  background: #ff6b00;
+  background: #104B35;
   color: #ffffff;
   border: none;
   padding: 9px 20px;
@@ -6147,18 +6147,18 @@ input:checked + .slider:before {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25);
+  box-shadow: 0 4px 12px rgba(16, 75, 53, 0.25);
   transition: background 0.15s;
 }
 .btn-primary-start-camp:hover {
   background: #e05a00;
 }
-.OutFox-camp-grid {
+.cn-camp-grid {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
-.OutFox-camp-card {
+.cn-camp-card {
   background: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.85);
   border-radius: 20px;
@@ -6173,14 +6173,14 @@ input:checked + .slider:before {
   position: relative;
   cursor: pointer;
 }
-.OutFox-camp-card:has(.camp-3dots-menu.is-open),
-.OutFox-camp-card.has-open-menu {
+.cn-camp-card:has(.camp-3dots-menu.is-open),
+.cn-camp-card.has-open-menu {
   z-index: 100 !important;
   position: relative;
 }
-.OutFox-camp-card:hover {
-  border-color: rgba(255, 107, 0, 0.25);
-  box-shadow: 0 16px 32px -4px rgba(255, 107, 0, 0.1), inset 0 2px 4px rgba(255, 255, 255, 0.9);
+.cn-camp-card:hover {
+  border-color: rgba(16, 75, 53, 0.25);
+  box-shadow: 0 16px 32px -4px rgba(16, 75, 53, 0.1), inset 0 2px 4px rgba(255, 255, 255, 0.9);
   transform: translateY(-2px);
 }
 .camp-overview-pills-row {
@@ -6270,7 +6270,7 @@ input:checked + .slider:before {
 .camp-progress-fill {
   height: 100%;
   border-radius: 9999px;
-  background: linear-gradient(90deg, #ff741f 0%, #ff4d00 100%);
+  background: var(--cn-primary, #104B35);
   transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .camp-progress-fill.is-complete {
@@ -6345,9 +6345,9 @@ input:checked + .slider:before {
   cursor: default;
 }
 .btn-camp-card-live {
-  background: #fff7ed;
-  color: #ff6b00;
-  border: 1px solid #fed7aa;
+  background: #E6EFE9;
+  color: #104B35;
+  border: 1px solid #DCE5DE;
   font-size: 12.5px;
   font-weight: 700;
   padding: 8px 14px;
@@ -6359,7 +6359,7 @@ input:checked + .slider:before {
   transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .btn-camp-card-live:hover {
-  background: #ffedd5;
+  background: #DCE5DE;
   color: #e05a00;
   transform: translateY(-1px);
 }
@@ -6413,7 +6413,7 @@ input:checked + .slider:before {
   align-items: center;
   justify-content: center;
   position: relative;
-  color: #ff6b00;
+  color: #104B35;
   flex-shrink: 0;
 }
 .planet-avatar img {
@@ -6443,8 +6443,8 @@ input:checked + .slider:before {
   gap: 8px;
 }
 .camp-leads-pill {
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
   font-size: 12px;
   font-weight: 700;
   padding: 2px 8px;
@@ -6539,7 +6539,7 @@ input:checked + .slider:before {
 }
 
 /* ========================================================
-   CRITICAL OutFox MATCH FIXES & MEDIA TOOLS
+   CRITICAL Crafture MATCH FIXES & MEDIA TOOLS
    ======================================================== */
 /* 1. Fixed 240px sidebar retains full visibility regardless of hover state */
 .sidebar .sidebar-subnav {
@@ -6556,7 +6556,7 @@ input:checked + .slider:before {
   opacity: 1;
 }
 
-/* 2. Flat underline tabs with pill count badges matching OutFox Screenshot 3 */
+/* 2. Flat underline tabs with pill count badges matching Screenshot 3 */
 .camp-state-tabs-bar {
   display: flex !important;
   gap: 16px !important;
@@ -6588,14 +6588,14 @@ input:checked + .slider:before {
 }
 
 .camp-state-tab.is-active {
-  color: #ff6b00 !important;
-  border-bottom-color: #ff6b00 !important;
+  color: #104B35 !important;
+  border-bottom-color: #104B35 !important;
   font-weight: 700 !important;
 }
 
 .tab-count-badge {
-  background: #fff7ed !important;
-  color: #ff6b00 !important;
+  background: #E6EFE9 !important;
+  color: #104B35 !important;
   font-size: 11px !important;
   font-weight: 700 !important;
   padding: 2px 7px !important;
@@ -6617,7 +6617,7 @@ input:checked + .slider:before {
 }
 
 .tool-icon-btn:hover {
-  background: #fff7ed;
+  background: #E6EFE9;
   border-color: #c7d2fe;
 }
 
@@ -6629,7 +6629,7 @@ input:checked + .slider:before {
 }
 
 .btn-gif-text:hover {
-  color: #ff6b00;
+  color: #104B35;
 }
 
 .emoji-picker-popover {
@@ -6714,8 +6714,8 @@ input:checked + .slider:before {
 }
 
 .gif-item-card:hover {
-  background: #fff7ed;
-  border-color: #ff6b00;
+  background: #E6EFE9;
+  border-color: #104B35;
   transform: translateY(-1px);
 }
 
@@ -6739,7 +6739,7 @@ input:checked + .slider:before {
 }
 
 .att-chip {
-  background: #fff7ed;
+  background: #E6EFE9;
   border: 1px solid #c7d2fe;
   border-radius: 8px;
   padding: 4px 10px;
@@ -6803,7 +6803,7 @@ input:checked + .slider:before {
 }
 
 /* ========================================================
-   AUTHENTIC 1:1 OutFox HOME DASHBOARD STYLES (IMAGE 747b61)
+   AUTHENTIC 1:1 Crafture HOME DASHBOARD STYLES (IMAGE 747b61)
    ======================================================== */
 .topbar {
   height: 56px !important;
@@ -6828,7 +6828,7 @@ input:checked + .slider:before {
   color: #0f172a !important;
 }
 
-.OutFox-home-grid {
+.cn-home-grid {
   display: flex !important;
   gap: 28px !important;
   max-width: 1400px !important;
@@ -6851,7 +6851,7 @@ input:checked + .slider:before {
 }
 
 @media (max-width: 1080px) {
-  .OutFox-home-grid {
+  .cn-home-grid {
     flex-direction: column !important;
   }
   .home-side-col {
@@ -6918,7 +6918,7 @@ input:checked + .slider:before {
 
 .li-in-icon {
   background: #ffffff;
-  color: #ff6b00;
+  color: #104B35;
   font-size: 11px;
   font-weight: 800;
   padding: 1px 4px;
@@ -7049,8 +7049,8 @@ input:checked + .slider:before {
 }
 
 .round-blue {
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
 }
 .round-green {
   background: #ecfdf5;
@@ -7152,14 +7152,14 @@ input:checked + .slider:before {
 }
 
 .action-type-pill:hover {
-  background: #fff7ed;
+  background: #E6EFE9;
   border-color: #c7d2fe;
 }
 
 .action-type-pill.is-active {
   background: #ffffff;
-  border-color: #ff6b00;
-  box-shadow: 0 4px 14px rgba(255, 107, 0, 0.12);
+  border-color: #104B35;
+  box-shadow: 0 4px 14px rgba(16, 75, 53, 0.12);
 }
 
 .pill-ico {
@@ -7201,8 +7201,8 @@ input:checked + .slider:before {
 }
 
 .btn-download-chart-csv:hover {
-  color: #ff6b00;
-  border-color: #ff6b00;
+  color: #104B35;
+  border-color: #104B35;
 }
 
 .timeline-svg-container {
@@ -7218,7 +7218,7 @@ input:checked + .slider:before {
   padding: 22px;
 }
 
-.profile-card-OutFox {
+.profile-card-cn {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -7229,8 +7229,8 @@ input:checked + .slider:before {
   position: absolute;
   top: 16px;
   right: 16px;
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
   font-size: 11px;
   font-weight: 700;
   padding: 3px 8px;
@@ -7244,11 +7244,11 @@ input:checked + .slider:before {
   margin-top: 18px;
 }
 
-.OutFox-alien-avatar {
+.cn-alien-avatar {
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: #ff6b00;
+  background: #104B35;
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -7256,7 +7256,7 @@ input:checked + .slider:before {
   position: relative;
   font-size: 22px;
   font-weight: 800;
-  box-shadow: 0 8px 20px rgba(255, 107, 0, 0.25);
+  box-shadow: 0 8px 20px rgba(16, 75, 53, 0.25);
 }
 
 .li-corner-badge {
@@ -7279,7 +7279,7 @@ input:checked + .slider:before {
   margin: 12px 0 0 0;
 }
 
-.status-card-OutFox {
+.status-card-cn {
   display: flex;
   flex-direction: column;
 }
@@ -7298,9 +7298,9 @@ input:checked + .slider:before {
 }
 
 .badge-status-reached {
-  background: #fff7ed;
-  color: #ea580c;
-  border: 1px solid #ffedd5;
+  background: #E6EFE9;
+  color: #167448;
+  border: 1px solid #DCE5DE;
   font-size: 11px;
   font-weight: 700;
   padding: 2px 8px;
@@ -7345,8 +7345,8 @@ input:checked + .slider:before {
 }
 
 .icon-bg-blue {
-  background: #fff7ed;
-  color: #ff6b00;
+  background: #E6EFE9;
+  color: #104B35;
 }
 .icon-bg-purple {
   background: #f5f3ff;
@@ -7450,12 +7450,12 @@ input:checked + .slider:before {
 }
 
 /* ========================================================
-   OutFox SETTINGS: EMAIL ACCOUNTS & MODAL (STEP 2)
+   Crafture SETTINGS: EMAIL ACCOUNTS & MODAL (STEP 2)
    ======================================================== */
 .settings-email-scroll {
   max-width: 900px;
 }
-.OutFox-white-card {
+.cn-white-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
@@ -7524,7 +7524,7 @@ input:checked + .slider:before {
 }
 .email-addr-txt {
   font-family: monospace;
-  color: #ff6b00;
+  color: #104B35;
   font-weight: 600;
 }
 .btn-disconnect-acc {
@@ -7543,7 +7543,7 @@ input:checked + .slider:before {
 .btn-link-add-email {
   background: transparent;
   border: none;
-  color: #ff6b00;
+  color: #104B35;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -7572,7 +7572,7 @@ input:checked + .slider:before {
   font-weight: 600;
   color: #64748b;
 }
-.OutFox-select-small {
+.cn-select-small {
   background: #ffffff;
   border: 1.5px solid #e2e8f0;
   border-radius: 8px;
@@ -7594,7 +7594,7 @@ input:checked + .slider:before {
 .btn-sig-link {
   background: transparent;
   border: none;
-  color: #ff6b00;
+  color: #104B35;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -7618,9 +7618,9 @@ input:checked + .slider:before {
 }
 .sig-nav-item:hover,
 .sig-nav-item.is-active {
-  background: #fff7ed;
-  border-color: #ff6b00;
-  color: #ff6b00;
+  background: #E6EFE9;
+  border-color: #104B35;
+  color: #104B35;
   font-weight: 600;
 }
 .btn-del-sig {
@@ -7670,7 +7670,7 @@ input:checked + .slider:before {
   margin: 0 0 18px 0;
 }
 .btn-create-sig-blue {
-  background: #ff6b00;
+  background: #104B35;
   color: #ffffff;
   border: none;
   padding: 10px 24px;
@@ -7678,7 +7678,7 @@ input:checked + .slider:before {
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(255, 107, 0, 0.25);
+  box-shadow: 0 4px 14px rgba(16, 75, 53, 0.25);
   transition: background 0.15s;
 }
 .btn-create-sig-blue:hover {
@@ -7732,14 +7732,14 @@ input:checked + .slider:before {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 .btn-connect-provider:hover {
-  border-color: #ff6b00;
+  border-color: #104B35;
   background: #f8fafc;
-  box-shadow: 0 4px 12px rgba(255, 107, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(16, 75, 53, 0.1);
   transform: translateY(-1px);
 }
 
 /* ========================================================
-   OutFox SETTINGS: INTEGRATIONS & IMPORT HISTORY (STEP 3)
+   Crafture SETTINGS: INTEGRATIONS & IMPORT HISTORY (STEP 3)
    ======================================================== */
 .settings-integrations-scroll,
 .settings-history-scroll {
@@ -7764,14 +7764,14 @@ input:checked + .slider:before {
 }
 .integration-item-card:hover {
   border-color: #c7d2fe;
-  box-shadow: 0 8px 24px rgba(255, 107, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(16, 75, 53, 0.08);
   transform: translateY(-1px);
 }
 .int-card-badge-top {
   position: absolute;
   top: 18px;
   right: 18px;
-  background: #ff6b00;
+  background: #104B35;
   color: #ffffff;
   font-size: 11px;
   font-weight: 700;
@@ -7809,8 +7809,8 @@ input:checked + .slider:before {
 }
 .btn-int-action {
   background: #ffffff;
-  border: 1.5px solid #ff6b00;
-  color: #ff6b00;
+  border: 1.5px solid #104B35;
+  color: #104B35;
   border-radius: 20px;
   padding: 8px 18px;
   font-size: 12.5px;
@@ -7820,13 +7820,13 @@ input:checked + .slider:before {
   transition: all 0.15s ease;
 }
 .btn-int-action:hover {
-  background: #fff7ed;
+  background: #E6EFE9;
 }
 .btn-int-active {
-  background: #ff6b00;
+  background: #104B35;
   color: #ffffff;
   border: none;
-  box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25);
+  box-shadow: 0 4px 12px rgba(16, 75, 53, 0.25);
 }
 .btn-int-active:hover {
   background: #e05a00;
@@ -7880,9 +7880,9 @@ input:checked + .slider:before {
 }
 
 /* ==========================================================================
-   OutFox Global Claymorphism Design System & View Transitions
+   Crafture Global Claymorphism Design System & View Transitions
    ========================================================================== */
-body.OutFox-layout {
+body.cn-layout {
   background-color: #F8FAFC !important;
 }
 
@@ -7891,7 +7891,7 @@ body.OutFox-layout {
 }
 
 /* Rounded Cards across all views */
-.OutFox-card,
+.cn-card,
 .kpi-card-white,
 .actions-sent-card,
 .side-card,
@@ -8075,7 +8075,7 @@ button:active,
 
 /* Accessible Focus Rings */
 :focus-visible {
-  outline: 2px solid var(--accent, #ff6b00);
+  outline: 2px solid var(--accent, #104B35);
   outline-offset: 2px;
 }
 
@@ -8083,8 +8083,8 @@ button:active,
 .crm-filter-select:focus-visible,
 .crm-filter-btn:focus-visible,
 .delay-select-pill:focus-visible,
-.outfox-logs-pill:focus-visible {
-  outline: 2px solid var(--accent, #ff6b00);
+.cn-logs-pill:focus-visible {
+  outline: 2px solid var(--accent, #104B35);
   outline-offset: 2px;
 }
 
@@ -8113,7 +8113,7 @@ button:active,
   width: 100%;
 }
 
-.outfox-not-logged-in-banner {
+.cn-not-logged-in-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -8193,15 +8193,15 @@ button:active,
   font-size: 12px;
   font-weight: 600;
   color: #FFFFFF;
-  background: #F97316;
-  border: 1px solid #EA580C;
+  background: #104B35;
+  border: 1px solid #167448;
   border-radius: 6px;
   cursor: pointer;
   transition: background 150ms ease;
 }
 
 .btn-open-linkedin-login:hover {
-  background: #EA580C;
+  background: #167448;
 }
 
 .btn-check-again-login {

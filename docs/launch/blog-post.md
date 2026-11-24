@@ -1,10 +1,10 @@
-# Why I open-sourced a OutFox alternative
+# Why I open-sourced Crafture Network: a free outreach engine
 
 _For dev.to, Hashnode, and a LinkedIn article. ~1,230 words._
 
 ---
 
-OutFox Pro is about €70 a month. PhantomBuster starts near $69. Sales-Mind is around $99. For
+Waalaxy Pro is about €70 a month. PhantomBuster starts near $69. Sales-Mind is around $99. For
 that you get a browser extension or a cloud runner, a sequence builder, and a dashboard.
 
 I built the same thing, gave it away under MIT, and made it work with AI agents. This is why.

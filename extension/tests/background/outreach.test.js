@@ -85,7 +85,45 @@ describe('withdrawStaleInvites', () => {
 
     expect(withdrawSpy).toHaveBeenCalledTimes(2);
     expect(domFallbackSpy).toHaveBeenCalledWith(
-      [mockInvites[2], mockInvites[3]],
+      [mockInvites[0], mockInvites[1], mockInvites[2], mockInvites[3]],
+      expect.objectContaining({ olderThanDays: 14, maxCount: 10 }),
+    );
+    expect(res.withdrawnCount).toBe(2);
+    expect(res.method).toBe('dom_fallback');
+
+    fetchSpy.mockRestore();
+    withdrawSpy.mockRestore();
+    domFallbackSpy.mockRestore();
+  });
+
+  it('hands off failed invites even when remainingBatch is empty (2 total invites failing SDUI)', async () => {
+    const now = Date.now();
+    const staleTime = now - 20 * 24 * 60 * 60 * 1000;
+
+    const mockInvites = [
+      { invitationId: '101', sentTime: staleTime, publicId: 'p1', vanityName: 'p1' },
+      { invitationId: '102', sentTime: staleTime, publicId: 'p2', vanityName: 'p2' },
+    ];
+
+    const fetchSpy = vi.spyOn(voyager, 'fetchSentInvitations').mockResolvedValue(mockInvites);
+    const withdrawSpy = vi
+      .spyOn(voyager, 'withdrawInvitation')
+      .mockRejectedValue(new Error('SDUI error: 400 Bad Request'));
+
+    const domFallbackSpy = vi.spyOn(voyager, 'withdrawViaDomFallback').mockResolvedValue({
+      withdrawn: 2,
+      failed: 0,
+      results: [
+        { invitationId: '101', publicId: 'p1', success: true },
+        { invitationId: '102', publicId: 'p2', success: true },
+      ],
+    });
+
+    const res = await outreach.withdrawStaleInvites({ olderThanDays: 14, maxCount: 10 });
+
+    expect(withdrawSpy).toHaveBeenCalledTimes(2);
+    expect(domFallbackSpy).toHaveBeenCalledWith(
+      [mockInvites[0], mockInvites[1]],
       expect.objectContaining({ olderThanDays: 14, maxCount: 10 }),
     );
     expect(res.withdrawnCount).toBe(2);
@@ -406,7 +444,8 @@ describe('auto-withdraw cleanup scheduler', () => {
       expect(withdrawSpy).toHaveBeenCalledWith(
         '7504239478362759168',
         expect.objectContaining({
-          profileUrn: 'urn:li:member:123456',
+          profileUrn: 'ACoAA0106FIXTURE',
+          toMemberUrn: 'urn:li:member:123456',
           entityUrn: 'urn:li:fs_relInvitation:7504239478362759168',
           publicId: 'adalovelace',
           firstName: 'Ada',

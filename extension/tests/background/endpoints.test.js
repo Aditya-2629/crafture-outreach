@@ -4,6 +4,7 @@ import {
   DEFAULT_ENDPOINTS,
   initEndpoints,
   getEndpoint,
+  getEndpointConfig,
   syncEndpointsFromVault,
   reportBrokenEndpoint,
   runReadOnlyEndpointAudit,
@@ -279,5 +280,72 @@ describe('endpoints', () => {
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(getConsecutiveFailures(key)).toBe(0);
+  });
+
+  describe('Vault hot-swap strategy mode & JSON metadata config', () => {
+    it('returns default config with mode sdui_first and empty meta', () => {
+      const cfg = getEndpointConfig('sendInvite');
+      expect(cfg).toEqual({
+        url: DEFAULT_ENDPOINTS.sendInvite,
+        mode: 'sdui_first',
+        meta: {},
+      });
+      expect(getEndpoint('sendInvite')).toBe(DEFAULT_ENDPOINTS.sendInvite);
+    });
+
+    it('stores and returns mode and meta when Vault syncs rich endpoint objects', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          endpoints: {
+            sendInvite: {
+              url: '/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaAddConnection',
+              mode: 'dom_first',
+              meta: {
+                screenId: 'CustomDialogScreen',
+                queryName: 'CustomRelationshipQuery',
+                requestedStateKeys: [{ key: { value: { $case: 'id', id: 'customId' } }, namespace: '' }],
+                extraPayload: { flag: true },
+              },
+            },
+          },
+        }),
+      });
+
+      const res = await syncEndpointsFromVault(true);
+      expect(res.ok).toBe(true);
+      expect(res.changed).toBe(true);
+
+      const cfg = getEndpointConfig('sendInvite');
+      expect(cfg.url).toBe('/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaAddConnection');
+      expect(cfg.mode).toBe('dom_first');
+      expect(cfg.meta.screenId).toBe('CustomDialogScreen');
+      expect(cfg.meta.queryName).toBe('CustomRelationshipQuery');
+      expect(cfg.meta.extraPayload).toEqual({ flag: true });
+
+      // getEndpoint still returns plain URL string
+      expect(getEndpoint('sendInvite')).toBe('/flagship-web/rsc-action/actions/server-request?sduiid=com.linkedin.sdui.requests.mynetwork.addaAddConnection');
+    });
+
+    it('maintains backwards compatibility when Vault syncs plain string URL', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          endpoints: {
+            likePost: '/flagship-web/rsc-action/actions/server-request?sduiid=newLikeV2',
+          },
+        }),
+      });
+
+      const res = await syncEndpointsFromVault(true);
+      expect(res.ok).toBe(true);
+      expect(res.changed).toBe(true);
+
+      const cfg = getEndpointConfig('likePost');
+      expect(cfg.url).toBe('/flagship-web/rsc-action/actions/server-request?sduiid=newLikeV2');
+      expect(cfg.mode).toBe('sdui_first');
+      expect(cfg.meta).toEqual({});
+      expect(getEndpoint('likePost')).toBe('/flagship-web/rsc-action/actions/server-request?sduiid=newLikeV2');
+    });
   });
 });

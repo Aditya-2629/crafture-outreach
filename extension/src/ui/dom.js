@@ -1,5 +1,5 @@
 /**
- * OutFox — tiny DOM helpers.
+ * Crafture Network — tiny DOM helpers.
  *
  * No framework, no build step. Everything the popup and the options page draw
  * goes through `el()` and `render()`, so no UI code ever touches `innerHTML`

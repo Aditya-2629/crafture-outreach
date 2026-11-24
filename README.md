@@ -1,4 +1,4 @@
-# OutFox 🦊
+# Crafture Network 🌿
 > Intelligent Multi-Channel Outreach Engine for LinkedIn & Email Automation.
 
 ## Features

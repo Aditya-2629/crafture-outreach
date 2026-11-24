@@ -1,5 +1,5 @@
 /**
- * OutFox — quotas, business hours, warm-up, backoff and pacing.
+ * Crafture Network — quotas, business hours, warm-up, backoff and pacing.
  *
  * Every write in the engine goes `check(kind)` → `humanDelay()` → the Voyager
  * call → `record(kind)`. Reads that consume a metered resource (search
@@ -254,7 +254,7 @@ export function isWithinBusinessHours(config, now = new Date()) {
 /*  Persistent Bucket Cooldowns                                       */
 /* ================================================================== */
 
-export const BUCKET_COOLDOWNS_KEY = K.BUCKET_COOLDOWNS || 'outfox_bucket_cooldowns';
+export const BUCKET_COOLDOWNS_KEY = K.BUCKET_COOLDOWNS || 'crafture_bucket_cooldowns';
 
 export function normalizeQuotaKind(kind) {
   if (!kind) return kind;
@@ -645,7 +645,9 @@ function toRateLimit(state, kind, hourlyCap, dailyCap, now, config) {
   };
   Object.defineProperties(res, {
     usedToday: { value: state.daily[kind], enumerable: false, configurable: true },
+    used: { value: state.daily[kind], enumerable: false, configurable: true },
     max: { value: dailyCap, enumerable: false, configurable: true },
+    remaining: { value: Math.max(0, dailyCap - state.daily[kind]), enumerable: false, configurable: true },
     weeklyUsed: { value: weeklyUsed, enumerable: false, configurable: true },
     weeklyCap: { value: weeklyCap, enumerable: false, configurable: true },
   });

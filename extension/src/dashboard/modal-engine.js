@@ -1,5 +1,5 @@
 /**
- * OutFox — OutFox In-UI Native Modal & Dialog System
+ * Crafture Network — Crafture Network In-UI Native Modal & Dialog System
  * Zero browser prompts/confirms/alerts — 100% native in-UI modals.
  */
 
@@ -10,27 +10,27 @@ import { ICONS } from '../ui/icons.js';
  */
 export function openUiPrompt({ title, subtitle = '', label = '', placeholder = '', defaultValue = '', confirmText = 'Confirm', confirmDanger = false }) {
   return new Promise((resolve) => {
-    const existing = document.getElementById('OutFox-modal-backdrop');
+    const existing = (document.getElementById('cn-modal-backdrop'));
     if (existing) existing.remove();
 
     const backdrop = document.createElement('div');
-    backdrop.id = 'OutFox-modal-backdrop';
-    backdrop.className = 'OutFox-modal-backdrop';
+    backdrop.id = 'cn-modal-backdrop';
+    backdrop.className = 'cn-modal-backdrop';
 
     backdrop.innerHTML = `
-      <div class="OutFox-modal-card">
-        <div class="OutFox-modal-head">
-          <h3 class="OutFox-modal-title">${title}</h3>
-          <button type="button" class="OutFox-modal-close" id="modal-btn-close">${ICONS.x}</button>
+      <div class="cn-modal-card">
+        <div class="cn-modal-head">
+          <h3 class="cn-modal-title">${title}</h3>
+          <button type="button" class="cn-modal-close" id="modal-btn-close">${ICONS.x}</button>
         </div>
-        ${subtitle ? `<p class="OutFox-modal-subtitle">${subtitle}</p>` : ''}
+        ${subtitle ? `<p class="cn-modal-subtitle">${subtitle}</p>` : ''}
         
-        <div class="OutFox-modal-body">
-          ${label ? `<label class="OutFox-input-label">${label}</label>` : ''}
-          <input type="text" id="OutFox-modal-input" class="OutFox-modal-input" placeholder="${placeholder}" value="${defaultValue}" />
+        <div class="cn-modal-body">
+          ${label ? `<label class="cn-input-label">${label}</label>` : ''}
+          <input type="text" id="cn-modal-input" class="cn-modal-input" placeholder="${placeholder}" value="${defaultValue}" />
         </div>
 
-        <div class="OutFox-modal-footer">
+        <div class="cn-modal-footer">
           <button type="button" class="btn-modal-ghost" id="modal-btn-cancel">Cancel</button>
           <button type="button" class="btn-modal-primary ${confirmDanger ? 'btn-modal-danger' : ''}" id="modal-btn-confirm">
             ${confirmText}
@@ -41,7 +41,7 @@ export function openUiPrompt({ title, subtitle = '', label = '', placeholder = '
 
     document.body.appendChild(backdrop);
 
-    const input = backdrop.querySelector('#OutFox-modal-input');
+    const input = backdrop.querySelector('#cn-modal-input');
     const closeBtn = backdrop.querySelector('#modal-btn-close');
     const cancelBtn = backdrop.querySelector('#modal-btn-cancel');
     const confirmBtn = backdrop.querySelector('#modal-btn-confirm');
@@ -92,25 +92,25 @@ export function openUiPrompt({ title, subtitle = '', label = '', placeholder = '
  */
 export function openUiConfirm({ title, message, confirmText = 'Confirm', confirmDanger = false }) {
   return new Promise((resolve) => {
-    const existing = document.getElementById('OutFox-modal-backdrop');
+    const existing = (document.getElementById('cn-modal-backdrop'));
     if (existing) existing.remove();
 
     const backdrop = document.createElement('div');
-    backdrop.id = 'OutFox-modal-backdrop';
-    backdrop.className = 'OutFox-modal-backdrop';
+    backdrop.id = 'cn-modal-backdrop';
+    backdrop.className = 'cn-modal-backdrop';
 
     backdrop.innerHTML = `
-      <div class="OutFox-modal-card">
-        <div class="OutFox-modal-head">
-          <h3 class="OutFox-modal-title">${title}</h3>
-          <button type="button" class="OutFox-modal-close" id="modal-btn-close">${ICONS.x}</button>
+      <div class="cn-modal-card">
+        <div class="cn-modal-head">
+          <h3 class="cn-modal-title">${title}</h3>
+          <button type="button" class="cn-modal-close" id="modal-btn-close">${ICONS.x}</button>
         </div>
         
-        <div class="OutFox-modal-body">
-          <div class="OutFox-confirm-message">${message}</div>
+        <div class="cn-modal-body">
+          <div class="cn-confirm-message">${message}</div>
         </div>
 
-        <div class="OutFox-modal-footer">
+        <div class="cn-modal-footer">
           <button type="button" class="btn-modal-ghost" id="modal-btn-cancel">Cancel</button>
           <button type="button" class="btn-modal-primary ${confirmDanger ? 'btn-modal-danger' : ''}" id="modal-btn-confirm">
             ${confirmText}
@@ -161,25 +161,25 @@ export function openUiConfirm({ title, message, confirmText = 'Confirm', confirm
  */
 export function openUiSelectModal({ title, label, options = [], confirmText = 'Move' }) {
   return new Promise((resolve) => {
-    const existing = document.getElementById('OutFox-modal-backdrop');
+    const existing = (document.getElementById('cn-modal-backdrop'));
     if (existing) existing.remove();
 
     const backdrop = document.createElement('div');
-    backdrop.id = 'OutFox-modal-backdrop';
-    backdrop.className = 'OutFox-modal-backdrop';
+    backdrop.id = 'cn-modal-backdrop';
+    backdrop.className = 'cn-modal-backdrop';
 
     backdrop.innerHTML = `
-      <div class="OutFox-modal-card">
-        <div class="OutFox-modal-head">
-          <h3 class="OutFox-modal-title">${title}</h3>
-          <button type="button" class="OutFox-modal-close" id="modal-btn-close">${ICONS.x}</button>
+      <div class="cn-modal-card">
+        <div class="cn-modal-head">
+          <h3 class="cn-modal-title">${title}</h3>
+          <button type="button" class="cn-modal-close" id="modal-btn-close">${ICONS.x}</button>
         </div>
         
-        <div class="OutFox-modal-body">
-          <label class="OutFox-input-label">${label}</label>
-          <div class="OutFox-select-list">
+        <div class="cn-modal-body">
+          <label class="cn-input-label">${label}</label>
+          <div class="cn-select-list">
             ${options.map((opt, i) => `
-              <label class="OutFox-select-item">
+              <label class="cn-select-item">
                 <input type="radio" name="ui_select_opt" value="${opt.id}" ${i === 0 ? 'checked' : ''} />
                 <span class="select-item-name">${opt.name}</span>
                 <span class="select-item-count">${opt.count !== undefined ? `${opt.count} leads` : ''}</span>
@@ -188,7 +188,7 @@ export function openUiSelectModal({ title, label, options = [], confirmText = 'M
           </div>
         </div>
 
-        <div class="OutFox-modal-footer">
+        <div class="cn-modal-footer">
           <button type="button" class="btn-modal-ghost" id="modal-btn-cancel">Cancel</button>
           <button type="button" class="btn-modal-primary" id="modal-btn-confirm">${confirmText}</button>
         </div>
@@ -241,7 +241,7 @@ export function openUiAlert({ title = 'Notice', message, confirmText = 'OK' }) {
 }
 
 /**
- * Native Lead Timeline Modal (Fox Orange #ff6b00 theme)
+ * Native Lead Timeline Modal (Fox Orange #104B35 theme)
  * Displays chronological step history, current status, countdown, and error/cooldown details.
  */
 export async function openLeadTimelineModal({ lead = null, publicId = '', campaignId = '', campaignName = '' } = {}) {
@@ -257,7 +257,7 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
         const enrollments = data[`enrollments:${c.campaignId}`] || [];
         const found = enrollments.find((e) => e.publicId === publicId);
         if (found) {
-          campName = campName || c.name || 'OutFox Campaign';
+          campName = campName || c.name || 'Crafture Campaign';
           const profile = data[`profile:${publicId}`] || (data.profiles && data.profiles[publicId]) || {};
           targetLead = {
             publicId,
@@ -296,12 +296,12 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
   }
 
   return new Promise((resolve) => {
-    const existing = document.getElementById('OutFox-timeline-modal-backdrop');
+    const existing = (document.getElementById('cn-timeline-modal-backdrop'));
     if (existing) existing.remove();
 
     const backdrop = document.createElement('div');
-    backdrop.id = 'OutFox-timeline-modal-backdrop';
-    backdrop.className = 'OutFox-modal-backdrop';
+    backdrop.id = 'cn-timeline-modal-backdrop';
+    backdrop.className = 'cn-modal-backdrop';
 
     const now = Date.now();
     const status = String(targetLead.status || 'active').toLowerCase();
@@ -387,12 +387,12 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
     const initial = (targetLead.fullName?.[0] || targetLead.publicId?.[0] || 'L').toUpperCase();
 
     backdrop.innerHTML = `
-      <div class="OutFox-modal-card" style="max-width: 580px; width: 92%; max-height: 88vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 16px; border: 1px solid #fed7aa; box-shadow: 0 20px 40px rgba(255, 107, 0, 0.12), 0 1px 3px rgba(0,0,0,0.1);">
+      <div class="cn-modal-card" style="max-width: 580px; width: 92%; max-height: 88vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 16px; border: 1px solid #DCE5DE; box-shadow: 0 20px 40px rgba(16, 75, 53, 0.12), 0 1px 3px rgba(0,0,0,0.1);">
         
         <!-- Header -->
-        <div style="background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); padding: 20px 24px; border-bottom: 1px solid #fed7aa; display: flex; justify-content: space-between; align-items: flex-start;">
+        <div style="background: linear-gradient(135deg, #E6EFE9 0%, #DCE5DE 100%); padding: 20px 24px; border-bottom: 1px solid #DCE5DE; display: flex; justify-content: space-between; align-items: flex-start;">
           <div style="display: flex; gap: 14px; align-items: center;">
-            <div style="width: 44px; height: 44px; border-radius: 50%; background: #ff6b00; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; box-shadow: 0 4px 10px rgba(255, 107, 0, 0.3);">
+            <div style="width: 44px; height: 44px; border-radius: 50%; background: #104B35; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; box-shadow: 0 4px 10px rgba(16, 75, 53, 0.3);">
               ${initial}
             </div>
             <div>
@@ -402,12 +402,12 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
               </div>
               <div style="font-size: 12.5px; color: #64748b; margin-top: 3px;">
                 ${targetLead.company ? `<span>${targetLead.company}</span> · ` : ''}
-                <span style="color: #ff6b00; font-weight: 600;">${campName || 'Campaign'}</span>
+                <span style="color: #104B35; font-weight: 600;">${campName || 'Campaign'}</span>
                 ${targetLead.email ? ` · <span style="color: #475569;">${targetLead.email}</span>` : ''}
               </div>
             </div>
           </div>
-          <button type="button" class="OutFox-modal-close" id="modal-btn-close" style="color: #64748b; background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;">${ICONS.x}</button>
+          <button type="button" class="cn-modal-close" id="modal-btn-close" style="color: #64748b; background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;">${ICONS.x}</button>
         </div>
 
         <!-- Body Scrollable -->
@@ -417,7 +417,7 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
           <div style="background: #ffffff; border: 1px solid #f1f5f9; border-radius: 12px; padding: 16px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
               <span style="font-size: 11.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Current Position</span>
-              <span style="font-size: 12.5px; font-weight: 600; color: #ff6b00;">${targetLead.currentStepLabel || 'In Progress'}</span>
+              <span style="font-size: 12.5px; font-weight: 600; color: #104B35;">${targetLead.currentStepLabel || 'In Progress'}</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <span style="font-size: 11.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Next Scheduled Run</span>
@@ -441,11 +441,11 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
               <span style="font-size: 11px; background: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 9999px;">${historyItems.length} events</span>
             </h4>
 
-            <div style="position: relative; padding-left: 28px; border-left: 2px solid #ffedd5; margin-left: 10px;">
+            <div style="position: relative; padding-left: 28px; border-left: 2px solid #DCE5DE; margin-left: 10px;">
               ${historyItems.map((h, i) => `
                 <div style="position: relative; margin-bottom: 20px;">
                   <!-- Dot -->
-                  <div style="position: absolute; left: -37px; top: 0px; width: 20px; height: 20px; border-radius: 50%; background: #fff7ed; border: 2px solid #ff6b00; display: flex; align-items: center; justify-content: center; font-size: 10px;">
+                  <div style="position: absolute; left: -37px; top: 0px; width: 20px; height: 20px; border-radius: 50%; background: #E6EFE9; border: 2px solid #104B35; display: flex; align-items: center; justify-content: center; font-size: 10px;">
                     ${getStepIcon(h)}
                   </div>
                   <div style="display: flex; justify-content: space-between; align-items: baseline;">
@@ -463,11 +463,11 @@ export async function openLeadTimelineModal({ lead = null, publicId = '', campai
         <!-- Footer -->
         <div style="padding: 14px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
           ${targetLead.publicId ? `
-            <a href="https://www.linkedin.com/in/${targetLead.publicId}" target="_blank" style="font-size: 12px; color: #ff6b00; font-weight: 600; text-decoration: none; display: flex; align-items: center; gap: 4px;">
+            <a href="https://www.linkedin.com/in/${targetLead.publicId}" target="_blank" style="font-size: 12px; color: #104B35; font-weight: 600; text-decoration: none; display: flex; align-items: center; gap: 4px;">
               View LinkedIn Profile ↗
             </a>
           ` : '<div></div>'}
-          <button type="button" class="btn-modal-primary" id="modal-btn-close-footer" style="padding: 7px 18px; font-size: 12.5px; background: #ff6b00; color: #ffffff; border-radius: 8px; border: none; cursor: pointer; font-weight: 600;">
+          <button type="button" class="btn-modal-primary" id="modal-btn-close-footer" style="padding: 7px 18px; font-size: 12.5px; background: #104B35; color: #ffffff; border-radius: 8px; border: none; cursor: pointer; font-weight: 600;">
             Close
           </button>
         </div>

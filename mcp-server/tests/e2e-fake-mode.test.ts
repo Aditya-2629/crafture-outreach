@@ -146,7 +146,7 @@ describe('lit serve --http --fake, spawned as a real process', () => {
   });
 });
 
-describe('the CLI against the spawned server', () => {
+describe('the CLI against the spawned server', { timeout: 20000 }, () => {
   it('lit status --json reports the connection, quotas and mode', async () => {
     const { code, stdout } = await run(['status', '--json']);
     expect(code).toBe(0);

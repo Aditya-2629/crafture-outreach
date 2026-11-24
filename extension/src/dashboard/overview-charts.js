@@ -1,6 +1,7 @@
 /**
- * OutFox — Overview Data Visualizations Engine
- * ApexCharts-powered Neon Radial Bar, OutFox Conversion Funnel, and Weekly Area Chart.
+ * Crafture Network — Overview Data Visualizations Engine
+ * ApexCharts-powered Radial Bar, Conversion Funnel, and Weekly Area Chart.
+ * Forest Green (#104B35) + Accent (#43C878) + Secondary (#167448)
  */
 
 /**
@@ -53,7 +54,7 @@ export function renderDashboardCharts(container, stats = {}) {
       <div class="chart-card glass-card">
         <div class="chart-card-head">
           <div class="chart-title">Weekly Touch Velocity</div>
-          <span class="chart-badge chart-badge-purple">Mon – Sun</span>
+          <span class="chart-badge">Mon – Sun</span>
         </div>
         <div class="chart-body" id="chart-area-weekly"></div>
         <div class="chart-foot">
@@ -66,7 +67,7 @@ export function renderDashboardCharts(container, stats = {}) {
     <div class="chart-card glass-card chart-card-full">
       <div class="chart-card-head">
         <div>
-          <div class="chart-title">OutFox Conversion Funnel</div>
+          <div class="chart-title">Conversion Funnel</div>
           <div class="chart-sub">End-to-end drop-off & response conversion analysis</div>
         </div>
         <span class="chart-badge chart-badge-mint">45.6% Acceptance</span>
@@ -91,7 +92,7 @@ export function renderDashboardCharts(container, stats = {}) {
         height: 220,
       },
       series: [quotaPct],
-      colors: ['#5A45FF', '#00F298'],
+      colors: ['#104B35', '#43C878'],
       labels: ['Daily Invites'],
       plotOptions: {
         radialBar: {
@@ -145,15 +146,15 @@ export function renderDashboardCharts(container, stats = {}) {
         theme: 'light',
         x: { show: true },
         transition: {
-          duration: 180,
+          duration: 150,
         },
       },
-      colors: ['#ff6b00'],
+      colors: ['#104B35'],
       fill: {
         type: 'gradient',
         gradient: {
           shadeIntensity: 1,
-          opacityFrom: 0.45,
+          opacityFrom: 0.35,
           opacityTo: 0.05,
           stops: [0, 95, 100],
         },
@@ -163,7 +164,7 @@ export function renderDashboardCharts(container, stats = {}) {
     container._activeCharts.push(weeklyChart);
   }
 
-  // 3. OutFox Conversion Funnel Bar
+  // 3. Crafture Network Conversion Funnel Bar
   const funnelEl = container.querySelector('#chart-funnel-bar');
   let funnelChart = null;
   if (funnelEl) {
@@ -205,10 +206,10 @@ export function renderDashboardCharts(container, stats = {}) {
       tooltip: {
         theme: 'light',
         transition: {
-          duration: 180,
+          duration: 150,
         },
       },
-      colors: ['#ff6b00', '#00C2FF', '#10b981'],
+      colors: ['#104B35', '#167448', '#43C878'],
     });
     funnelChart.render();
     container._activeCharts.push(funnelChart);

@@ -1,5 +1,5 @@
 /**
- * OutFox — Full-Page Research & Dossier View
+ * Crafture Network — Full-Page Research & Dossier View
  *
  * Automated prospect intelligence engine:
  * 1. Single profile quick-lookup dossier generator.
@@ -8,7 +8,7 @@
  * 4. Buying & outreach signal extraction (job changes, posting habits, mutuals, hiring).
  * 5. Instant CSV & Markdown dossier exports.
  *
- * 100% Manifest V3 CSP Compliant · Vector SVG Icons · Pure OutFox Design System
+ * 100% Manifest V3 CSP Compliant · Vector SVG Icons · Pure Crafture Network Design System
  */
 
 import { call } from '../ui/api.js';
@@ -89,9 +89,9 @@ function formatSignalPill(signal) {
 }
 
 function ensureResearchStyles() {
-  if (document.getElementById('outfox-research-styles')) return;
+  if ((document.getElementById('cn-research-styles'))) return;
   const style = document.createElement('style');
-  style.id = 'outfox-research-styles';
+  style.id = 'cn-research-styles';
   style.textContent = `
     .research-view-shell {
       display: flex;
@@ -149,7 +149,7 @@ function ensureResearchStyles() {
       transition: all 0.2s ease;
     }
     .research-dropzone:hover, .research-dropzone.is-over {
-      border-color: #ff6b00;
+      border-color: #104B35;
       background: #fffbf7;
     }
     .research-pill {
@@ -163,7 +163,7 @@ function ensureResearchStyles() {
     }
     .pill-green { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
     .pill-blue { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
-    .pill-orange { background: #fff7ed; color: #ea580c; border: 1px solid #fed7aa; }
+    .pill-orange { background: #E6EFE9; color: #167448; border: 1px solid #DCE5DE; }
     .pill-purple { background: #faf5ff; color: #7e22ce; border: 1px solid #e9d5ff; }
     .pill-teal { background: #f0fdfa; color: #0d9488; border: 1px solid #99f6e4; }
     .pill-slate { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
@@ -195,6 +195,54 @@ function ensureResearchStyles() {
       overflow-y: auto;
       border: 1px solid #e2e8f0;
     }
+
+    /* Research Dossier Drawer */
+    .research-drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.4);
+      backdrop-filter: blur(2px);
+      z-index: 1000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .research-drawer-backdrop.is-open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .research-drawer {
+      width: 100%;
+      max-width: 580px;
+      height: 100vh;
+      background: #ffffff;
+      box-shadow: -4px 0 24px rgba(15, 23, 42, 0.15);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .research-drawer-backdrop.is-open .research-drawer {
+      transform: translateX(0);
+    }
+    .research-drawer-head {
+      padding: 18px 24px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #ffffff;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .research-drawer-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -218,6 +266,8 @@ export async function renderResearchView(container, ctx = {}) {
   let packs = [];
   let pollTimer = null;
   let lastError = null;
+  const openDossierIndices = new Set();
+  let activeDrawerPackIdx = null;
 
   // Checkbox & input options
   let fullCapture = true;
@@ -240,11 +290,11 @@ export async function renderResearchView(container, ctx = {}) {
     activeJobId = jobId;
     jobStatus = 'running';
     startedAt = Date.now();
-    pollTimer = setInterval(pollJob, POLL_INTERVAL_MS);
-    pollJob();
+    pollTimer = setInterval(() => pollJob(true), POLL_INTERVAL_MS);
+    pollJob(false);
   }
 
-  async function pollJob() {
+  async function pollJob(isSilent = true) {
     if (!activeJobId) return;
     if (ctx?.isStale?.() || (ctx?.isActiveView && !ctx.isActiveView())) {
       stopPolling();
@@ -265,14 +315,37 @@ export async function renderResearchView(container, ctx = {}) {
           ctx.showToast?.(`Research Pack completed! ${packs.length} dossiers generated.`, 'success');
         }
       }
-      paint();
+      paint(isSilent);
     } catch (err) {
       stopPolling();
       lastError = err?.message || 'Failed to poll research job';
       ctx.showToast?.(`Research error: ${lastError}`, 'error');
-      paint();
+      paint(false);
     }
   }
+
+  // Check for active running or latest research jobs on mount
+  (async () => {
+    try {
+      const allJobs = await call(ACTIONS.RESEARCH_LIST, {}).catch(async () => {
+        return (typeof chrome !== 'undefined' && chrome.storage?.local?.get)
+          ? (await chrome.storage.local.get('research_jobs'))?.research_jobs || []
+          : [];
+      });
+      const active = Array.isArray(allJobs) ? allJobs.find((j) => j.status === 'pending' || j.status === 'running') : null;
+      if (active) {
+        startPolling(active.jobId);
+      } else if (Array.isArray(allJobs) && allJobs.length > 0 && !activeJobId) {
+        const latest = allJobs[allJobs.length - 1];
+        activeJobId = latest.jobId;
+        jobStatus = latest.status || 'completed';
+        doneCount = latest.done || 0;
+        totalCount = latest.total || 0;
+        packs = Array.isArray(latest.packs) ? latest.packs : [];
+        paint(false);
+      }
+    } catch {}
+  })();
 
   function ingestCsv(text) {
     try {
@@ -294,7 +367,330 @@ export async function renderResearchView(container, ctx = {}) {
     }
   }
 
-  function paint() {
+  function renderPacksListHtml(packsList) {
+    if (!packsList || packsList.length === 0) {
+      return `
+        <div style="text-align: center; padding: 32px 20px; color: #94a3b8; font-size: 13px;">
+          Processing queue… Dossiers will stream in automatically.
+        </div>
+      `;
+    }
+
+    return `
+      <div class="research-packs-list">
+        ${packsList.map((pack, index) => {
+          const resolved = pack.resolved || { kind: 'unresolved', confidence: 0 };
+          const p = pack.profile || {};
+          const c = pack.company || {};
+          const name = p.fullName || c.name || pack.row?.name || pack.row?.linkedinUrl || `Row #${index + 1}`;
+          const subtitle = [p.title || c.industry, p.company || c.name, p.location].filter(Boolean).join(' · ');
+          const signals = pack.signals || [];
+          const candidates = resolved.candidates || [];
+          const isErr = Boolean(pack.error || pack.status === 'error');
+          const isReady = pack.status === 'completed' || Boolean(p.fullName || c.name);
+          const isExpanded = openDossierIndices.has(index);
+
+          let statusBadge = `<span class="research-pill pill-slate">${resolved.kind}</span>`;
+          if (isErr) {
+            statusBadge = `<span class="research-pill pill-red" style="display:inline-flex; align-items:center; gap:4px;">${ICONS.warning || '⚠'} Error</span>`;
+          } else if (isReady) {
+            statusBadge = `<span class="research-pill pill-green" style="display:inline-flex; align-items:center; gap:4px;">${ICONS.check || '✓'} Ready</span>`;
+          } else if (jobStatus === 'running' || jobStatus === 'pending') {
+            statusBadge = `<span class="research-pill pill-orange">Processing…</span>`;
+          }
+
+          return `
+            <div class="research-pack-item" data-pack-idx="${index}" style="${isErr ? 'border-color:#fca5a5; background:#fffcfc;' : ''}">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+                <div>
+                  <div style="font-size: 14.5px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 8px;">
+                    <span class="btn-open-dossier-drawer" data-idx="${index}" style="cursor:pointer; text-decoration:underline decoration-dotted;" title="Click to open full dossier drawer">${escapeHtml(name)}</span>
+                    <span class="research-pill ${resolved.kind === 'person' ? 'pill-green' : resolved.kind === 'company' ? 'pill-blue' : 'pill-red'}">
+                      ${resolved.kind}
+                    </span>
+                    ${resolved.confidence ? `
+                      <span class="research-pill pill-slate">${Math.round(resolved.confidence * 100)}% match</span>
+                    ` : ''}
+                    ${statusBadge}
+                  </div>
+                  ${subtitle ? `
+                    <div style="font-size: 12.5px; color: #64748b; margin-top: 3px;">${escapeHtml(subtitle)}</div>
+                  ` : ''}
+                </div>
+
+                <div style="display: flex; gap: 6px; align-items: center;">
+                  <button type="button" class="btn-open-dossier-drawer" data-idx="${index}" style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 4px 10px; font-size: 11.5px; font-weight: 700; color: #1d4ed8; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                    View Dossier
+                  </button>
+                  <button type="button" class="btn-toggle-dossier" data-idx="${index}" style="background: none; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 10px; font-size: 11.5px; font-weight: 700; color: #475569; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                    ${isExpanded ? 'Hide Preview' : 'Inline Preview'} ${ICONS.chevronDown}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Row Error Notification -->
+              ${pack.error ? `
+                <div style="margin-top: 10px; padding: 8px 12px; background: #fef2f2; border: 1px solid #fee2e2; border-radius: 8px; font-size: 12px; color: #b91c1c; display: flex; align-items: center; gap: 6px;">
+                  <span style="display:inline-flex; align-items:center;">${ICONS.warning}</span>
+                  <span style="font-weight: 700;">Issue:</span>
+                  <span>${escapeHtml(pack.error)}</span>
+                </div>
+              ` : ''}
+
+              <!-- Signals -->
+              ${signals.length > 0 ? `
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">
+                  ${signals.map((s) => formatSignalPill(s)).join('')}
+                </div>
+              ` : ''}
+
+              <!-- Unresolved Candidates Picker -->
+              ${candidates.length > 0 ? `
+                <div style="margin-top: 12px; padding: 10px 14px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <span style="font-size: 12px; font-weight: 700; color: #b45309;">Ambiguous match:</span>
+                  <select class="candidate-picker" data-pack-idx="${index}" style="flex: 1; min-width: 200px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; background: #ffffff;">
+                    <option value="">${candidates.length} potential matches found…</option>
+                    ${candidates.map((cand) => `
+                      <option value="${escapeHtml(cand.url || cand.publicId)}">${escapeHtml(cand.fullName)} — ${escapeHtml(cand.headline || cand.company || '')}</option>
+                    `).join('')}
+                  </select>
+                  <button type="button" class="btn-resolve-candidate" data-pack-idx="${index}" style="padding: 6px 12px; font-size: 12px; font-weight: 700; background: #104B35; color: #fff; border: none; border-radius: 6px; cursor: pointer;">
+                    Use Selected
+                  </button>
+                </div>
+              ` : ''}
+
+              <!-- Collapsible Markdown Preview -->
+              <div class="research-dossier-preview" id="dossier-preview-${index}" style="display: ${isExpanded ? 'block' : 'none'};">
+                ${escapeHtml(pack.markdown || 'No markdown dossier generated yet.')}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  function updateDrawer(pack) {
+    const backdrop = container.querySelector('#research-drawer-backdrop');
+    const headInfo = container.querySelector('#drawer-head-info');
+    const bodyWrap = container.querySelector('#drawer-body-wrap');
+    if (!backdrop || !headInfo || !bodyWrap || !pack) return;
+
+    const p = pack.profile || {};
+    const c = pack.company || {};
+    const r = pack.row || {};
+    const e = pack.enrichment || {};
+    const name = p.fullName || c.name || r.name || r.fullName || 'Prospect Dossier';
+    const isErr = Boolean(pack.error || pack.status === 'error');
+    const url = p.url || c.url || r.linkedinUrl || '';
+
+    headInfo.innerHTML = `
+      <div style="width: 36px; height: 36px; border-radius: 50%; background: #104B35; color: #ffffff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0;">
+        ${escapeHtml((name[0] || 'P').toUpperCase())}
+      </div>
+      <div style="min-width: 0;">
+        <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
+          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(name)}</span>
+          ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color: #0284c7; display: inline-flex; align-items: center; font-size: 12px; text-decoration: none;" title="Open on LinkedIn">↗</a>` : ''}
+        </h3>
+        <div style="font-size: 11.5px; color: #64748b; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          ${escapeHtml([p.title || c.industry, p.company || c.name].filter(Boolean).join(' · ') || 'Crafture Dossier')}
+        </div>
+      </div>
+    `;
+
+    const experience = p.experience || [];
+    const posts = pack.recentPosts || [];
+
+    bodyWrap.innerHTML = `
+      <!-- Status Banner -->
+      ${isErr ? `
+        <div style="margin-bottom: 20px; padding: 12px 16px; background: #fef2f2; border: 1px solid #fee2e2; border-radius: 10px; color: #b91c1c; font-size: 13px; display: flex; align-items: flex-start; gap: 10px;">
+          <span style="display: inline-flex; margin-top: 2px;">${ICONS.warning}</span>
+          <div>
+            <div style="font-weight: 700;">Research Issue Encountered</div>
+            <div style="font-size: 12.5px; margin-top: 2px; line-height: 1.4;">${escapeHtml(pack.error || 'Failed to resolve or fetch profile data')}</div>
+          </div>
+        </div>
+      ` : `
+        <div style="margin-bottom: 20px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span class="research-pill pill-green">${ICONS.check} Dossier Ready</span>
+          ${pack.resolved?.confidence ? `<span class="research-pill pill-slate">${Math.round(pack.resolved.confidence * 100)}% match</span>` : ''}
+          ${pack.connectionStatus ? `<span class="research-pill pill-teal">${escapeHtml(pack.connectionStatus)}</span>` : ''}
+        </div>
+      `}
+
+      <!-- Quick Meta Grid -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px;">
+        <div>
+          <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Company</div>
+          <div style="font-size: 13px; font-weight: 600; color: #1e293b; margin-top: 2px;">${escapeHtml(p.company || c.name || r.company || '—')}</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Location</div>
+          <div style="font-size: 13px; font-weight: 600; color: #1e293b; margin-top: 2px;">${escapeHtml(p.location || c.hq || '—')}</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Verified Email</div>
+          <div style="font-size: 13px; font-weight: 600; color: ${e.email || r.email ? '#059669' : '#64748b'}; margin-top: 2px;">${escapeHtml(e.email || r.email || 'None discovered')}</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Phone</div>
+          <div style="font-size: 13px; font-weight: 600; color: #1e293b; margin-top: 2px;">${escapeHtml(e.phone || r.phone || '—')}</div>
+        </div>
+      </div>
+
+      <!-- Signals -->
+      ${(pack.signals || []).length > 0 ? `
+        <div style="margin-bottom: 20px;">
+          <h4 style="font-size: 12px; font-weight: 800; color: #0f172a; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.5px;">Buying & Outreach Signals</h4>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            ${(pack.signals || []).map(formatSignalPill).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Experience Section -->
+      ${experience.length > 0 ? `
+        <div style="margin-bottom: 20px;">
+          <h4 style="font-size: 12px; font-weight: 800; color: #0f172a; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.5px;">Career Experience</h4>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${experience.slice(0, 5).map((exp) => `
+              <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px;">
+                <div style="font-size: 13px; font-weight: 700; color: #1e293b;">${escapeHtml(exp.title || 'Role')}</div>
+                <div style="font-size: 12px; color: #64748b;">${escapeHtml(exp.company || '')}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Recent Posts Section -->
+      ${posts.length > 0 ? `
+        <div style="margin-bottom: 20px;">
+          <h4 style="font-size: 12px; font-weight: 800; color: #0f172a; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.5px;">Recent LinkedIn Activity</h4>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${posts.slice(0, 4).map((post) => `
+              <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #334155;">
+                <div style="line-height: 1.4;">${escapeHtml(String(post.text || '').slice(0, 160))}${post.text && post.text.length > 160 ? '…' : ''}</div>
+                <div style="margin-top: 6px; font-size: 11px; color: #94a3b8; display: flex; gap: 12px;">
+                  <span>👍 ${post.likes || 0} likes</span>
+                  <span>💬 ${post.comments || 0} comments</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Markdown Dossier Document -->
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <h4 style="font-size: 12px; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">Full Markdown Dossier</h4>
+          <button type="button" id="btn-copy-drawer-md" class="btn-pill btn-soft btn-sm" style="padding: 4px 10px; font-size: 11.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+            ${ICONS.copy || ''} Copy Markdown
+          </button>
+        </div>
+        <pre style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; font-size: 11.5px; font-family: monospace; line-height: 1.5; white-space: pre-wrap; max-height: 300px; overflow-y: auto; color: #334155;">${escapeHtml(pack.markdown || 'No markdown dossier available.')}</pre>
+      </div>
+    `;
+
+    bodyWrap.querySelector('#btn-copy-drawer-md')?.addEventListener('click', async () => {
+      if (pack.markdown) {
+        await navigator.clipboard.writeText(pack.markdown).catch(() => {});
+        ctx.showToast?.('Dossier copied to clipboard!', 'success');
+      }
+    });
+  }
+
+  function openDrawer(idx) {
+    activeDrawerPackIdx = idx;
+    const backdrop = container.querySelector('#research-drawer-backdrop');
+    if (backdrop && packs[idx]) {
+      updateDrawer(packs[idx]);
+      backdrop.classList.add('is-open');
+    }
+  }
+
+  function closeDrawer() {
+    activeDrawerPackIdx = null;
+    const backdrop = container.querySelector('#research-drawer-backdrop');
+    if (backdrop) {
+      backdrop.classList.remove('is-open');
+    }
+  }
+
+  function wirePackEvents(root) {
+    if (!root) return;
+    root.querySelectorAll('.btn-open-dossier-drawer').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = Number(btn.dataset.idx);
+        openDrawer(idx);
+      });
+    });
+
+    root.querySelectorAll('.btn-toggle-dossier').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = Number(btn.dataset.idx);
+        const target = container.querySelector(`#dossier-preview-${idx}`);
+        if (target) {
+          if (openDossierIndices.has(idx)) {
+            openDossierIndices.delete(idx);
+            target.style.display = 'none';
+            btn.innerHTML = `Inline Preview ${ICONS.chevronDown}`;
+          } else {
+            openDossierIndices.add(idx);
+            target.style.display = 'block';
+            btn.innerHTML = `Hide Preview <span style="display:inline-flex; transform:rotate(180deg);">${ICONS.chevronDown}</span>`;
+          }
+        }
+      });
+    });
+
+    root.querySelectorAll('.btn-resolve-candidate').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const packIdx = Number(btn.dataset.packIdx);
+        const sel = root.querySelector(`.candidate-picker[data-pack-idx="${packIdx}"]`);
+        const chosenUrl = sel?.value;
+        if (!chosenUrl) {
+          ctx.showToast?.('Select a matching candidate first.', 'warn');
+          return;
+        }
+
+        const pack = packs[packIdx];
+        if (!pack) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Resolving…';
+
+        try {
+          const nextRow = { ...(pack.row || {}), linkedinUrl: chosenUrl };
+          const job = await call(ACTIONS.RESEARCH_PACK, {
+            rows: [nextRow],
+            full: fullCapture,
+            enrich: enrichContacts,
+          });
+
+          if (job?.jobId) {
+            ctx.showToast?.('Re-running candidate match…', 'info');
+            totalCount = job.total || 1;
+            doneCount = 0;
+            startPolling(job.jobId);
+          }
+        } catch (err) {
+          ctx.showToast?.(`Resolution failed: ${err.message || err}`, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Use Selected';
+        }
+      });
+    });
+  }
+
+  function paint(isSilent = false) {
     if (ctx?.isStale?.() || (ctx?.isActiveView && !ctx.isActiveView())) return;
     const scrollPos = ctx?.getScrollPosition?.(container);
     const focusedInput = ctx?.captureInputFocus?.(container) || captureInputFocus(container);
@@ -311,6 +707,35 @@ export async function renderResearchView(container, ctx = {}) {
       etaDisplay = ` · ~${fmtDuration(remainingMs)} remaining`;
     }
 
+    const jobSubtitleText = `${fmtNumber(doneCount)} of ${fmtNumber(totalCount)} processed · ${jobStatus}${unresolvedCount ? ` · ${unresolvedCount} unresolved` : ''}${etaDisplay}`;
+
+    // Silent in-place DOM update when polling: zero spinner wipe, zero flicker
+    const activeCardEl = container.querySelector('#research-active-job-card');
+    if (isSilent && activeCardEl && activeJobId) {
+      const headPill = container.querySelector('#research-head-status-pill');
+      if (headPill) {
+        headPill.className = `research-pill ${jobStatus === 'completed' ? 'pill-green' : jobStatus === 'failed' ? 'pill-red' : 'pill-blue'}`;
+        headPill.innerHTML = `<span class="live-dot-circle" style="background: currentColor;"></span> ${jobStatus.toUpperCase()} ${doneCount}/${totalCount}`;
+      }
+
+      const subTitleEl = container.querySelector('#research-job-subtitle');
+      if (subTitleEl) subTitleEl.textContent = jobSubtitleText;
+
+      const progBarEl = container.querySelector('#research-progress-bar-fill');
+      if (progBarEl) progBarEl.style.width = `${progressPct}%`;
+
+      const listWrap = container.querySelector('#research-packs-list-wrap');
+      if (listWrap) {
+        listWrap.innerHTML = renderPacksListHtml(packs);
+        wirePackEvents(listWrap);
+      }
+
+      if (activeDrawerPackIdx !== null && packs[activeDrawerPackIdx]) {
+        updateDrawer(packs[activeDrawerPackIdx]);
+      }
+      return;
+    }
+
     container.innerHTML = `
       <div class="research-view-shell">
         <!-- Header -->
@@ -321,7 +746,7 @@ export async function renderResearchView(container, ctx = {}) {
           </div>
           ${activeJobId ? `
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="research-pill ${jobStatus === 'completed' ? 'pill-green' : jobStatus === 'failed' ? 'pill-red' : 'pill-blue'}">
+              <span id="research-head-status-pill" class="research-pill ${jobStatus === 'completed' ? 'pill-green' : jobStatus === 'failed' ? 'pill-red' : 'pill-blue'}">
                 <span class="live-dot-circle" style="background: currentColor;"></span>
                 ${jobStatus.toUpperCase()} ${doneCount}/${totalCount}
               </span>
@@ -342,7 +767,7 @@ export async function renderResearchView(container, ctx = {}) {
           <p class="research-card-subtitle">Generate an instant research dossier for a single LinkedIn profile URL or name & company.</p>
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <input type="text" id="input-quick-research" placeholder="e.g. https://www.linkedin.com/in/satyanadella or Satya Nadella, Microsoft" style="flex: 1; min-width: 300px; padding: 10px 14px; border: 1.5px solid #cbd5e1; border-radius: 10px; font-size: 13.5px; outline: none;" />
-            <button type="button" id="btn-run-quick-research" class="btn-primary-settings" style="padding: 10px 20px; font-size: 13px; font-weight: 700; background: #ff6b00; color: #ffffff; border: none; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <button type="button" id="btn-run-quick-research" class="btn-primary-settings" style="padding: 10px 20px; font-size: 13px; font-weight: 700; background: #104B35; color: #ffffff; border: none; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
               ${ICONS.search} Build Dossier
             </button>
           </div>
@@ -356,7 +781,7 @@ export async function renderResearchView(container, ctx = {}) {
           <input type="file" id="file-csv-picker" accept=".csv,text/csv" style="display: none;" />
 
           <div class="research-dropzone" id="csv-dropzone">
-            <div style="color: #ff6b00; margin-bottom: 8px;">
+            <div style="color: #104B35; margin-bottom: 8px;">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </div>
             <div style="font-size: 14px; font-weight: 700; color: #1e293b;">Drag and drop your CSV file here, or click to browse</div>
@@ -378,7 +803,7 @@ export async function renderResearchView(container, ctx = {}) {
           <!-- 3. Column Mapping & Preview Card -->
           <div class="research-white-card">
             <h2 class="research-card-title">${ICONS.filter} Column Mapping & Preview</h2>
-            <p class="research-card-subtitle">${fmtNumber(researchRows.length)} rows parsed · Map columns to OutFox research fields.</p>
+            <p class="research-card-subtitle">${fmtNumber(researchRows.length)} rows parsed · Map columns to Crafture research fields.</p>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px;">
               ${RESEARCH_FIELDS.map((f) => `
@@ -425,7 +850,7 @@ export async function renderResearchView(container, ctx = {}) {
 
               <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                 <input type="text" id="input-list-name" placeholder="Save results into list (optional)" value="${escapeHtml(targetListName)}" style="flex: 1; min-width: 240px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none;" />
-                <button type="button" id="btn-build-packs" class="btn-primary-settings" style="padding: 9px 22px; font-size: 13px; font-weight: 700; background: #ff6b00; color: #ffffff; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                <button type="button" id="btn-build-packs" class="btn-primary-settings" style="padding: 9px 22px; font-size: 13px; font-weight: 700; background: #104B35; color: #ffffff; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
                   ${ICONS.lightning} Build Research Packs (${researchRows.length} rows)
                 </button>
               </div>
@@ -435,22 +860,22 @@ export async function renderResearchView(container, ctx = {}) {
 
         ${activeJobId ? `
           <!-- 4. Active Job Progress Card -->
-          <div class="research-white-card">
+          <div class="research-white-card" id="research-active-job-card">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
               <div>
                 <h2 class="research-card-title" style="margin: 0;">
                   ${jobStatus === 'running' || jobStatus === 'pending' ? `<span style="display:inline-block; animation:spin 0.8s linear infinite;">${ICONS.refresh || '⟳'}</span>` : ICONS.check}
                   Research Job #${activeJobId.slice(-8)}
                 </h2>
-                <div style="font-size: 12.5px; color: #64748b; margin-top: 4px;">
-                  ${fmtNumber(doneCount)} of ${fmtNumber(totalCount)} processed · ${jobStatus}${unresolvedCount ? ` · ${unresolvedCount} unresolved` : ''}${etaDisplay}
+                <div id="research-job-subtitle" style="font-size: 12.5px; color: #64748b; margin-top: 4px;">
+                  ${jobSubtitleText}
                 </div>
               </div>
 
               <!-- Export Actions & Manual Run Now -->
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                 ${jobStatus === 'running' || jobStatus === 'pending' ? `
-                  <button type="button" id="btn-run-research-now" class="btn-pill btn-soft btn-sm" style="padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; background: #fff7ed; color: #ea580c; border: 1px solid #ffedd5;">
+                  <button type="button" id="btn-run-research-now" class="btn-pill btn-soft btn-sm" style="padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; background: #E6EFE9; color: #167448; border: 1px solid #DCE5DE;">
                     ${ICONS.play} Run Now
                   </button>
                 ` : ''}
@@ -465,95 +890,31 @@ export async function renderResearchView(container, ctx = {}) {
 
             <!-- Progress Bar -->
             <div style="background: #f1f5f9; height: 10px; border-radius: 6px; overflow: hidden; margin-bottom: 16px;">
-              <div style="background: linear-gradient(90deg, #ff6b00 0%, #ea580c 100%); height: 100%; width: ${progressPct}%; transition: width 0.3s ease;"></div>
+              <div id="research-progress-bar-fill" style="background: linear-gradient(90deg, #104B35 0%, #167448 100%); height: 100%; width: ${progressPct}%; transition: width 0.3s ease;"></div>
             </div>
 
-            <!-- Generated Dossiers List -->
+            <!-- Generated Dossiers List Wrap -->
             <div style="margin-top: 20px;">
               <h3 style="font-size: 14px; font-weight: 700; color: #1e293b; margin: 0 0 12px 0;">Generated Dossiers (${packs.length})</h3>
-
-              ${packs.length === 0 ? `
-                <div style="text-align: center; padding: 32px 20px; color: #94a3b8; font-size: 13px;">
-                  Processing queue… Dossiers will stream in automatically.
-                </div>
-              ` : `
-                <div class="research-packs-list">
-                  ${packs.map((pack, index) => {
-                    const resolved = pack.resolved || { kind: 'unresolved', confidence: 0 };
-                    const p = pack.profile || {};
-                    const c = pack.company || {};
-                    const name = p.fullName || c.name || pack.row?.name || pack.row?.linkedinUrl || `Row #${index + 1}`;
-                    const subtitle = [p.title || c.industry, p.company || c.name, p.location].filter(Boolean).join(' · ');
-                    const signals = pack.signals || [];
-                    const candidates = resolved.candidates || [];
-
-                    return `
-                      <div class="research-pack-item" data-pack-idx="${index}">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
-                          <div>
-                            <div style="font-size: 14.5px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 8px;">
-                              <span>${escapeHtml(name)}</span>
-                              <span class="research-pill ${resolved.kind === 'person' ? 'pill-green' : resolved.kind === 'company' ? 'pill-blue' : 'pill-red'}">
-                                ${resolved.kind}
-                              </span>
-                              ${resolved.confidence ? `
-                                <span class="research-pill pill-slate">${Math.round(resolved.confidence * 100)}% match</span>
-                              ` : ''}
-                            </div>
-                            ${subtitle ? `
-                              <div style="font-size: 12.5px; color: #64748b; margin-top: 3px;">${escapeHtml(subtitle)}</div>
-                            ` : ''}
-                          </div>
-
-                          <button type="button" class="btn-toggle-dossier" data-idx="${index}" style="background: none; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 10px; font-size: 11.5px; font-weight: 700; color: #475569; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                            View Dossier ${ICONS.chevronDown}
-                          </button>
-                        </div>
-
-                        <!-- Row Error Notification -->
-                        ${pack.error ? `
-                          <div style="margin-top: 8px; padding: 8px 12px; background: #fef2f2; border: 1px solid #fee2e2; border-radius: 8px; font-size: 12px; color: #b91c1c; display: flex; align-items: center; gap: 6px;">
-                            <span style="display:inline-flex; align-items:center;">${ICONS.warning}</span>
-                            <span style="font-weight: 700;">Issue:</span>
-                            <span>${escapeHtml(pack.error)}</span>
-                          </div>
-                        ` : ''}
-
-                        <!-- Signals -->
-                        ${signals.length > 0 ? `
-                          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">
-                            ${signals.map((s) => formatSignalPill(s)).join('')}
-                          </div>
-                        ` : ''}
-
-                        <!-- Unresolved Candidates Picker -->
-                        ${candidates.length > 0 ? `
-                          <div style="margin-top: 12px; padding: 10px 14px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                            <span style="font-size: 12px; font-weight: 700; color: #b45309;">Ambiguous match:</span>
-                            <select class="candidate-picker" data-pack-idx="${index}" style="flex: 1; min-width: 200px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; background: #ffffff;">
-                              <option value="">${candidates.length} potential matches found…</option>
-                              ${candidates.map((cand) => `
-                                <option value="${escapeHtml(cand.url || cand.publicId)}">${escapeHtml(cand.fullName)} — ${escapeHtml(cand.headline || cand.company || '')}</option>
-                              `).join('')}
-                            </select>
-                            <button type="button" class="btn-resolve-candidate" data-pack-idx="${index}" style="padding: 6px 12px; font-size: 12px; font-weight: 700; background: #ff6b00; color: #fff; border: none; border-radius: 6px; cursor: pointer;">
-                              Use Selected
-                            </button>
-                          </div>
-                        ` : ''}
-
-                        <!-- Collapsible Markdown Preview -->
-                        <div class="research-dossier-preview" id="dossier-preview-${index}" style="display: none;">
-                          ${escapeHtml(pack.markdown || 'No markdown dossier generated yet.')}
-                        </div>
-                      </div>
-                    `;
-                  }).join('')}
-                </div>
-              `}
+              <div id="research-packs-list-wrap">
+                ${renderPacksListHtml(packs)}
+              </div>
             </div>
           </div>
         ` : ''}
+
+        <!-- Research Dossier Slide-Over Drawer -->
+        <div class="research-drawer-backdrop" id="research-drawer-backdrop">
+          <div class="research-drawer" id="research-drawer">
+            <div class="research-drawer-head">
+              <div id="drawer-head-info" style="display: flex; align-items: center; gap: 12px; min-width: 0;"></div>
+              <button type="button" id="btn-close-research-drawer" style="background: none; border: none; cursor: pointer; color: #64748b; padding: 6px; border-radius: 6px; display: inline-flex; align-items: center;" title="Close Drawer">
+                ${ICONS.x || '✕'}
+              </button>
+            </div>
+            <div class="research-drawer-body" id="drawer-body-wrap"></div>
+          </div>
+        </div>
       </div>
     `;
 
@@ -731,59 +1092,15 @@ export async function renderResearchView(container, ctx = {}) {
       });
     }
 
-    // Dossier Expander Toggles
-    container.querySelectorAll('.btn-toggle-dossier').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const idx = btn.dataset.idx;
-        const target = container.querySelector(`#dossier-preview-${idx}`);
-        if (target) {
-          const isHidden = target.style.display === 'none';
-          target.style.display = isHidden ? 'block' : 'none';
-          btn.innerHTML = isHidden
-            ? `Hide Dossier <span style="display:inline-flex; transform:rotate(180deg); transition:transform 0.2s;">${ICONS.chevronDown}</span>`
-            : `View Dossier ${ICONS.chevronDown}`;
-        }
-      });
-    });
+    // Wire dossier cards & actions
+    wirePackEvents(container);
 
-    // Ambiguous Candidate Resolution
-    container.querySelectorAll('.btn-resolve-candidate').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const packIdx = Number(btn.dataset.packIdx);
-        const sel = container.querySelector(`.candidate-picker[data-pack-idx="${packIdx}"]`);
-        const chosenUrl = sel?.value;
-        if (!chosenUrl) {
-          ctx.showToast?.('Select a matching candidate first.', 'warn');
-          return;
-        }
-
-        const pack = packs[packIdx];
-        if (!pack) return;
-
-        btn.disabled = true;
-        btn.textContent = 'Resolving…';
-
-        try {
-          const nextRow = { ...(pack.row || {}), linkedinUrl: chosenUrl };
-          const job = await call(ACTIONS.RESEARCH_PACK, {
-            rows: [nextRow],
-            full: fullCapture,
-            enrich: enrichContacts,
-          });
-
-          if (job?.jobId) {
-            ctx.showToast?.('Re-running candidate match…', 'info');
-            totalCount = job.total || 1;
-            doneCount = 0;
-            startPolling(job.jobId);
-          }
-        } catch (err) {
-          ctx.showToast?.(`Resolution failed: ${err.message || err}`, 'error');
-        } finally {
-          btn.disabled = false;
-          btn.textContent = 'Use Selected';
-        }
-      });
+    // Drawer close events
+    container.querySelector('#btn-close-research-drawer')?.addEventListener('click', closeDrawer);
+    container.querySelector('#research-drawer-backdrop')?.addEventListener('click', (e) => {
+      if (e.target.id === 'research-drawer-backdrop') {
+        closeDrawer();
+      }
     });
 
     // Run Now button (Manual trigger)

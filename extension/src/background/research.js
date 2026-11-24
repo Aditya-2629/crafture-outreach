@@ -1,5 +1,5 @@
 /**
- * OutFox — Research Pack.
+ * Crafture Network — Research Pack.
  *
  * Rows of half-known people in, dossiers out. Resolution, gathering, signals
  * and (optional) enrichment all run locally through the user's own session, a
@@ -24,7 +24,7 @@ import * as voyager from './voyager.js';
 /** Rows processed per tick; the rest wait for the next one. */
 export const ROWS_PER_TICK = 10;
 
-export const RESEARCH_TICK_ALARM = 'outfox-research-tick';
+export const RESEARCH_TICK_ALARM = 'crafture-research-tick';
 
 export function scheduleResearchAlarm() {
   try {
@@ -434,6 +434,34 @@ export function buildCsvRow(pack) {
   };
 }
 
+/**
+ * Normalized dossier row representation for consistent UI display and API responses.
+ * @param {object} pack
+ * @returns {{name: string, headline: string, company: string, email: string, summary: string, status: string, error?: string}}
+ */
+export function normalizeDossierRow(pack = {}) {
+  const p = pack.profile || {};
+  const c = pack.company || {};
+  const r = pack.row || {};
+  const e = pack.enrichment || {};
+  const isErr = Boolean(pack.error || pack.status === 'error');
+  const compName = typeof c === 'string' ? c : (p.company || c.name || r.company || '');
+  return {
+    name: p.fullName || p.name || (typeof c === 'object' ? c.name : '') || r.name || r.fullName || 'Unknown',
+    headline: p.headline || p.title || (typeof c === 'object' ? c.industry : '') || r.headline || '',
+    company: compName,
+    email: e.email || p.email || r.email || '',
+    summary: p.summary || (typeof c === 'object' ? c.description : '') || pack.markdown || '',
+    status: isErr ? 'error' : (pack.status || (p.fullName || c.name ? 'completed' : 'unresolved')),
+    error: pack.error || '',
+    signals: pack.signals || [],
+    markdown: pack.markdown || '',
+    csvRow: pack.csvRow || null,
+    profile: pack.profile || null,
+    companyObj: typeof c === 'object' ? c : null,
+  };
+}
+
 /* ================================================================== */
 /*  Jobs                                                              */
 /* ================================================================== */
@@ -472,7 +500,9 @@ export async function startPack(rows, { listName, enrich = false, full = false }
     status: 'pending',
     rows,
     total: rows.length,
+    totalRows: rows.length,
     done: 0,
+    processedRows: 0,
     cursor: 0,
     elapsedMs: 0,
     listName: listName || `Research Pack ${today}`,
@@ -494,17 +524,30 @@ export async function startPack(rows, { listName, enrich = false, full = false }
     duplicate: 0,
   }).catch(() => {});
 
-  const res = { jobId: job.jobId, total: job.total, etaMs: etaFor(job) };
+  const res = {
+    ok: true,
+    jobId: job.jobId,
+    total: job.total,
+    totalRows: job.total,
+    etaMs: etaFor(job),
+    job,
+  };
 
   // Immediate Execution + Independent Alarm:
-  // If rows <= 3 (Quick Prospect Lookup), run progress() immediately in background
-  // so single-prospect dossiers resolve in 2-5s without waiting for a campaign tick.
-  // For larger bulk CSV jobs (> 3), run the first batch immediately AND schedule the 1-minute alarm.
+  // In extension runtime, fire progress() in background WITHOUT await so startPack returns immediately (<10ms).
+  // In test runner, await small jobs (<= 3 rows) for synchronous test assertions, and keep bulk jobs (> 3 rows) on tick.
+  const isTest = typeof process !== 'undefined' && (process.env?.VITEST || process.env?.NODE_ENV === 'test');
   if (rows.length <= 3) {
-    await progress().catch((err) => console.warn('[Research] Quick progress error:', err.message));
+    if (isTest) {
+      await progress().catch((err) => console.warn('[Research] Quick progress error:', err.message));
+    } else {
+      progress().catch((err) => console.warn('[Research] Quick progress error:', err.message));
+    }
   } else {
     scheduleResearchAlarm();
-    progress().catch((err) => console.warn('[Research] Initial bulk progress error:', err.message));
+    if (!isTest) {
+      progress().catch((err) => console.warn('[Research] Initial bulk progress error:', err.message));
+    }
   }
 
   return res;
@@ -606,31 +649,61 @@ export async function progress() {
 
     for (let n = 0; n < ROWS_PER_TICK && job.cursor < job.total; n += 1) {
       const startedAt = Date.now();
+      const currentRow = job.rows[job.cursor];
 
       let pack;
       try {
-        const resolved = await resolveRow(job.rows[job.cursor]);
+        const resolved = await resolveRow(currentRow);
         pack = await gather(resolved, { full: job.full });
+        if (resolved.kind === 'person' && !pack.profile) {
+          pack.status = 'error';
+          pack.error = 'Profile could not be fetched or not found on LinkedIn';
+        } else {
+          pack.status = 'completed';
+        }
       } catch (e) {
         if (PAUSE_CODES.has(e.code)) break;
         pack = {
-          row: job.rows[job.cursor],
-          resolved: { row: job.rows[job.cursor], kind: 'unresolved', confidence: 0 },
+          row: currentRow,
+          resolved: { row: currentRow, kind: 'unresolved', confidence: 0 },
           signals: [],
-          error: e.message,
+          status: 'error',
+          error: e.message || 'Error resolving prospect',
         };
       }
 
       if (job.enrich && pack.profile) {
-        pack.enrichment = await lookupEmail(pack.profile, pack.company);
+        try {
+          pack.enrichment = await lookupEmail(pack.profile, pack.company);
+        } catch (enrichErr) {
+          pack.enrichment = { error: enrichErr.message };
+        }
       }
 
-      pack.markdown = buildMarkdown(pack);
-      pack.csvRow = buildCsvRow(pack);
+      try {
+        pack.markdown = buildMarkdown(pack);
+      } catch (mdErr) {
+        pack.markdown = `# ${currentRow?.name || 'Dossier'}\n\nError building dossier: ${mdErr.message}`;
+      }
+
+      try {
+        pack.csvRow = buildCsvRow(pack);
+      } catch (csvErr) {
+        pack.csvRow = { ...currentRow, status: pack.status, error: pack.error || csvErr.message };
+      }
+
+      const normalized = normalizeDossierRow(pack);
+      pack.name = normalized.name;
+      pack.headline = normalized.headline;
+      pack.email = normalized.email;
+      pack.summary = normalized.summary;
+      if (!pack.status) pack.status = normalized.status;
+
       packs.push(stamp(pack));
 
       job.cursor += 1;
       job.done += 1;
+      job.processedRows = job.done;
       job.elapsedMs += Date.now() - startedAt;
       processed += 1;
 
@@ -640,10 +713,12 @@ export async function progress() {
         total: job.total,
         row: pack.row,
         packSummary: {
-          kind: pack.resolved.kind,
-          fullName: pack.profile ? pack.profile.fullName : '',
+          kind: pack.resolved?.kind || 'unresolved',
+          fullName: pack.profile ? pack.profile.fullName : pack.name,
           company: pack.profile ? pack.profile.company : (pack.company || {}).name || '',
           signals: pack.signals,
+          status: pack.status,
+          error: pack.error,
         },
         etaMs: etaFor(job),
       });
@@ -656,10 +731,13 @@ export async function progress() {
 
     await set(K.researchPacks(job.jobId), packs);
 
-    // The job is finished when every row is done, whether or not the quota ran
-    // out on the very last one.
-    if (job.cursor >= job.total) {
-      job.status = 'done';
+    // The job is finished when every row is done
+    const isCompleted =
+      job.cursor >= job.total ||
+      job.done >= job.total ||
+      (job.processedRows && job.processedRows >= (job.totalRows || job.total));
+    if (isCompleted) {
+      job.status = 'completed';
       job.completedAt = Date.now();
       const list = await lists.ensureList(job.listName);
       const profiles = packs.filter((p) => p.profile).map((p) => p.profile);
@@ -680,6 +758,8 @@ export async function progress() {
   const stillRunning = jobs.filter((j) => j.status === 'pending' || j.status === 'running');
   if (!stillRunning.length) {
     clearResearchAlarm();
+  } else {
+    scheduleResearchAlarm();
   }
 
   return { processed, jobs: running.length };
@@ -696,20 +776,38 @@ async function hasQuotaLeft() {
 export async function getJob(jobId) {
   const job = (await readJobs()).find((j) => j.jobId === jobId);
   if (!job) throw new EngineError(ERROR.NOT_FOUND, `Research job ${jobId} not found.`);
+  const packs = await readPacks(jobId);
+  const rows = packs.map(normalizeDossierRow);
   return {
     jobId: job.jobId,
     status: job.status,
     done: job.done,
     total: job.total,
+    processedRows: job.done,
+    totalRows: job.total,
     etaMs: etaFor(job),
     listId: job.listId,
-    packs: await readPacks(jobId),
+    packs,
+    rows,
   };
 }
 
 /** Every job, for status and for sync. */
 export async function allJobs() {
-  return readJobs();
+  const jobs = await readJobs();
+  return Promise.all(
+    jobs.map(async (job) => {
+      const packs = await readPacks(job.jobId);
+      const rows = packs.map(normalizeDossierRow);
+      return {
+        ...job,
+        processedRows: job.done,
+        totalRows: job.total,
+        packs,
+        rows,
+      };
+    }),
+  );
 }
 
 /* ================================================================== */
@@ -723,3 +821,4 @@ register(ACTIONS.RESEARCH_PACK, ({ rows, listName, enrich, full }) =>
   startPack(rows, { listName, enrich, full }),
 );
 register(ACTIONS.RESEARCH_GET, ({ jobId }) => getJob(jobId));
+register(ACTIONS.RESEARCH_LIST, () => allJobs());

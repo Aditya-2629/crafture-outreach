@@ -23,16 +23,18 @@ export const DEFAULT_BRIDGE_PORT = 47829;
 export const DEFAULT_HTTP_PORT = 47830;
 export const DEFAULT_RESEARCH_TIMEOUT_MS = 600_000;
 
-/** `~/.outfox` or `~/.linkedin-toolkit`, or `$OUTFOX_HOME` / `$LINKEDIN_TOOLKIT_HOME` when set. */
+/** `~/.crafture-network`, `~/.outfox` or `~/.linkedin-toolkit`, or `$CRAFTURE_HOME` / `$OUTFOX_HOME` / `$LINKEDIN_TOOLKIT_HOME` when set. */
 export function toolkitHome(): string {
+  if (process.env.CRAFTURE_HOME) return process.env.CRAFTURE_HOME;
   if (process.env.OUTFOX_HOME) return process.env.OUTFOX_HOME;
   if (process.env.LINKEDIN_TOOLKIT_HOME) return process.env.LINKEDIN_TOOLKIT_HOME;
+  const craftureDir = join(homedir(), '.crafture-network');
   const outfoxDir = join(homedir(), '.outfox');
   const legacyDir = join(homedir(), '.linkedin-toolkit');
-  if (!existsSync(outfoxDir) && existsSync(legacyDir)) {
-    return legacyDir;
-  }
-  return outfoxDir;
+  if (existsSync(craftureDir)) return craftureDir;
+  if (existsSync(outfoxDir)) return outfoxDir;
+  if (existsSync(legacyDir)) return legacyDir;
+  return craftureDir;
 }
 
 export function configPath(): string {
@@ -87,9 +89,9 @@ export function generateToken(): string {
 }
 
 function defaults(): ServerConfig {
-  const envPort = process.env.OUTFOX_BRIDGE_PORT || process.env.LINKEDIN_TOOLKIT_PORT;
+  const envPort = process.env.CRAFTURE_BRIDGE_PORT || process.env.OUTFOX_BRIDGE_PORT || process.env.LINKEDIN_TOOLKIT_PORT;
   const bridgePort = envPort && !isNaN(Number(envPort)) ? Number(envPort) : DEFAULT_BRIDGE_PORT;
-  const envToken = process.env.OUTFOX_BRIDGE_TOKEN || process.env.OUTFOX_TOKEN;
+  const envToken = process.env.CRAFTURE_BRIDGE_TOKEN || process.env.CRAFTURE_TOKEN || process.env.OUTFOX_BRIDGE_TOKEN || process.env.OUTFOX_TOKEN;
 
   return {
     token: envToken && envToken.trim() ? envToken.trim() : generateToken(),
@@ -102,7 +104,7 @@ function defaults(): ServerConfig {
 
 function coerce(raw: any): ServerConfig {
   const base = defaults();
-  const envToken = process.env.OUTFOX_BRIDGE_TOKEN || process.env.OUTFOX_TOKEN;
+  const envToken = process.env.CRAFTURE_BRIDGE_TOKEN || process.env.CRAFTURE_TOKEN || process.env.OUTFOX_BRIDGE_TOKEN || process.env.OUTFOX_TOKEN;
   const validRawToken = typeof raw?.token === 'string' && /^[0-9a-f]{32}$/i.test(raw.token.trim());
   const token =
     envToken && envToken.trim()
@@ -110,7 +112,7 @@ function coerce(raw: any): ServerConfig {
       : validRawToken
       ? raw.token.trim()
       : base.token;
-  const envPort = process.env.OUTFOX_BRIDGE_PORT || process.env.LINKEDIN_TOOLKIT_PORT;
+  const envPort = process.env.CRAFTURE_BRIDGE_PORT || process.env.OUTFOX_BRIDGE_PORT || process.env.LINKEDIN_TOOLKIT_PORT;
   const bridgePort = envPort && !isNaN(Number(envPort))
     ? Number(envPort)
     : Number.isInteger(raw?.bridgePort)

@@ -51,7 +51,7 @@ comments; do not make it the post.
 
 ## Variant B — the practical one
 
-> I built a free, open-source replacement for OutFox and PhantomBuster. It runs on your own
+> I built a free, open-source replacement for Waalaxy and PhantomBuster. It runs on your own
 > machine and it costs nothing.
 >
 > What it does:
@@ -78,7 +78,7 @@ comments; do not make it the post.
 > Human-paced delays. Business hours. A 14-day warm-up for new accounts. It stops dead on a
 > security challenge instead of retrying into a ban.
 >
-> OutFox Pro is about €70 a month. PhantomBuster starts around $69. This is £0 and MIT licensed.
+> Waalaxy Pro is about €70 a month. PhantomBuster starts around $69. This is £0 and MIT licensed.
 >
 > Link in the comments.
 >
@@ -98,7 +98,7 @@ comments; do not make it the post.
 > in a queue until you approve it. On a security challenge it stops, and there is no retry loop
 > anywhere in the codebase.
 >
-> Also a complete free replacement for OutFox and PhantomBuster if you never touch an agent.
+> Also a complete free replacement for Waalaxy and PhantomBuster if you never touch an agent.
 >
 > Open source, MIT, runs entirely on your machine. Link in the comments.
 

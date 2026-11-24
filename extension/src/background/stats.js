@@ -1,5 +1,5 @@
 /**
- * OutFox — Real-Time Data Pipeline & Metric Aggregator
+ * Crafture Network — Real-Time Data Pipeline & Metric Aggregator
  * Gathers authentic LinkedIn network metrics, calculates conversion rates,
  * and generates a 30-day activity timeline from local action logs.
  */
@@ -9,7 +9,7 @@ import { getConfig } from '../lib/config.js';
 import { readCampaigns, readEnrollments, ensureCampaignAlarmWatchdog } from './campaigns.js';
 import { storedThreads } from './inbox.js';
 import { getNetworkStats, getProfileViewsCount, selfTest, me, vectorImageUrl, extractAvatarFromMini } from './voyager.js';
-import { isWithinBusinessHours } from './quota.js';
+import { isWithinBusinessHours, snapshotAll } from './quota.js';
 import { register } from './engine.js';
 import { ACTIONS } from '../lib/actions.js';
 
@@ -65,14 +65,34 @@ export function build30DayTimeline(actions = []) {
  */
 export async function getLiveDashboardStats() {
   ensureCampaignAlarmWatchdog().catch(() => {});
-  const [actions, campaigns, config, networkStats, profileViews, threads] = await Promise.all([
+  const [actions, campaigns, config, networkStats, profileViews, threads, rawQuotas] = await Promise.all([
     allActions().catch(() => []),
     readCampaigns().catch(() => []),
     getConfig().catch(() => ({})),
     getNetworkStats().catch(() => ({ pendingCount: 0, connectionsCount: 0 })),
     getProfileViewsCount().catch(() => 0),
     storedThreads().catch(() => []),
+    snapshotAll().catch(() => ({})),
   ]);
+
+  const quotas = {};
+  if (rawQuotas && typeof rawQuotas === 'object') {
+    for (const [k, v] of Object.entries(rawQuotas)) {
+      if (v && typeof v === 'object') {
+        const dailyUsed = Number(v.dailyUsed ?? v.usedToday ?? v.used ?? 0) || 0;
+        const dailyCap = Number(v.dailyCap ?? v.max ?? (config && config[`daily${k.charAt(0).toUpperCase() + k.slice(1)}Cap`]) ?? 25) || 25;
+        quotas[k] = {
+          ...v,
+          dailyUsed,
+          dailyCap,
+          usedToday: dailyUsed,
+          used: dailyUsed,
+          max: dailyCap,
+          remaining: Math.max(0, dailyCap - dailyUsed),
+        };
+      }
+    }
+  }
 
   // 1. Calculate Sent Totals
   let totalInvitesSent = 0;
@@ -145,7 +165,7 @@ export async function getLiveDashboardStats() {
     if (hasCookie) {
       const self = await selfTest().catch(() => null);
       if (self && self.loggedIn && (self.fullName || self.publicId)) {
-        const name = self.fullName || self.publicId || 'OutFox User';
+        const name = self.fullName || self.publicId || 'Crafture User';
         const firstName = self.firstName || self.fullName || 'there';
         const lastName = self.lastName || '';
         const initials =
@@ -185,8 +205,8 @@ export async function getLiveDashboardStats() {
           if (fullName || publicId) {
             linkedinConnected = true;
             userProfile = {
-              name: fullName || 'OutFox User',
-              fullName: fullName || 'OutFox User',
+              name: fullName || 'Crafture User',
+              fullName: fullName || 'Crafture User',
               firstName: firstName || fullName || 'there',
               lastName: lastName || '',
               initials: initials || 'U',
@@ -220,6 +240,7 @@ export async function getLiveDashboardStats() {
   return {
     linkedinConnected,
     profile: userProfile,
+    quotas,
     prospectingStatus: {
       activeCampaignsCount: activeCampaigns.length,
       queuedActionsCount: queuedActions,

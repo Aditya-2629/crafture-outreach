@@ -1,5 +1,5 @@
 /**
- * OutFox — reading LinkedIn's "normalized" responses.
+ * Crafture Network — reading LinkedIn's "normalized" responses.
  *
  * Every Voyager call the engine makes asks for
  * `application/vnd.linkedin.normalized+json+2.1`, which means the body is

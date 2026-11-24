@@ -1,6 +1,6 @@
 /**
- * OutFox — Authentic OutFox Quick Controller Popup Stylesheet
- * 340px Light Theme (#F8FAFC / #FFFFFF / #F97316)
+ * Crafture Network — Quick Controller Popup Stylesheet
+ * 340px Light Theme (#F5F7F4 / #FFFFFF / #104B35)
  */
 
 * {
@@ -57,7 +57,7 @@ body.popup-controller-body {
 }
 
 .brand-title span {
-  color: var(--primary, #F97316);
+  color: var(--primary, #104B35);
 }
 
 .status-badge {
@@ -111,13 +111,13 @@ body.popup-controller-body {
 
 .radial-track {
   fill: none;
-  stroke: var(--primary-soft, #FFF7ED);
+  stroke: var(--primary-soft, #E6EFE9);
   stroke-width: 10;
 }
 
 .radial-progress {
   fill: none;
-  stroke: var(--primary, #F97316);
+  stroke: var(--primary, #104B35);
   stroke-width: 10;
   stroke-linecap: round;
   stroke-dasharray: 390;
@@ -198,15 +198,15 @@ body.popup-controller-body {
 .btn-launch-full {
   width: 100%;
   padding: 12px 18px;
-  border-radius: 8px;
-  background: var(--primary, #F97316);
+  border-radius: var(--radius-input, 10px);
+  background: var(--primary, #104B35);
   color: #FFFFFF;
   font-size: 13px;
   font-weight: 600;
   border: none;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(249, 115, 22, 0.24);
-  transition: all 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 1px 2px rgba(16, 75, 53, 0.2);
+  transition: all 150ms cubic-bezier(0.22, 1, 0.36, 1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -216,8 +216,8 @@ body.popup-controller-body {
 
 .btn-launch-full:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.32);
-  background: var(--primary-hover, #EA580C);
+  box-shadow: 0 4px 12px rgba(16, 75, 53, 0.24);
+  background: var(--primary-hover, #167448);
 }
 
 .btn-launch-full:active {
@@ -225,7 +225,7 @@ body.popup-controller-body {
 }
 
 .btn-launch-full:focus-visible {
-  outline: 2px solid var(--primary, #F97316);
+  outline: 2px solid var(--primary, #104B35);
   outline-offset: 2px;
 }
 

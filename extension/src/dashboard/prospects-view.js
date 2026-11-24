@@ -1,5 +1,5 @@
 /**
- * OutFox — OutFox Dynamic Prospects CRM (Phase A, B & C)
+ * Crafture Network — Crafture Network Dynamic Prospects CRM (Phase A, B & C)
  * 100% Real Storage Data · Zero Mock Data · 5 Real Filters · Column Toggle
  * Floating Bulk Actions Bar · Right Slide-in "Import Prospects" Drawer
  */
@@ -30,7 +30,7 @@ export async function renderProspectsView(container, ctx = {}) {
   if (isInitial) {
     container.innerHTML = `
       <div style="display:flex; justify-content:center; align-items:center; height:320px; color:#6e7191;">
-        <div style="width:32px; height:32px; border:3px solid #fff7ed; border-top-color:#ff6b00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+        <div style="width:32px; height:32px; border:3px solid #E6EFE9; border-top-color:#104B35; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
       </div>
       <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
     `;
@@ -240,7 +240,7 @@ export async function renderProspectsView(container, ctx = {}) {
   let selectedIds = new Set();
 
   // Initialize Slide-in Import Drawer
-  const importDrawer = mountOutFoxImportDrawer(container, () => {
+  const importDrawer = mountCraftureImportDrawer(container, () => {
     renderProspectsView(container, ctx);
   }, ctx);
 
@@ -294,10 +294,10 @@ export async function renderProspectsView(container, ctx = {}) {
       return `<span class="prospect-pill" style="background:#e6f9f3; color:#00BA88; font-weight:600; padding:4px 10px; border-radius:9999px; font-size:11px;">${ICONS.check} Connected</span>`;
     }
     if (status === 'Needs Connection' || status === 'blocked_not_connected') {
-      return `<span class="prospect-pill" title="Must accept connection request before messaging" style="background:#fff1ee; color:#ea580c; font-weight:600; padding:4px 10px; border-radius:9999px; font-size:11px; cursor:help;">${ICONS.ban} Needs Connection</span>`;
+      return `<span class="prospect-pill" title="Must accept connection request before messaging" style="background:#fff1ee; color:#167448; font-weight:600; padding:4px 10px; border-radius:9999px; font-size:11px; cursor:help;">${ICONS.ban} Needs Connection</span>`;
     }
     if (status === 'Invite Sent') {
-      return `<span class="prospect-pill" style="background:#fff7ed; color:#ff6b00; font-weight:600; padding:4px 10px; border-radius:9999px; font-size:11px;">${ICONS.invitation} Invite Sent</span>`;
+      return `<span class="prospect-pill" style="background:#E6EFE9; color:#104B35; font-weight:600; padding:4px 10px; border-radius:9999px; font-size:11px;">${ICONS.invitation} Invite Sent</span>`;
     }
     if (status === 'Visited') {
       return `<span class="prospect-pill" style="background:#f4f6fc; color:#6e7191; font-weight:600; padding:4px 10px; border-radius:9999px; font-size:11px;">${ICONS.visit} Visited</span>`;
@@ -348,7 +348,7 @@ export async function renderProspectsView(container, ctx = {}) {
         <aside class="lists-sidebar-card" style="width:230px; min-width:230px; background:#FFFFFF; border:1px solid rgba(15,23,42,0.08); border-radius:12px; padding:16px; box-shadow:0 1px 2px rgba(15,23,42,0.04); display:flex; flex-direction:column; gap:8px; flex-shrink:0;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <h4 style="margin:0; font-size:12px; text-transform:uppercase; color:#a0a3bd; letter-spacing:0.5px; font-weight:700;">Lists</h4>
-            <button type="button" id="btn-add-new-list" style="border:none; background:transparent; color:#ff6b00; font-weight:700; font-size:18px; cursor:pointer;" title="Create New List">+</button>
+            <button type="button" id="btn-add-new-list" style="border:none; background:transparent; color:#104B35; font-weight:700; font-size:18px; cursor:pointer;" title="Create New List">+</button>
           </div>
 
           <div class="list-nav-scroll" style="display:flex; flex-direction:column; gap:4px; flex:1;">
@@ -393,13 +393,13 @@ export async function renderProspectsView(container, ctx = {}) {
 
         <!-- Right Main CRM Area -->
         <main class="crm-main-area" style="flex:1; min-width:0; display:flex; flex-direction:column; gap:16px;">
-          <!-- Floating Bulk Action Bar (OutFox Screenshot 1) -->
+          <!-- Floating Bulk Action Bar (Screenshot 1) -->
           <div id="floating-bulk-bar" class="floating-bulk-bar" style="display:${selectedIds.size > 0 ? 'flex' : 'none'}; transform:${selectedIds.size > 0 ? 'translateY(0)' : 'translateY(-20px)'}; opacity:${selectedIds.size > 0 ? '1' : '0'}; transition:all 0.18s cubic-bezier(0.22, 1, 0.36, 1); position:sticky; top:12px; z-index:900; background:#FFFFFF; border:1px solid rgba(15,23,42,0.08); border-radius:12px; padding:10px 18px; box-shadow:0 4px 12px rgba(15,23,42,0.08); align-items:center; justify-content:space-between; margin-bottom:8px;">
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
               <button type="button" id="btn-deselect-all" class="bulk-deselect-btn" title="Deselect all">
                 ${ICONS.x} <span id="bulk-selected-count">${selectedIds.size} selected</span>
               </button>
-              <button type="button" id="bulk-btn-start-campaign" class="btn btn-sm" style="background:#ff6b00; color:#FFF; font-weight:700; border-radius:9999px; padding:8px 16px; border:none; cursor:pointer;">
+              <button type="button" id="bulk-btn-start-campaign" class="btn btn-sm" style="background:#104B35; color:#FFF; font-weight:700; border-radius:9999px; padding:8px 16px; border:none; cursor:pointer;">
                 ${ICONS.rocket} Start a campaign
               </button>
               <button type="button" id="bulk-btn-add-campaign" class="btn-bulk-action">
@@ -431,13 +431,13 @@ export async function renderProspectsView(container, ctx = {}) {
           <div class="list-header-row" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
             <div style="display:flex; align-items:center; gap:12px;">
               ${isEditingTitle ? `
-                <input type="text" id="input-rename-list" value="${activeTitle}" style="font-size:20px; font-weight:700; color:#14142b; padding:4px 10px; border:2px solid #ff6b00; border-radius:8px; outline:none;" />
+                <input type="text" id="input-rename-list" value="${activeTitle}" style="font-size:20px; font-weight:700; color:#14142b; padding:4px 10px; border:2px solid #104B35; border-radius:8px; outline:none;" />
                 <button type="button" id="btn-save-rename" class="btn-pill btn-primary btn-sm" style="padding:6px 14px; font-size:12px;">Save</button>
                 <button type="button" id="btn-cancel-rename" class="btn-pill btn-soft btn-sm" style="padding:6px 14px; font-size:12px;">Cancel</button>
               ` : `
                 <h2 style="margin:0; font-size:22px; font-weight:700; color:#14142b;">${activeTitle}</h2>
                 ${currentList ? `<button type="button" id="btn-edit-title" style="border:none; background:transparent; cursor:pointer; color:#a0a3bd; font-size:16px;" title="Rename list">${ICONS.edit}</button>` : ''}
-                <span style="background:#fff7ed; color:#ff6b00; font-weight:700; font-size:12px; padding:3px 10px; border-radius:9999px;">${filtered.length} prospects</span>
+                <span style="background:#E6EFE9; color:#104B35; font-weight:700; font-size:12px; padding:3px 10px; border-radius:9999px;">${filtered.length} prospects</span>
               `}
             </div>
 
@@ -456,12 +456,12 @@ export async function renderProspectsView(container, ctx = {}) {
 
           ${currentListId === 'blacklist' ? `
             <!-- Blocked Companies & Domains Section -->
-            <div class="company-exclusion-card" style="background:#FFFFFF; border:1px solid #fed7aa; border-radius:14px; padding:16px 20px; box-shadow:0 4px 14px rgba(255,107,0,0.06); margin-bottom:4px;">
+            <div class="company-exclusion-card" style="background:#FFFFFF; border:1px solid #DCE5DE; border-radius:14px; padding:16px 20px; box-shadow:0 4px 14px rgba(16, 75, 53,0.06); margin-bottom:4px;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
                 <div>
                   <h3 style="margin:0; font-size:14px; font-weight:700; color:#14142b; display:flex; align-items:center; gap:8px;">
                     <span style="display:inline-flex; align-items:center; gap:6px;">${ICONS.building} Blocked Companies & Domains</span>
-                    <span style="font-size:11px; background:#fff7ed; color:#ff6b00; padding:2px 8px; border-radius:12px; font-weight:700;" id="badge-company-count">${companyBlacklist.length} blocked</span>
+                    <span style="font-size:11px; background:#E6EFE9; color:#104B35; padding:2px 8px; border-radius:12px; font-weight:700;" id="badge-company-count">${companyBlacklist.length} blocked</span>
                   </h3>
                   <p style="margin:4px 0 0 0; font-size:12px; color:#64748b;">Prospects matching these company names or domains will be automatically skipped across all campaigns.</p>
                 </div>
@@ -469,7 +469,7 @@ export async function renderProspectsView(container, ctx = {}) {
 
               <div style="display:flex; gap:10px; margin-bottom:12px; align-items:center;">
                 <input type="text" id="input-block-company" placeholder="e.g. tcs, infosys.com, accenture" style="flex:1; max-width:360px; padding:8px 14px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; outline:none;" />
-                <button type="button" id="btn-add-block-company" class="btn btn-sm" style="padding:8px 16px; font-size:12.5px; background:#ff6b00; color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                <button type="button" id="btn-add-block-company" class="btn btn-sm" style="padding:8px 16px; font-size:12.5px; background:#104B35; color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
                   ${ICONS.building} Block Company
                 </button>
               </div>
@@ -478,9 +478,9 @@ export async function renderProspectsView(container, ctx = {}) {
                 ${companyBlacklist.length === 0 ? `
                   <span style="font-size:12px; color:#94a3b8; font-style:italic;">No companies or domains blocked yet.</span>
                 ` : companyBlacklist.map((c) => `
-                  <span class="company-chip" style="display:inline-flex; align-items:center; gap:6px; background:#fff7ed; border:1px solid #ffedd5; color:#c2410c; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:600;">
+                  <span class="company-chip" style="display:inline-flex; align-items:center; gap:6px; background:#E6EFE9; border:1px solid #DCE5DE; color:#c2410c; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:600;">
                     <span>${c}</span>
-                    <button type="button" class="btn-remove-company-chip" data-company="${encodeURIComponent(c)}" style="border:none; background:transparent; color:#ea580c; cursor:pointer; font-size:12px; font-weight:700; padding:0 2px; line-height:1; display:inline-flex; align-items:center;" title="Unblock ${c}">${ICONS.x}</button>
+                    <button type="button" class="btn-remove-company-chip" data-company="${encodeURIComponent(c)}" style="border:none; background:transparent; color:#167448; cursor:pointer; font-size:12px; font-weight:700; padding:0 2px; line-height:1; display:inline-flex; align-items:center;" title="Unblock ${c}">${ICONS.x}</button>
                   </span>
                 `).join('')}
               </div>
@@ -543,7 +543,7 @@ export async function renderProspectsView(container, ctx = {}) {
           <div style="background:#FFFFFF; border:1px solid rgba(15,23,42,0.08); border-radius:12px; box-shadow:0 1px 2px rgba(15,23,42,0.04); overflow-x:auto; max-width:100%;">
             ${filtered.length === 0 ? `
               <div style="padding:60px 20px; text-align:center; color:#6e7191;">
-                <img src="../../icons/icon48.png" width="52" height="52" alt="OutFox" style="border-radius: 14px; margin: 0 auto 14px; display: block; box-shadow: 0 6px 20px rgba(255, 107, 0, 0.22);" />
+                <img src="../../icons/icon48.png" width="52" height="52" alt="Crafture Network" style="border-radius: 14px; margin: 0 auto 14px; display: block; box-shadow: 0 6px 20px rgba(16, 75, 53, 0.22);" />
                 <h3 style="margin: 0 0 6px 0; color: #14142b; font-size: 16px; font-weight: 700;">No prospects found in this list</h3>
                 <p style="margin: 0; font-size: 13px; color: #a0a3bd;">Import prospects from LinkedIn search or upload a CSV to start your sequence.</p>
                 <button type="button" class="btn-import-prospects" id="btn-empty-import" style="margin:18px auto 0; font-size:12px; padding:8px 18px;">
@@ -574,12 +574,12 @@ export async function renderProspectsView(container, ctx = {}) {
                       </td>
                       <td style="padding:12px 16px; vertical-align:middle;">
                         <div style="display:flex; align-items:center; gap:10px;">
-                          <div style="width:32px; height:32px; border-radius:50%; background:#fff7ed; color:#ff6b00; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:12px;">
+                          <div style="width:32px; height:32px; border-radius:50%; background:#E6EFE9; color:#104B35; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:12px;">
                             ${(p.fullName[0] || 'L').toUpperCase()}
                           </div>
                           <div>
                             <span class="prospect-timeline-trigger" data-id="${p.publicId}" tabindex="0" role="button" style="font-weight:600; color:#14142b; display:block; cursor:pointer; text-decoration:underline decoration-dotted;" title="Click to view outreach timeline">${p.fullName}</span>
-                            <a href="${p.profileUrl}" target="_blank" style="font-size:11px; color:#ff6b00; text-decoration:none;">Profile ↗</a>
+                            <a href="${p.profileUrl}" target="_blank" style="font-size:11px; color:#104B35; text-decoration:none;">Profile ↗</a>
                           </div>
                         </div>
                       </td>
@@ -593,7 +593,7 @@ export async function renderProspectsView(container, ctx = {}) {
                           ${blacklist.has(p.publicId) ? `<span style="display:inline-flex; align-items:center; gap:4px;">Unblock ${ICONS.refresh}</span>` : `${ICONS.ban} Blacklist`}
                         </button>
                         ${p.company ? `
-                          <button class="btn-quick-block-co" data-company="${encodeURIComponent(p.company)}" style="border:none; background:transparent; color:#ea580c; cursor:pointer; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" title="Block Entire Company (${p.company})">
+                          <button class="btn-quick-block-co" data-company="${encodeURIComponent(p.company)}" style="border:none; background:transparent; color:#167448; cursor:pointer; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" title="Block Entire Company (${p.company})">
                             ${ICONS.building} Block Co.
                           </button>
                         ` : ''}
@@ -1092,7 +1092,7 @@ export async function renderProspectsView(container, ctx = {}) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `outfox-leads-export-${selectedLeads.length}.csv`;
+      a.download = `crafture-leads-export-${selectedLeads.length}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       if (ctx.showToast) ctx.showToast(`Exported ${selectedLeads.length} prospects to CSV!`, 'success');
@@ -1317,13 +1317,13 @@ export async function renderProspectsView(container, ctx = {}) {
 }
 
 /**
- * OutFox 3-Screen Dynamic Import Drawer with  Settings Toggle
+ * Crafture Network 3-Screen Dynamic Import Drawer with  Settings Toggle
  * Views:
  *   - 'menu'    : Classic & Interest signal cards + Destination list selector
  *   - 'form'    : Dynamic URL/Dropdown input + Limit count +  Gear options trigger
  *   - 'options' : Move duplicates & Clean import toggles
  */
-function mountOutFoxImportDrawer(container, onImportSuccess, ctx = {}) {
+function mountCraftureImportDrawer(container, onImportSuccess, ctx = {}) {
   let drawerState = 'menu'; // 'menu' | 'form' | 'options'
   let currentMethod = null; // 'search' | 'commenters' | 'reactors' | 'groups' | 'events' | 'csv'
 
@@ -1369,11 +1369,11 @@ function mountOutFoxImportDrawer(container, onImportSuccess, ctx = {}) {
   };
 
   // Clean up any previously attached drawer
-  const oldHost = document.getElementById('OutFox-import-drawer-root') || document.getElementById('import-drawer-wrapper');
+  const oldHost = document.getElementById('cn-import-drawer-root') || document.getElementById('import-drawer-wrapper');
   if (oldHost) oldHost.remove();
 
   const host = document.createElement('div');
-  host.id = 'OutFox-import-drawer-root';
+  host.id = 'cn-import-drawer-root';
   document.body.appendChild(host);
 
   function renderDrawer() {
@@ -1384,7 +1384,7 @@ function mountOutFoxImportDrawer(container, onImportSuccess, ctx = {}) {
       <!-- Backdrop Overlay -->
       <div id="drawer-backdrop" class="drawer-backdrop" style="position:fixed; inset:0; background:rgba(20,20,43,0.35); backdrop-filter:blur(4px); z-index:9998; opacity:1; transition:opacity 0.25s ease;"></div>
 
-      <!-- Right Slide-in Drawer (OutFox Screenshots) -->
+      <!-- Right Slide-in Drawer (Screenshots) -->
       <aside class="import-drawer" style="position:fixed; top:0; right:0; width:480px; height:100vh; background:#FFFFFF; box-shadow:-10px 0 35px rgba(0,0,0,0.15); z-index:9999; display:flex; flex-direction:column; box-sizing:border-box; animation:drawerSlideIn 0.25s cubic-bezier(0.16,1,0.3,1);">
         
         ${
@@ -1404,7 +1404,7 @@ function mountOutFoxImportDrawer(container, onImportSuccess, ctx = {}) {
                   <strong style="color:#14142b; font-size:14px; display:block; margin-bottom:4px;">Move duplicates to import list</strong>
                   <span style="font-size:12px; color:#6e7191; line-height:1.4; display:block;">Enable this option to automatically move leads that are already in one of your lists, to the list you are importing into.</span>
                 </div>
-                <input type="checkbox" id="toggle-opt-duplicates" ${moveDuplicates ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer; accent-color:#ff6b00;" />
+                <input type="checkbox" id="toggle-opt-duplicates" ${moveDuplicates ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer; accent-color:#104B35;" />
               </div>
 
               <!-- Toggle 2: Clean Import -->
@@ -1413,7 +1413,7 @@ function mountOutFoxImportDrawer(container, onImportSuccess, ctx = {}) {
                   <strong style="color:#14142b; font-size:14px; display:block; margin-bottom:4px;">Clean my import</strong>
                   <span style="font-size:12px; color:#6e7191; line-height:1.4; display:block;">Activate this option to remove "false positive" prospects from your last import.</span>
                 </div>
-                <input type="checkbox" id="toggle-opt-clean" ${cleanImport ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer; accent-color:#ff6b00;" />
+                <input type="checkbox" id="toggle-opt-clean" ${cleanImport ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer; accent-color:#104B35;" />
               </div>
             </div>
           ` : drawerState === 'form' && config ? `
@@ -1460,7 +1460,7 @@ function mountOutFoxImportDrawer(container, onImportSuccess, ctx = {}) {
 
               <!-- Action Buttons -->
               <div style="margin-top:auto; display:flex; flex-direction:column; gap:12px; padding-top:20px;">
-                <button type="button" id="btn-execute-import" class="btn btn-primary" style="width:100%; padding:12px; font-size:14px; font-weight:700; border-radius:9999px; background:#ff6b00; color:#FFF; border:none; cursor:pointer;">
+                <button type="button" id="btn-execute-import" class="btn btn-primary" style="width:100%; padding:12px; font-size:14px; font-weight:700; border-radius:9999px; background:#104B35; color:#FFF; border:none; cursor:pointer;">
                   Import
                 </button>
                 <button type="button" id="btn-cancel-form" style="background:transparent; border:none; color:#6e7191; font-weight:600; font-size:13px; cursor:pointer; text-align:center;">
@@ -1775,4 +1775,4 @@ function mountOutFoxImportDrawer(container, onImportSuccess, ctx = {}) {
   return { openDrawer, closeDrawer };
 }
 
-const mountImportDrawer = mountOutFoxImportDrawer;
+const mountImportDrawer = mountCraftureImportDrawer;

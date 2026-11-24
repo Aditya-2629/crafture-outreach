@@ -1,5 +1,5 @@
 /**
- * OutFox — export.csv and sync.pull.
+ * Crafture Network — export.csv and sync.pull.
  *
  * `export.csv` builds a CSV from the engine's own stores. `sync.pull` hands a
  * client everything that changed since a timestamp, which is how the MCP

@@ -1,5 +1,5 @@
 /**
- * OutFox — metered profile reads.
+ * Crafture Network — metered profile reads.
  *
  * Fetching `profileView` is what LinkedIn counts as a profile visit: it shows
  * up in the other person's "who viewed your profile", and it is the single

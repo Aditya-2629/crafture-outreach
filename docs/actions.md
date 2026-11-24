@@ -20,12 +20,10 @@ This file is the source of truth for the LinkedIn Toolkit v2 contract. Every lay
 | `network.connections` | `{ start?, count? }` | `{ profiles: Profile[], nextStart? }` |
 | `network.followers` | `{ start?, count? }` | `{ profiles: Profile[], nextStart? }` |
 | `network.status` | `{ publicIds: string[] }` (≤ 25) | `{ statuses: Record<string, 'connected'\|'pending'\|'none'>, partial?: boolean, reason?: string }` |
-| `network.stats` | `{}` | `{ connections: number, pending: number, updatedAt: number }` |
 | `network.unfollowCount` | `{ mode?: 'api'\|'dom', scope?: 'following'\|'everyone' }` | `{ count: number, sample?: string[], followers?: { total: number, stillFollowing: number } }` — popup only; any other origin gets `UNAUTHORIZED`. In the default `api` mode `count` is `totalResultCount` from the following-list read and no tab is opened; in `dom` mode it is read from the following page's own header ("You are following 785 people out of your network"), falling back to the rows currently loaded when that line is absent. `sample` is the first 10 names. `scope: 'everyone'` also reads your whole followers list, fifty at a time with a 0.4–0.8 s gap, because LinkedIn's Following list does not include your connections: `followers.total` is how many follow you and `followers.stillFollowing` how many of those you are still following, `count` becomes the two added together — an upper bound, since somebody on both lists is counted once by the run — and `sample` is topped up from the connections the Following list never shows. That is one read per fifty followers (190 of them for 9,479), so it emits `unfollow_progress` with `phase: 'scanning'` as it goes and takes a couple of minutes. `scope` is API-only: there is no followers page to click, so `mode: 'dom'` answers for the Following list whatever the scope says |
 | `network.unfollowAll` | `{ limit?: number, dryRun?: boolean, mode?: 'api'\|'dom', scope?: 'following'\|'everyone', speed?: 'careful'\|'fast' }` | `{ unfollowed: number, attempted: number, names: string[], stopped?: 'limit'\|'end'\|'error'\|'cancelled', error?: string }` — popup only; any other origin gets `UNAUTHORIZED`. `limit` is 1–5000 and stops the run after that many *successful* unfollows; omit it to work through the whole list. `dryRun: true` walks the same list by the same route and unfollows nobody, returning in `names` the people it would have unfollowed (`unfollowed` and `attempted` are then `0`). `attempted` counts every unfollow tried, so `attempted - unfollowed` is how many did not take. `mode` picks how: `api` (the default) pages the following list and POSTs a `followingStates` patch per person, needing no tab; `dom` drives the active tab, clicking the page with 2–5 s gaps. `scope: 'everyone'` (API only) adds a second source after the Following list — a page-by-page scan of your followers, unfollowing every row whose own `FollowingState` still says true — because connections are followed automatically on connect and never appear on the Following list at all; the limit, the Stop flag, the seen set and the failure counter carry across both sources, so a limit of 15 is 15 people and somebody on both lists is unfollowed once. `speed: 'fast'` (API only, ignored for a `dryRun`) runs three streams over that same queue instead of one, each with a randomised 0.5–0.9 s gap — about four a second, and correspondingly more likely to be the thing LinkedIn rate-limits; `careful` (the default) is one at a time with a randomised 0.8–1.6 s gap. No quota bucket is charged either way, but the challenge latch still applies. `stopped` says why the run ended: `limit` (your number was reached), `end` (the list ran out), `cancelled` (`network.unfollowStop`) or `error` (`api`: LinkedIn answered 401/403/429/451 on any stream, redirected a request to its security-check or sign-in page, or failed twice in a row; `dom`: the tab navigated away, was closed, or LinkedIn showed a checkpoint — `error` carries the sentence) |
 | `network.unfollowStop` | `{}` | `{ stopping: boolean }` — popup only; any other origin gets `UNAUTHORIZED`. Asks the run in flight to stop between people; what is already unfollowed stays unfollowed. `stopping` is `false` when nothing was running, and no flag is left set for a later run to trip over |
 | `network.unfollowStatus` | `{}` | `{ running: boolean, done: number, total: number, lastName: string, phase?: 'scanning', scanned?: number, scannedTotal?: number }` — popup only; any other origin gets `UNAUTHORIZED`. What a progress line needs while `network.unfollowAll` is in flight: `total` is how much is left as LinkedIn last reported it (`0` before the first page lands), `lastName` the person most recently unfollowed. The last three appear only while a `scope: 'everyone'` run is reading the followers list, and are how far that scan has got — which `done` cannot say, since a scan can read a thousand followers and unfollow none of them. Poll it alongside the `unfollow_progress` event, which only fires every 10 |
-| `network.withdrawStaleInvites` | `{ olderThanDays?: number, maxCount?: number }` | `{ withdrawnCount: number, skippedCount: number }` |
 | `outreach.view` | `{ publicId }` | `WriteResult` |
 | `outreach.follow` | `{ publicId }` | `WriteResult` |
 | `outreach.invite` | `{ publicId, note? }` | `WriteResult` — `note` is at most **200 characters**, LinkedIn's own limit; a longer one is refused with `INVALID_PARAMS` and `howToFix: 'LinkedIn limits invitation notes to 200 characters.'` before any quota is spent, and a campaign step whose rendered note overruns is truncated at a word boundary with a `campaign_note_truncated` event rather than failing. Free accounts also get only a small monthly allowance of personalised (with-note) invitations; exhausting it comes back as `LINKEDIN_ERROR` |
@@ -33,7 +31,6 @@ This file is the source of truth for the LinkedIn Toolkit v2 contract. Every lay
 | `outreach.inmail` | `{ publicId, subject, body }` | `WriteResult` |
 | `outreach.like` | `{ postUrl }` | `WriteResult` |
 | `outreach.comment` | `{ postUrl, body }` | `WriteResult` |
-| `outreach.email` | `{ publicId, subject, body, email? }` | `WriteResult` |
 | `inbox.threads` | `{ since?: number, unreadOnly?: boolean, count? }` | `{ threads: Thread[] }` |
 | `inbox.messages` | `{ threadId, since? }` | `{ messages: Message[] }` |
 | `inbox.export` | `{ since? }` | `{ threads: Thread[], messages: Message[] }` |
@@ -51,7 +48,6 @@ This file is the source of truth for the LinkedIn Toolkit v2 contract. Every lay
 | `campaign.enroll` | `{ campaignId, publicIds }` | `{ enrolled, skipped }` |
 | `campaign.pause` / `campaign.resume` / `campaign.delete` | `{ campaignId }` | `Campaign` |
 | `campaign.tick` | `{}` | `{ executed: number, queued: number }` |
-| `campaign.declareAbWinner` | `{ campaignId, stepKey, winnerId: 'A'\|'B' }` | `Campaign` |
 | `queue.list` | `{ status?: 'pending'\|'approved'\|'rejected'\|'sent'\|'failed' }` | `{ items: QueueItem[] }` — a `failed` item carries `result.error` |
 | `queue.approve` | `{ ids: string[], edits?: Record<id, {note?, body?, subject?}> }` | `{ approved: number }` — **returns immediately**: `approved` is how many were *marked* approved, not how many sent. The extension then sends them one at a time at human pace, on a one-minute alarm plus an immediate kick, emitting `queue_item_sent` per success and marking the rest `failed` with their error; watch those events or poll `queue.list`. Edits are validated against the action's own params first, so an over-long note is refused with `INVALID_PARAMS` and *nothing* is approved. Origin `mcp` is refused with `UNAUTHORIZED` unless `autopilot` is on; `popup` and `cli` are a human deciding and always pass |
 | `queue.reject` | `{ ids: string[] }` | `{ rejected: number }` — same origin rule as `queue.approve` |
@@ -61,19 +57,6 @@ This file is the source of truth for the LinkedIn Toolkit v2 contract. Every lay
 | `research.pack` | `{ rows: ResearchRow[], listName?, enrich?: boolean, full?: boolean }` | `{ jobId, total, etaMs }` then events `research_progress {jobId, done, total, row, packSummary}`, `research_completed {jobId, listId}` |
 | `research.get` | `{ jobId }` | `{ jobId, status, done, total, packs: Pack[] }` |
 | `sync.pull` | `{ since?: number }` | `{ profiles, lists, listMembers, campaigns, enrollments, actions, threads, messages, events }` (all arrays, items changed since `since`) |
-| `gmail.connect` | `{ interactive?: boolean }` | `{ success: boolean, email: string }` |
-| `gmail.disconnect` | `{}` | `{ disconnected: boolean }` |
-| `gmail.status` | `{}` | `{ connected: boolean, email: string }` |
-| `gmail.test` | `{ to?: string }` | `{ status: 'sent', to: string, messageId: string }` |
-| `googleWorkspace.connect` | `{ interactive?: boolean }` | `{ success: boolean, email: string, spreadsheetUrl?: string }` |
-| `googleWorkspace.status` | `{}` | `{ connected: boolean, email: string, spreadsheetId: string, spreadsheetUrl: string, lastSyncAt: number, lastBackupAt: number }` |
-| `googleWorkspace.disconnect` | `{}` | `{ disconnected: boolean }` |
-| `sheetsCrm.syncNow` | `{}` | `{ success: boolean, rowsSynced: number, spreadsheetUrl: string }` |
-| `backup.exportJson` | `{}` | `{ snapshot: object }` |
-| `backup.importJson` | `{ snapshot?: object }` | `{ success: boolean, keysRestored: number }` |
-| `backup.driveSave` | `{}` | `{ success: boolean, fileId: string, backedUpAt: number }` |
-| `backup.driveRestore` | `{}` | `{ success: boolean, keysRestored: number }` |
-| `outreachMailbox.switch` | `{ mode: 'workspace'|'custom_gmail'|'disabled', email?: string }` | `{ mailbox: object }` |
 
 ### Shared types
 
@@ -126,6 +109,30 @@ Every profile fetch — `profile.get`, each row of `profile.export`, a connectio
 `Campaign.settings.autopilot` is **reserved**. It is stored and returned as part of the campaign, defaults to `false`, and is not read by the engine: whether a campaign step queues or sends is decided solely by the global `Config.autopilot`, which only the popup can change. Do not treat a campaign-level `autopilot: true` as permission to send.
 
 `export.csv` reads its rows from the engine's own stores (`kind: 'profiles'` from the profile store, `'list'` from list members, `'campaign'` from enrollments and the action log, `'inbox'` from stored threads); `kind: 'profiles'` also accepts an optional `profiles: Profile[]` override, which the popup uses to download an ad-hoc result set it already holds, and an optional `download: boolean` that additionally hands the CSV to `chrome.downloads` as a `data:` URL for callers (the popup, the content script) that cannot download for themselves.
+
+### Extension-specific actions
+
+The following actions run internally within the extension engine and background service worker for integrations, mailbox sync, and local data persistence:
+
+| Action | Params | Result `data` |
+|---|---|---|
+| `network.stats` | `{}` | `{ connections: number, pending: number, updatedAt: number }` |
+| `network.withdrawStaleInvites` | `{ olderThanDays?: number, maxCount?: number }` | `{ withdrawnCount: number, skippedCount: number }` |
+| `outreach.email` | `{ publicId, subject, body, email? }` | `WriteResult` |
+| `campaign.declareAbWinner` | `{ campaignId, stepKey, winnerId: 'A'\|'B' }` | `Campaign` |
+| `gmail.connect` | `{ interactive?: boolean }` | `{ success: boolean, email: string }` |
+| `gmail.disconnect` | `{}` | `{ disconnected: boolean }` |
+| `gmail.status` | `{}` | `{ connected: boolean, email: string }` |
+| `gmail.test` | `{ to?: string }` | `{ status: 'sent', to: string, messageId: string }` |
+| `googleWorkspace.connect` | `{ interactive?: boolean }` | `{ success: boolean, email: string, spreadsheetUrl?: string }` |
+| `googleWorkspace.status` | `{}` | `{ connected: boolean, email: string, spreadsheetId: string, spreadsheetUrl: string, lastSyncAt: number, lastBackupAt: number }` |
+| `googleWorkspace.disconnect` | `{}` | `{ disconnected: boolean }` |
+| `sheetsCrm.syncNow` | `{}` | `{ success: boolean, rowsSynced: number, spreadsheetUrl: string }` |
+| `backup.exportJson` | `{}` | `{ snapshot: object }` |
+| `backup.importJson` | `{ snapshot?: object }` | `{ success: boolean, keysRestored: number }` |
+| `backup.driveSave` | `{}` | `{ success: boolean, fileId: string, backedUpAt: number }` |
+| `backup.driveRestore` | `{}` | `{ success: boolean, keysRestored: number }` |
+| `outreachMailbox.switch` | `{ mode: 'workspace'\|'custom_gmail'\|'disabled', email?: string }` | `{ mailbox: object }` |
 
 ### Envelope and errors
 

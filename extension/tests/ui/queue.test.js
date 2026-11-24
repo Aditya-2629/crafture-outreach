@@ -89,7 +89,7 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
           at: now - 2 * 60 * 1000,
         },
       ],
-      outfox_bucket_cooldowns: {},
+      crafture_bucket_cooldowns: {},
     });
 
     await renderQueueView(container, ctx);
@@ -143,7 +143,7 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
           nextAt: now - 1000,
         },
       ],
-      outfox_bucket_cooldowns: {
+      crafture_bucket_cooldowns: {
         invite: now + 38 * 60 * 1000, // 38m left
       },
     });
@@ -188,7 +188,7 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
           ],
         },
       ],
-      outfox_bucket_cooldowns: {},
+      crafture_bucket_cooldowns: {},
     });
 
     await renderQueueView(container, ctx);
@@ -200,7 +200,7 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
     trigger.click();
     await flush();
 
-    const modal = document.querySelector('#OutFox-timeline-modal-backdrop');
+    const modal = document.querySelector('#cn-timeline-modal-backdrop');
     expect(modal).not.toBeNull();
     expect(modal.textContent).toContain('Ada Lovelace');
     expect(modal.textContent).toContain('Timeline Test Campaign');
@@ -211,7 +211,7 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
     // Close modal
     const closeBtn = modal.querySelector('#modal-btn-close');
     closeBtn.click();
-    expect(document.querySelector('#OutFox-timeline-modal-backdrop')).toBeNull();
+    expect(document.querySelector('#cn-timeline-modal-backdrop')).toBeNull();
   });
 
   it('handles Reset Quotas and Update activity buttons with toasts and button disabling', async () => {
@@ -233,7 +233,7 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
 
     await chrome.storage.local.set({
       campaigns: [],
-      outfox_bucket_cooldowns: {},
+      crafture_bucket_cooldowns: {},
     });
 
     let cleanupFn = null;
@@ -295,7 +295,7 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
     await renderQueueView(container, testCtx);
     await flush();
 
-    expect(container.querySelector('.OutFox-queue-layout')).not.toBeNull();
+    expect(container.querySelector('.cn-queue-layout')).not.toBeNull();
 
     // Now simulate user navigated away: mark stale and set container content to Home
     isStaleState = true;
@@ -310,6 +310,6 @@ describe('QueueView — Live Status Banner & Per-Row Pills', () => {
 
     // Verify container was NOT overwritten by Queue!
     expect(container.querySelector('#home-view-marker')).not.toBeNull();
-    expect(container.querySelector('.OutFox-queue-layout')).toBeNull();
+    expect(container.querySelector('.cn-queue-layout')).toBeNull();
   });
 });

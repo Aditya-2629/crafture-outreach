@@ -1,5 +1,5 @@
 /**
- * OutFox — Authentic OutFox Campaigns View & 3-Step Wizard
+ * Crafture Network — Authentic Crafture Network Campaigns View & 3-Step Wizard
  * Video Frames 11–17: Template Gallery, 3-Step Creator Wizard, Horizontal Flow Canvas, and Message Editor.
  */
 
@@ -12,9 +12,9 @@ import { getConfig } from '../lib/config.js';
 import { renderTemplate, resolveSpintax } from '../lib/template.js';
 import { isStorageChangeRelevant, captureInputFocus, restoreInputFocus } from './dashboard.js';
 
-const CAMPAIGNS_RELEVANT_KEYS = new Set(['campaigns', 'lists', 'quotas', 'outfox_quotas', 'enrollments']);
+const CAMPAIGNS_RELEVANT_KEYS = new Set(['campaigns', 'lists', 'quotas', 'crafture_quotas', 'enrollments']);
 
-// Pre-built OutFox Campaign Templates (From Video Frame 11)
+// Pre-built Crafture Network Campaign Templates (From Video Frame 11)
 export const CAMPAIGN_TEMPLATES = [
   {
     id: 'custom',
@@ -606,7 +606,7 @@ export function renderHorizontalFlow(pipelineSteps = [], prospectCount = 12, isI
     html += `
       <div class="node-connector">
         ${isFollowupAfterInvite ? `
-          <div class="flow-condition-pill" title="OutFox auto-parks messages until invite is accepted">
+          <div class="flow-condition-pill" title="Crafture auto-parks messages until invite is accepted">
             ${ICONS.clock} On Invite → Wait for Acceptance (auto-parks 12h)
           </div>
         ` : ''}
@@ -624,7 +624,7 @@ export function renderHorizontalFlow(pipelineSteps = [], prospectCount = 12, isI
         </div>
       </div>
       <div class="flow-node-item">
-        <div class="flow-node-card ${idx === activeStepIdx ? 'is-active-step' : ''}" data-step-idx="${idx}" style="${isInteractive ? 'cursor: pointer;' : ''} ${idx === activeStepIdx ? 'border-color: #ff6b00; box-shadow: 0 0 0 2px rgba(255, 107, 0, 0.22);' : ''}">
+        <div class="flow-node-card ${idx === activeStepIdx ? 'is-active-step' : ''}" data-step-idx="${idx}" style="${isInteractive ? 'cursor: pointer;' : ''} ${idx === activeStepIdx ? 'border-color: #104B35; box-shadow: 0 0 0 2px rgba(16, 75, 53, 0.22);' : ''}">
           ${isInteractive ? `<button type="button" class="btn-delete-node" data-delete-idx="${idx}" title="Remove Step">${ICONS.x}</button>` : ''}
           <div class="node-icon-circle">${step.icon || ICONS.lightning}</div>
           <div class="node-text-group">
@@ -832,7 +832,7 @@ export function computeAutoPilotStatus(campaigns = [], allStorage = {}, config =
   }
 
   // Check resting / cooldown / outside schedule
-  const cooldowns = allStorage.outfox_bucket_cooldowns || {};
+  const cooldowns = allStorage.crafture_bucket_cooldowns || allStorage.outfox_bucket_cooldowns || {};
   const buckets = ['invite', 'view', 'message', 'email'];
   const resting = [];
   for (const b of buckets) {
@@ -917,7 +917,7 @@ export function computeAutoPilotStatus(campaigns = [], allStorage = {}, config =
 
 
 function ensureCampaignsStyles() {
-  const STYLE_ID = 'OutFox-campaigns-view-css';
+  const STYLE_ID = 'cn-campaigns-view-css';
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
@@ -931,8 +931,8 @@ function ensureCampaignsStyles() {
     .tab-count-badge { background: #e2e8f0; color: #475569; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; }
     .camp-search-wrap { position: relative; display: flex; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0 12px; width: 220px; }
     .camp-search-wrap input { border: none; outline: none; font-size: 13px; padding: 8px 6px; width: 100%; background: transparent; }
-    .OutFox-camp-grid { display: flex; flex-direction: column; gap: 16px; }
-    .OutFox-camp-card {
+    .cn-camp-grid { display: flex; flex-direction: column; gap: 16px; }
+    .cn-camp-card {
       background: #ffffff;
       border: 1px solid rgba(15, 23, 42, 0.08);
       border-radius: 12px;
@@ -947,12 +947,12 @@ function ensureCampaignsStyles() {
       flex-wrap: wrap;
       gap: 20px;
     }
-    .OutFox-camp-card:has(.camp-3dots-menu.is-open),
-    .OutFox-camp-card.has-open-menu {
+    .cn-camp-card:has:has(.camp-3dots-menu.is-open),
+    .cn-camp-card.has-open-menu.has-open-menu {
       z-index: 100 !important;
       position: relative;
     }
-    .OutFox-camp-card:hover {
+    .cn-camp-card:hover:hover {
       border-color: rgba(15, 23, 42, 0.16);
       box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
     }
@@ -1044,7 +1044,7 @@ function ensureCampaignsStyles() {
     .camp-progress-fill {
       height: 100%;
       border-radius: 9999px;
-      background: #f97316;
+      background: #104B35;
       transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
     }
     .camp-progress-fill.is-complete {
@@ -1121,9 +1121,9 @@ function ensureCampaignsStyles() {
       cursor: default;
     }
     .btn-camp-card-live {
-      background: #fff7ed;
-      color: #ff6b00;
-      border: 1px solid #fed7aa;
+      background: #E6EFE9;
+      color: #104B35;
+      border: 1px solid #DCE5DE;
       font-size: 12.5px;
       font-weight: 700;
       padding: 8px 14px;
@@ -1135,7 +1135,7 @@ function ensureCampaignsStyles() {
       transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
     }
     .btn-camp-card-live:hover {
-      background: #ffedd5;
+      background: #DCE5DE;
       color: #e05a00;
       transform: translateY(-1px);
     }
@@ -1179,7 +1179,7 @@ function ensureCampaignsStyles() {
       color: #94a3b8;
       border: 1px solid #e2e8f0;
     }
-    .planet-avatar { width: 44px; height: 44px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; position: relative; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #ff6b00; }
+    .planet-avatar { width: 44px; height: 44px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; position: relative; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #104B35; }
     .planet-avatar img { width: 28px; height: 28px; border-radius: 6px; object-fit: contain; }
     .planet-ring { display: none; }
     .camp-card-meta { flex: 1; min-width: 0; }
@@ -1195,7 +1195,7 @@ function ensureCampaignsStyles() {
     .camp-3dots-menu { position: absolute; top: 48px; right: 16px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); padding: 6px; display: none; flex-direction: column; z-index: 9999 !important; min-width: 170px; }
     .camp-3dots-menu.is-open { display: flex; }
     .camp-menu-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600; color: #14142b; cursor: pointer; transition: background 0.12s; }
-    .camp-menu-item:hover { background: #f8fafc; color: #ff6b00; }
+    .camp-menu-item:hover { background: #f8fafc; color: #104B35; }
     .menu-item-delete:hover { background: #fef2f2; color: #ef4444; }
     .sequence-preflight-warning { display: flex; align-items: flex-start; gap: 12px; background: #fffbeb; border: 1px solid #fef3c7; color: #92400e; border-radius: 10px; padding: 12px 16px; margin: 14px 0; }
     .sequence-preflight-warning .warning-icon { display: flex; align-items: center; justify-content: center; color: #d97706; flex-shrink: 0; margin-top: 2px; }
@@ -1247,9 +1247,9 @@ function ensureCampaignsStyles() {
     }
     .delay-select-pill:hover, .delay-select-pill:focus {
       background-color: #ffffff;
-      border-color: #ff6b00;
-      color: #ff6b00;
-      box-shadow: 0 2px 6px rgba(255, 107, 0, 0.15);
+      border-color: #104B35;
+      color: #104B35;
+      box-shadow: 0 2px 6px rgba(16, 75, 53, 0.15);
     }
     .flow-condition-pill {
       font-size: 10px;
@@ -1280,8 +1280,8 @@ function ensureCampaignsStyles() {
       transition: all 0.15s ease;
     }
     .btn-quick-add:hover {
-      background: #fff7ed;
-      color: #ff6b00;
+      background: #E6EFE9;
+      color: #104B35;
       border-color: #fdba74;
       transform: translateY(-1px);
     }
@@ -1291,7 +1291,7 @@ function ensureCampaignsStyles() {
     .live-preview-box {
       padding: 16px 18px;
       background: #fdfefe;
-      border: 1.5px dashed #fed7aa;
+      border: 1.5px dashed #DCE5DE;
       border-radius: 14px;
       margin-bottom: 14px;
     }
@@ -1334,11 +1334,11 @@ function ensureCampaignsStyles() {
       white-space: nowrap;
     }
     .pipeline-popover-item:hover {
-      background: #fff7ed;
-      color: #ff6b00;
+      background: #E6EFE9;
+      color: #104B35;
     }
     .pipeline-popover-item.is-selected {
-      background: #ffedd5;
+      background: #DCE5DE;
       color: #c2410c;
     }
 
@@ -1457,14 +1457,14 @@ function ensureCampaignsStyles() {
       transition: all 0.12s;
     }
     .drawer-filter-pill:hover {
-      border-color: #ff6b00;
-      color: #ff6b00;
+      border-color: #104B35;
+      color: #104B35;
     }
     .drawer-filter-pill.is-active {
-      background: #ff6b00;
+      background: #104B35;
       color: #ffffff;
-      border-color: #ff6b00;
-      box-shadow: 0 2px 6px rgba(255, 107, 0, 0.2);
+      border-color: #104B35;
+      box-shadow: 0 2px 6px rgba(16, 75, 53, 0.2);
     }
     .drawer-search-wrap {
       display: flex;
@@ -1541,7 +1541,7 @@ function ensureCampaignsStyles() {
       font-weight: 700;
     }
     .badge-status-active { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
-    .badge-status-running { background: #fff7ed; color: #ea580c; border: 1px solid #fed7aa; }
+    .badge-status-running { background: #E6EFE9; color: #167448; border: 1px solid #DCE5DE; }
     .badge-status-waiting { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; }
     .badge-status-completed { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
     .badge-status-replied { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
@@ -1551,9 +1551,9 @@ function ensureCampaignsStyles() {
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      background: #fff7ed;
-      color: #ff6b00;
-      border: 1px solid #ffedd5;
+      background: #E6EFE9;
+      color: #104B35;
+      border: 1px solid #DCE5DE;
       padding: 3px 9px;
       border-radius: 9999px;
       font-size: 11.5px;
@@ -1562,14 +1562,14 @@ function ensureCampaignsStyles() {
       transition: all 0.12s;
     }
     .btn-camp-live-badge:hover {
-      background: #ff6b00;
+      background: #104B35;
       color: #ffffff;
-      border-color: #ff6b00;
+      border-color: #104B35;
     }
     .btn-camp-card-live {
-      background: #fff7ed;
-      border: 1px solid #ffedd5;
-      color: #ff6b00;
+      background: #E6EFE9;
+      border: 1px solid #DCE5DE;
+      color: #104B35;
       font-size: 11.5px;
       font-weight: 700;
       padding: 4px 10px;
@@ -1581,9 +1581,9 @@ function ensureCampaignsStyles() {
       transition: all 0.15s;
     }
     .btn-camp-card-live:hover {
-      background: #ff6b00;
+      background: #104B35;
       color: #ffffff;
-      border-color: #ff6b00;
+      border-color: #104B35;
     }
     .autopilot-status-pill {
       display: inline-flex;
@@ -1686,7 +1686,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       new Promise((r) => {
         try {
           if (typeof chrome !== 'undefined' && chrome.alarms?.get) {
-            chrome.alarms.get('outfox-campaign-tick', (a1) => {
+            chrome.alarms.get('crafture-campaign-tick', (a1) => {
               if (a1 && a1.scheduledTime) return r(a1);
               chrome.alarms.get('campaignTick', r);
             });
@@ -1710,7 +1710,7 @@ export async function renderCampaignsView(container, ctx = {}) {
     }));
     profiles = Array.isArray(pRes) ? pRes : [];
     activeSenderEmail = cfg?.mailbox?.email || cfg?.googleWorkspace?.email || '';
-    noteLimitUntil = Number(sRes?.outfox_note_limit_until) || 0;
+    noteLimitUntil = Number(sRes?.crafture_note_limit_until || sRes?.outfox_note_limit_until) || 0;
     savedMessageTemplates = Array.isArray(sRes?.messageTemplates)
       ? sRes.messageTemplates
       : Array.isArray(sRes?.templates)
@@ -1771,7 +1771,7 @@ export async function renderCampaignsView(container, ctx = {}) {
     }
   }
 
-  const OUTFOX_PRESET_TEMPLATES = {
+  const CRAFTURE_PRESET_TEMPLATES = {
     invitation: [
       { id: 'p_inv_1', name: 'Founder-to-Founder', content: 'Hi {{firstName|there}} — saw what you are building at {{company|your company}}. Would love to connect founder to founder!' },
       { id: 'p_inv_2', name: 'Domain / Industry Peer', content: 'Hi {{firstName|there}}, love your work in {{industry|your space}}. Would be great to connect and stay in touch!' },
@@ -1792,7 +1792,7 @@ export async function renderCampaignsView(container, ctx = {}) {
   function renderTemplateSelectOptions(category, savedList = []) {
     const normCat = category === 'invite' ? 'invitation' : category;
     const userList = savedList.filter((t) => (t.type || (t.category === 'invite' ? 'invitation' : t.category)) === normCat);
-    const presets = OUTFOX_PRESET_TEMPLATES[normCat] || [];
+    const presets = CRAFTURE_PRESET_TEMPLATES[normCat] || [];
 
     let html = '';
     if (userList.length > 0) {
@@ -1803,7 +1803,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       html += '</optgroup>';
     }
     if (presets.length > 0) {
-      html += '<optgroup label="OutFox Presets">';
+      html += '<optgroup label="Crafture Presets">';
       presets.forEach((p) => {
         html += `<option value="preset_${p.id}">${p.name}</option>`;
       });
@@ -1891,7 +1891,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       currentList = currentList.filter((c) => c.name && c.name.toLowerCase().includes(q));
     }
 
-    const outfoxLogoUrl =
+    const craftureLogoUrl =
       typeof chrome !== 'undefined' && chrome.runtime?.getURL
         ? chrome.runtime.getURL('icons/icon48.png')
         : '../../icons/icon48.png';
@@ -1949,7 +1949,7 @@ export async function renderCampaignsView(container, ctx = {}) {
             <strong class="stat-pill-val">${totalCompleted}</strong>
           </div>
           <div class="camp-stat-pill">
-            <span style="color:#ff6b00; display:inline-flex;">${ICONS.lightning}</span>
+            <span style="color:#104B35; display:inline-flex;">${ICONS.lightning}</span>
             <span class="stat-pill-label">Total Leads:</span>
             <strong class="stat-pill-val">${totalAllLeads}</strong>
           </div>
@@ -1982,13 +1982,13 @@ export async function renderCampaignsView(container, ctx = {}) {
         </div>
 
         <!-- Cards Grid (Spacious Claymorphism SaaS Rows) -->
-        <div class="OutFox-camp-grid">
+        <div class="cn-camp-grid">
           ${
             currentList.length === 0
               ? `
             <div class="empty-camp-pane">
               <div class="planet-avatar" style="opacity:0.6; margin-bottom:12px;">
-                <img src="${outfoxLogoUrl}" width="28" height="28" alt="OutFox" />
+                <img src="${craftureLogoUrl}" width="28" height="28" alt="Crafture Network" />
               </div>
               <h3>No ${activeStateTab} campaigns</h3>
               <p>Create an automated sequence to reach out to leads at scale.</p>
@@ -2003,11 +2003,11 @@ export async function renderCampaignsView(container, ctx = {}) {
                     const st = camp.computed || computeCampaignStats(camp, allStorage, now);
 
                     return `
-              <div class="OutFox-camp-card clay-card" data-camp-id="${id}" tabindex="0" role="button">
+              <div class="cn-camp-card clay-card" data-camp-id="${id}" tabindex="0" role="button">
                 <!-- LEFT COLUMN: Avatar + Name + Lifecycle Badge + Mini Step Flow -->
                 <div class="camp-row-left">
                   <div class="planet-avatar">
-                    <img src="${outfoxLogoUrl}" width="28" height="28" alt="OutFox" />
+                    <img src="${craftureLogoUrl}" width="28" height="28" alt="Crafture Network" />
                   </div>
                   <div class="camp-card-meta">
                     <div class="camp-name-badge-row">
@@ -2077,7 +2077,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                   <!-- 3-Dots Dropdown Menu -->
                   <div class="camp-3dots-menu" id="camp-menu-${id}">
                     <div class="camp-menu-item" data-action="live_status" data-id="${id}">
-                      <span style="color:#ff6b00; display:inline-flex;">${ICONS.lightning}</span> View Live Leads Status
+                      <span style="color:#104B35; display:inline-flex;">${ICONS.lightning}</span> View Live Leads Status
                     </div>
                     <div class="camp-menu-item" data-action="edit" data-id="${id}">
                       <span>${ICONS.edit}</span> Edit my campaign
@@ -2124,7 +2124,7 @@ export async function renderCampaignsView(container, ctx = {}) {
           <div class="camp-drawer-head">
             <div class="camp-drawer-head-info">
               <div class="planet-avatar" style="width:36px; height:36px;">
-                <img src="${outfoxLogoUrl}" width="22" height="22" alt="OutFox" />
+                <img src="${craftureLogoUrl}" width="22" height="22" alt="Crafture Network" />
               </div>
               <div>
                 <h3 class="camp-drawer-title" id="drawer-camp-name">Live Campaign Status</h3>
@@ -2220,13 +2220,13 @@ export async function renderCampaignsView(container, ctx = {}) {
         e.stopPropagation();
         const id = btn.dataset.dotsId;
         const menu = container.querySelector(`#camp-menu-${id}`);
-        const card = btn.closest('.OutFox-camp-card');
+        const card = btn.closest('.cn-camp-card');
         const willBeOpen = menu && !menu.classList.contains('is-open');
 
         container.querySelectorAll('.camp-3dots-menu').forEach((m) => {
           if (m !== menu) m.classList.remove('is-open');
         });
-        container.querySelectorAll('.OutFox-camp-card').forEach((c) => {
+        container.querySelectorAll('.cn-camp-card').forEach((c) => {
           if (c !== card) c.classList.remove('has-open-menu');
         });
 
@@ -2241,14 +2241,14 @@ export async function renderCampaignsView(container, ctx = {}) {
 
     document.addEventListener('click', () => {
       container.querySelectorAll('.camp-3dots-menu').forEach((m) => m.classList.remove('is-open'));
-      container.querySelectorAll('.OutFox-camp-card').forEach((c) => c.classList.remove('has-open-menu'));
+      container.querySelectorAll('.cn-camp-card').forEach((c) => c.classList.remove('has-open-menu'));
     });
 
     container.querySelectorAll('.camp-menu-item').forEach((item) => {
       item.addEventListener('click', async (e) => {
         e.stopPropagation();
         container.querySelectorAll('.camp-3dots-menu').forEach((m) => m.classList.remove('is-open'));
-        container.querySelectorAll('.OutFox-camp-card').forEach((c) => c.classList.remove('has-open-menu'));
+        container.querySelectorAll('.cn-camp-card').forEach((c) => c.classList.remove('has-open-menu'));
         const action = item.dataset.action;
         const id = item.dataset.id;
         const camp = campaigns.find((c) => (c.campaignId || c.id) === id);
@@ -2373,7 +2373,7 @@ export async function renderCampaignsView(container, ctx = {}) {
       });
     });
 
-    container.querySelectorAll('.OutFox-camp-card').forEach((card) => {
+    container.querySelectorAll('.cn-camp-card').forEach((card) => {
       card.addEventListener('click', (e) => {
         if (
           e.target.closest('.btn-camp-3dots') ||
@@ -2468,10 +2468,10 @@ export async function renderCampaignsView(container, ctx = {}) {
     }
 
     function formatCountdown(ts, status) {
-      if (status === 'completed' || status === 'replied') return '—';
+      if (status === 'completed' || status === 'replied' || status === 'failed') return '—';
       if (!ts || ts <= Date.now()) {
         return status === 'active' || status === 'running'
-          ? '<span style="color:#ff6b00; font-weight:700;">Due now</span>'
+          ? '<span style="color:#104B35; font-weight:700;">Due now</span>'
           : '—';
       }
       const diff = ts - Date.now();
@@ -2563,14 +2563,88 @@ export async function renderCampaignsView(container, ctx = {}) {
         subEl.innerHTML = `${statusPill} &bull; ${data.summary?.total || 0} enrolled prospects &bull; Auto-refreshing every 5s`;
       }
 
-      const s = data.summary || {};
+      const leads = data.leads || [];
+      const totalSteps = data.totalSteps || data.steps?.length || 0;
+
+      function resolveLeadDrawerStatus(lead) {
+        // 1. Replied: enrollment.status === 'replied' || enrollment.replied === true || enrollment.stoppedReason === 'replied'
+        if (
+          lead.status === 'replied' ||
+          lead.rawStatus === 'replied' ||
+          lead.replied === true ||
+          lead.stoppedReason === 'replied'
+        ) {
+          return 'replied';
+        }
+
+        // 2. Completed: enrollment.status === 'completed' || enrollment.status === 'accepted' (on final step) || stepIndex >= campaign.steps.length || LIVE STATUS === 'ACCEPTED' with no remaining steps
+        const sIdx = lead.stepIndex ?? (lead.stepNumber ? lead.stepNumber - 1 : 0);
+        const isAcceptedFinal =
+          (lead.status === 'accepted' || lead.rawStatus === 'accepted' || lead.accepted) &&
+          (sIdx >= totalSteps - 1 || totalSteps <= 1);
+        const hasNoRemainingSteps = totalSteps > 0 && sIdx >= totalSteps;
+        const isLiveAcceptedNoSteps =
+          String(lead.status || '').toUpperCase() === 'ACCEPTED' && (sIdx >= totalSteps - 1 || hasNoRemainingSteps);
+
+        if (
+          lead.status === 'completed' ||
+          lead.rawStatus === 'completed' ||
+          lead.status === 'done' ||
+          lead.rawStatus === 'done' ||
+          isAcceptedFinal ||
+          hasNoRemainingSteps ||
+          isLiveAcceptedNoSteps
+        ) {
+          return 'completed';
+        }
+
+        // 3. Failed: stopped, failed, blocked_not_connected, email_skipped_no_email
+        if (
+          lead.status === 'failed' ||
+          lead.status === 'stopped' ||
+          lead.rawStatus === 'failed' ||
+          lead.rawStatus === 'stopped' ||
+          lead.rawStatus === 'blocked_not_connected' ||
+          lead.rawStatus === 'email_skipped_no_email'
+        ) {
+          return 'failed';
+        }
+
+        // 4. Waiting: waiting_acceptance, future timer, or waiting
+        if (
+          lead.status === 'waiting' ||
+          lead.parkReason === 'waiting_acceptance' ||
+          /waiting for invite acceptance/i.test(lead.lastError || '') ||
+          (lead.nextRunAt && lead.nextRunAt > Date.now()) ||
+          (lead.nextAt && lead.nextAt > Date.now())
+        ) {
+          return 'waiting';
+        }
+
+        // 5. Active / Running
+        return 'active';
+      }
+
+      leads.forEach((l) => {
+        l.resolvedStatus = resolveLeadDrawerStatus(l);
+      });
+
+      const s = {
+        total: leads.length,
+        active: leads.filter((l) => l.resolvedStatus === 'active').length,
+        waiting: leads.filter((l) => l.resolvedStatus === 'waiting').length,
+        replied: leads.filter((l) => l.resolvedStatus === 'replied').length,
+        completed: leads.filter((l) => l.resolvedStatus === 'completed').length,
+        failed: leads.filter((l) => l.resolvedStatus === 'failed').length,
+      };
+
       const pills = [
-        { id: 'all', label: `All (${s.total || 0})` },
-        { id: 'active', label: `Active / Running (${(s.active || 0) + (s.currentlyRunning || 0)})` },
-        { id: 'waiting', label: `Waiting (${s.waiting || 0})` },
-        { id: 'replied', label: `Replied (${s.replied || 0})` },
-        { id: 'completed', label: `Completed (${s.completed || 0})` },
-        { id: 'failed', label: `Failed (${s.failed || 0})` },
+        { id: 'all', label: `All (${s.total})` },
+        { id: 'active', label: `Active / Running (${s.active})` },
+        { id: 'waiting', label: `Waiting (${s.waiting})` },
+        { id: 'replied', label: `Replied (${s.replied})` },
+        { id: 'completed', label: `Completed (${s.completed})` },
+        { id: 'failed', label: `Failed (${s.failed})` },
       ];
 
       if (pillsBar) {
@@ -2599,7 +2673,7 @@ export async function renderCampaignsView(container, ctx = {}) {
         if (data.abStats && typeof data.abStats === 'object' && Object.keys(data.abStats).length > 0) {
           const abKeys = Object.keys(data.abStats);
           abMount.innerHTML = `
-            <div class="drawer-ab-section" style="margin-top: 10px; margin-bottom: 12px; padding: 14px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px;">
+            <div class="drawer-ab-section" style="margin-top: 10px; margin-bottom: 12px; padding: 14px; background: #E6EFE9; border: 1px solid #DCE5DE; border-radius: 12px;">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
                 <span style="font-size: 13px; font-weight: 700; color: #9a3412; display: flex; align-items: center; gap: 6px;">
                   ${ICONS.sparkles} A/B Test Performance Comparison
@@ -2629,7 +2703,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                     const isInvite = step?.type === 'invite';
 
                     return `
-                      <div class="ab-card-row" style="background: #ffffff; border: 1px solid #fed7aa; border-radius: 10px; padding: 12px;">
+                      <div class="ab-card-row" style="background: #ffffff; border: 1px solid #DCE5DE; border-radius: 10px; padding: 12px;">
                         <div style="font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
                           <span>${stepLabel}</span>
                           ${step?.winningVariant ? `<span class="badge-status badge-status-completed" style="font-size: 11px;">🏆 Winner: Variant ${step.winningVariant}</span>` : ''}
@@ -2709,15 +2783,15 @@ export async function renderCampaignsView(container, ctx = {}) {
       let filtered = allLeads;
 
       if (drawerFilter === 'active') {
-        filtered = filtered.filter((l) => l.status === 'active' || l.status === 'running');
+        filtered = filtered.filter((l) => (l.resolvedStatus || l.status) === 'active' || (l.resolvedStatus || l.status) === 'running');
       } else if (drawerFilter === 'waiting') {
-        filtered = filtered.filter((l) => l.status === 'waiting');
+        filtered = filtered.filter((l) => (l.resolvedStatus || l.status) === 'waiting');
       } else if (drawerFilter === 'replied') {
-        filtered = filtered.filter((l) => l.status === 'replied');
+        filtered = filtered.filter((l) => (l.resolvedStatus || l.status) === 'replied');
       } else if (drawerFilter === 'completed') {
-        filtered = filtered.filter((l) => l.status === 'completed');
+        filtered = filtered.filter((l) => (l.resolvedStatus || l.status) === 'completed');
       } else if (drawerFilter === 'failed') {
-        filtered = filtered.filter((l) => l.status === 'failed');
+        filtered = filtered.filter((l) => (l.resolvedStatus || l.status) === 'failed');
       }
 
       if (drawerSearchQuery.trim()) {
@@ -2756,12 +2830,18 @@ export async function renderCampaignsView(container, ctx = {}) {
           <tbody>
             ${filtered
               .map((lead) => {
-                const status = lead.status || 'active';
+                const status = lead.resolvedStatus || lead.status || 'active';
+                const isWaitingAcceptance =
+                  lead.parkReason === 'waiting_acceptance' ||
+                  /waiting for invite acceptance/i.test(lead.lastError || '');
                 const badgeClass = `badge-status-${status}`;
+                const badgeLabel = (status === 'waiting' && isWaitingAcceptance) ? 'WAITING ACCEPT' : status.toUpperCase();
                 const countdown = formatCountdown(lead.nextRunAt, status);
 
                 let lastResultHtml = '<span style="color:#94a3b8; font-size:11.5px;">Not started</span>';
-                if (lead.lastError) {
+                if (isWaitingAcceptance) {
+                  lastResultHtml = `<span style="color:#2563eb; font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;">${ICONS.clock || ''} Waiting for accept</span>`;
+                } else if (lead.lastError) {
                   const shortErr = lead.lastError.length > 30 ? lead.lastError.slice(0, 30) + '...' : lead.lastError;
                   lastResultHtml = `<span style="color:#ef4444; font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" title="${lead.lastError}">${ICONS.warning} ${shortErr}</span>`;
                 } else if (lead.replied) {
@@ -2776,7 +2856,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       <div class="lead-meta-cell">
                         <div class="lead-name-row">
                           <span class="btn-open-lead-timeline" data-public-id="${lead.publicId}" style="cursor:pointer; font-weight:600; color:#1e293b; text-decoration:underline decoration-dotted;" title="Click to view outreach timeline">${lead.fullName}</span>
-                          ${lead.email ? `<span style="display:inline-flex; align-items:center; color:#ff6b00; cursor:pointer;" title="${lead.email}">${ICONS.email}</span>` : ''}
+                          ${lead.email ? `<span style="display:inline-flex; align-items:center; color:#104B35; cursor:pointer;" title="${lead.email}">${ICONS.email}</span>` : ''}
                         </div>
                         <div class="lead-company-sub">${lead.company || lead.publicId}</div>
                       </div>
@@ -2785,7 +2865,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       <span style="font-weight:600; color:#1e293b; font-size:12px;">${lead.currentStepLabel}</span>
                     </td>
                     <td>
-                      <span class="badge-status ${badgeClass}">${status.toUpperCase()}</span>
+                      <span class="badge-status ${badgeClass}">${badgeLabel}</span>
                     </td>
                     <td>
                       <span style="font-size:12px;">${countdown}</span>
@@ -2848,7 +2928,7 @@ export async function renderCampaignsView(container, ctx = {}) {
 
       const handleStorageChange = async () => {
         if (!container || !container.isConnected) {
-          window.removeEventListener('outfox:storage-change', handleStorageChange);
+          window.removeEventListener('crafture:storage-change', handleStorageChange);
           return;
         }
         if (drawerCampId) {
@@ -2866,7 +2946,7 @@ export async function renderCampaignsView(container, ctx = {}) {
           }
         }
       };
-      window.addEventListener('outfox:storage-change', handleStorageChange);
+      window.addEventListener('crafture:storage-change', handleStorageChange);
     } catch {
       /* runtime message listener is best-effort */
     }
@@ -2897,7 +2977,7 @@ export async function renderCampaignsView(container, ctx = {}) {
           </div>
 
           <div class="wizard-head-center">
-            <div style="display: flex; align-items: center; gap: 6px; background: #fff7ed; border: 1px solid #ffedd5; padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #ff6b00; font-weight: 700;">
+            <div style="display: flex; align-items: center; gap: 6px; background: #E6EFE9; border: 1px solid #DCE5DE; padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #104B35; font-weight: 700;">
               <span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.email} Outreach Sender:</span>
               <span style="font-weight: 600; color: #9a3412;">${activeSenderEmail || 'Google Workspace / Gmail'}</span>
             </div>
@@ -2947,7 +3027,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                   .join('')}
               </div>
 
-              <!-- Templates Grid (Custom + OutFox sequences) -->
+              <!-- Templates Grid (Custom + Crafture Network sequences) -->
               <div class="templates-grid">
                 ${filteredTemplates
                   .map(
@@ -2958,7 +3038,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       <div class="tpl-tags">
                         ${tpl.tags.map((t) => `<span class="tpl-tag-pill">${t}</span>`).join('')}
                       </div>
-                      ${tpl.badge ? `<span style="background:#fff7ed; color:#ff6b00; border:1px solid #ffedd5; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:12px; margin-left:auto;">${tpl.badge}</span>` : ''}
+                      ${tpl.badge ? `<span style="background:#E6EFE9; color:#104B35; border:1px solid #DCE5DE; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:12px; margin-left:auto;">${tpl.badge}</span>` : ''}
                     </div>
                     <h4 class="tpl-title">${tpl.title}</h4>
                     <p class="tpl-desc">${tpl.bestFor}</p>
@@ -3014,7 +3094,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                 </span>
               </div>
 
-              <div class="OutFox-card" style="margin-top: 16px;">
+              <div class="cn-card" style="margin-top: 16px;">
                 <div class="form-group">
                   <label>Campaign Name</label>
                   <input type="text" id="wizard-input-campname" class="form-input" value="${campaignName}" />
@@ -3047,13 +3127,13 @@ export async function renderCampaignsView(container, ctx = {}) {
                 </div>
 
                 <!-- Auto-enrichment toggle card -->
-                <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 14px 16px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 12px; margin-top: 16px;">
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 14px 16px; background: #E6EFE9; border: 1px solid #DCE5DE; border-radius: 12px; margin-top: 16px;">
                   <div style="display: flex; gap: 12px; align-items: flex-start;">
-                    <span style="font-size: 20px; line-height: 1; display:inline-flex; color:#ff6b00;">${ICONS.lightning}</span>
+                    <span style="font-size: 20px; line-height: 1; display:inline-flex; color:#104B35;">${ICONS.lightning}</span>
                     <div>
                       <strong style="font-size: 13.5px; color: #9a3412; display: block; margin-bottom: 3px;">Auto-enrich missing work emails</strong>
                       <span style="font-size: 12px; color: #c2410c; line-height: 1.4; display: block;">
-                        If an enrolled prospect doesn't have an email address, OutFox will automatically find and verify their work email before sending email steps.
+                        If an enrolled prospect doesn't have an email address, Crafture will automatically find and verify their work email before sending email steps.
                       </span>
                     </div>
                   </div>
@@ -3118,7 +3198,7 @@ export async function renderCampaignsView(container, ctx = {}) {
               </div>
 
               <!-- Horizontal Visual Node Flow Canvas -->
-              <div class="OutFox-card flow-canvas-card">
+              <div class="cn-card flow-canvas-card">
                 <div class="canvas-header-bar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
                   <span class="canvas-header-label" style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin: 0;">
                     VISUAL SEQUENCE PIPELINE (CLICK ANY STEP TO EDIT)
@@ -3127,7 +3207,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                     <span class="flow-condition-pill" style="font-size: 11px; background: #ecfdf5; color: #059669; border-color: #a7f3d0; padding: 3px 9px;">
                       ${ICONS.shield} Auto-stop on Reply
                     </span>
-                    <span class="flow-condition-pill" style="font-size: 11px; background: #fff7ed; color: #c2410c; border-color: #ffedd5; padding: 3px 9px;">
+                    <span class="flow-condition-pill" style="font-size: 11px; background: #E6EFE9; color: #c2410c; border-color: #DCE5DE; padding: 3px 9px;">
                       ${ICONS.clock} Pacing: ~${Math.max(1, Math.ceil(prospectCount / 20))} days (${prospectCount} prospects)
                     </span>
                   </div>
@@ -3139,7 +3219,7 @@ export async function renderCampaignsView(container, ctx = {}) {
               ${(() => {
                 if (pipelineSteps.length === 0) {
                   return `
-                    <div class="OutFox-card" style="margin-top: 20px; text-align: center; padding: 30px;">
+                    <div class="cn-card" style="margin-top: 20px; text-align: center; padding: 30px;">
                       <p style="color: var(--text-muted); font-size: 14px;">Your sequence has no action steps. Click any button in the <strong>Quick-Add Step Bar</strong> above to add a step.</p>
                     </div>
                   `;
@@ -3154,10 +3234,10 @@ export async function renderCampaignsView(container, ctx = {}) {
                 // Non-copy warm-touch steps
                 if (['view', 'follow', 'like', 'endorse', 'wait'].includes(curStep.type)) {
                   return `
-                    <div class="OutFox-card warm-touch-editor-card" style="margin-top: 20px;">
+                    <div class="cn-card warm-touch-editor-card" style="margin-top: 20px;">
                       <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 18px;">
                         <div class="editor-title-row" style="display: flex; align-items: center; gap: 12px;">
-                          <span class="editor-icon-circle" style="width: 40px; height: 40px; border-radius: 12px; background: #fff7ed; color: #ff6b00; display: flex; align-items: center; justify-content: center; font-size: 18px;">
+                          <span class="editor-icon-circle" style="width: 40px; height: 40px; border-radius: 12px; background: #E6EFE9; color: #104B35; display: flex; align-items: center; justify-content: center; font-size: 18px;">
                             ${curStep.icon || ICONS.lightning}
                           </span>
                           <div>
@@ -3223,7 +3303,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                   : null;
 
                 const renderAbHeader = () => `
-                  <div class="ab-toggle-box" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px; margin-bottom: 14px;">
+                  <div class="ab-toggle-box" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #E6EFE9; border: 1px solid #DCE5DE; border-radius: 10px; margin-bottom: 14px;">
                     <div>
                       <strong style="font-size: 13px; color: #9a3412; display: flex; align-items: center; gap: 6px;">
                         ${ICONS.sparkles} A/B Test (Variant A / B)
@@ -3253,16 +3333,16 @@ export async function renderCampaignsView(container, ctx = {}) {
                   const subjectValue = curStep.abEnabled ? (curVariant?.subject || '') : (curStep.subject || '');
                   const bodyValue = curStep.abEnabled ? (curVariant?.body || '') : (curStep.body || '');
                   return `
-                    <div class="OutFox-card message-editor-card" style="margin-top: 20px;">
+                    <div class="cn-card message-editor-card" style="margin-top: 20px;">
                       <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
                         <div class="editor-title-row" style="display: flex; align-items: center; gap: 10px;">
-                          <span class="editor-icon" style="color: #ff6b00;">${ICONS.email}</span>
+                          <span class="editor-icon" style="color: #104B35;">${ICONS.email}</span>
                           <div>
                             <span class="editor-title" style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${curStep.title || 'Cold Email'}</span>
                             <span style="font-size: 12px; color: var(--text-muted); display: block;">Step ${activeStepIdx + 1} of ${pipelineSteps.length} (Click any node above to edit that step)</span>
                           </div>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 6px; background: #fff7ed; border: 1px solid #ffedd5; padding: 4px 10px; border-radius: 12px; font-size: 12px; color: #ff6b00; font-weight: 600;">
+                        <div style="display: flex; align-items: center; gap: 6px; background: #E6EFE9; border: 1px solid #DCE5DE; padding: 4px 10px; border-radius: 12px; font-size: 12px; color: #104B35; font-weight: 600;">
                           <span style="display:inline-flex; align-items:center; gap:4px;">${ICONS.email} Sender:</span>
                           <strong>${activeSenderEmail || 'Google Workspace / Gmail'}</strong>
                         </div>
@@ -3281,7 +3361,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                             ${renderTemplateSelectOptions('email', savedMessageTemplates)}
                           </select>
                         </div>
-                        <button type="button" class="btn-toggle-live-preview ${isLivePreview ? 'is-active' : ''}" style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 8px; border: 1px solid ${isLivePreview ? '#ff6b00' : '#cbd5e1'}; background: ${isLivePreview ? '#fff7ed' : '#ffffff'}; color: ${isLivePreview ? '#ff6b00' : '#475569'}; cursor: pointer;">
+                        <button type="button" class="btn-toggle-live-preview ${isLivePreview ? 'is-active' : ''}" style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 8px; border: 1px solid ${isLivePreview ? '#104B35' : '#cbd5e1'}; background: ${isLivePreview ? '#E6EFE9' : '#ffffff'}; color: ${isLivePreview ? '#104B35' : '#475569'}; cursor: pointer;">
                           ${isLivePreview ? ICONS.sparkles : ICONS.eye}
                           ${isLivePreview ? 'Back to Editor' : 'Live Preview'}
                         </button>
@@ -3290,7 +3370,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       ${isLivePreview ? `
                         <div class="live-preview-box">
                           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px dashed #fdba74; padding-bottom: 8px;">
-                            <span style="font-size: 11.5px; font-weight: 700; color: #ea580c; display: inline-flex; align-items: center; gap: 5px;">
+                            <span style="font-size: 11.5px; font-weight: 700; color: #167448; display: inline-flex; align-items: center; gap: 5px;">
                               ${ICONS.sparkles} Live Preview for: <strong>${sampleLead.fullName || sampleLead.firstName} (${sampleLead.company})</strong>
                             </span>
                             <span style="font-size: 11px; color: #9a3412;">Variables & Spintax dynamically resolved</span>
@@ -3373,10 +3453,10 @@ export async function renderCampaignsView(container, ctx = {}) {
                 if (curStep.type === 'message') {
                   const bodyValue = curStep.abEnabled ? (curVariant?.body || '') : (curStep.body || '');
                   return `
-                    <div class="OutFox-card message-editor-card" style="margin-top: 20px;">
+                    <div class="cn-card message-editor-card" style="margin-top: 20px;">
                       <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
                         <div class="editor-title-row" style="display: flex; align-items: center; gap: 10px;">
-                          <span class="editor-icon" style="color: #ff6b00;">${ICONS.message}</span>
+                          <span class="editor-icon" style="color: #104B35;">${ICONS.message}</span>
                           <div>
                             <span class="editor-title" style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${curStep.title || 'LinkedIn Message'}</span>
                             <span style="font-size: 12px; color: var(--text-muted); display: block;">Step ${activeStepIdx + 1} of ${pipelineSteps.length} (Click any node above to edit that step)</span>
@@ -3388,7 +3468,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       <div style="padding: 12px 16px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 12px; color: #0369a1; font-size: 12.5px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
                         <span style="font-size: 18px; color: #0284c7;">${ICONS.clock}</span>
                         <div>
-                          <strong>Auto-parks 12h until connection accepted:</strong> OutFox automatically monitors acceptance before sending direct messages.
+                          <strong>Auto-parks 12h until connection accepted:</strong> Crafture automatically monitors acceptance before sending direct messages.
                         </div>
                       </div>
 
@@ -3405,7 +3485,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                             ${renderTemplateSelectOptions('message', savedMessageTemplates)}
                           </select>
                         </div>
-                        <button type="button" class="btn-toggle-live-preview ${isLivePreview ? 'is-active' : ''}" style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 8px; border: 1px solid ${isLivePreview ? '#ff6b00' : '#cbd5e1'}; background: ${isLivePreview ? '#fff7ed' : '#ffffff'}; color: ${isLivePreview ? '#ff6b00' : '#475569'}; cursor: pointer;">
+                        <button type="button" class="btn-toggle-live-preview ${isLivePreview ? 'is-active' : ''}" style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 8px; border: 1px solid ${isLivePreview ? '#104B35' : '#cbd5e1'}; background: ${isLivePreview ? '#E6EFE9' : '#ffffff'}; color: ${isLivePreview ? '#104B35' : '#475569'}; cursor: pointer;">
                           ${isLivePreview ? ICONS.sparkles : ICONS.eye}
                           ${isLivePreview ? 'Back to Editor' : 'Live Preview'}
                         </button>
@@ -3414,7 +3494,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       ${isLivePreview ? `
                         <div class="live-preview-box">
                           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px dashed #fdba74; padding-bottom: 8px;">
-                            <span style="font-size: 11.5px; font-weight: 700; color: #ea580c; display: inline-flex; align-items: center; gap: 5px;">
+                            <span style="font-size: 11.5px; font-weight: 700; color: #167448; display: inline-flex; align-items: center; gap: 5px;">
                               ${ICONS.sparkles} Live Preview for: <strong>${sampleLead.fullName || sampleLead.firstName} (${sampleLead.company})</strong>
                             </span>
                             <span style="font-size: 11px; color: #9a3412;">Variables & Spintax dynamically resolved</span>
@@ -3462,10 +3542,10 @@ export async function renderCampaignsView(container, ctx = {}) {
                   ? (curVariant?.note !== undefined ? curVariant.note : (curStep.note !== undefined ? curStep.note : customNote))
                   : (curStep.note !== undefined ? curStep.note : customNote);
                 return `
-                  <div class="OutFox-card message-editor-card" style="margin-top: 20px;">
+                  <div class="cn-card message-editor-card" style="margin-top: 20px;">
                     <div class="editor-head" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
                       <div class="editor-title-row" style="display: flex; align-items: center; gap: 10px;">
-                        <span class="editor-icon" style="color: #ff6b00;">${ICONS.invitation}</span>
+                        <span class="editor-icon" style="color: #104B35;">${ICONS.invitation}</span>
                         <div>
                           <span class="editor-title" style="font-size: 15px; font-weight: 700; color: var(--text-primary);">Connection Request Note</span>
                           <span style="font-size: 12px; color: var(--text-muted); display: block;">Step ${activeStepIdx + 1} of ${pipelineSteps.length} (Click any node above to edit that step)</span>
@@ -3490,7 +3570,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       <div style="padding: 16px 18px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; color: #065f46; font-size: 13px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
                         <span style="font-size: 18px; color: #059669;">${ICONS.shield}</span>
                         <div>
-                          <strong>Blank Invitation Mode Active:</strong> OutFox will send this connection request without a custom note for maximum acceptance velocity.
+                          <strong>Blank Invitation Mode Active:</strong> Crafture will send this connection request without a custom note for maximum acceptance velocity.
                         </div>
                       </div>
                     ` : `
@@ -3507,7 +3587,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                             ${renderTemplateSelectOptions('invitation', savedMessageTemplates)}
                           </select>
                         </div>
-                        <button type="button" class="btn-toggle-live-preview ${isLivePreview ? 'is-active' : ''}" style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 8px; border: 1px solid ${isLivePreview ? '#ff6b00' : '#cbd5e1'}; background: ${isLivePreview ? '#fff7ed' : '#ffffff'}; color: ${isLivePreview ? '#ff6b00' : '#475569'}; cursor: pointer;">
+                        <button type="button" class="btn-toggle-live-preview ${isLivePreview ? 'is-active' : ''}" style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 8px; border: 1px solid ${isLivePreview ? '#104B35' : '#cbd5e1'}; background: ${isLivePreview ? '#E6EFE9' : '#ffffff'}; color: ${isLivePreview ? '#104B35' : '#475569'}; cursor: pointer;">
                           ${isLivePreview ? ICONS.sparkles : ICONS.eye}
                           ${isLivePreview ? 'Back to Editor' : 'Live Preview'}
                         </button>
@@ -3516,7 +3596,7 @@ export async function renderCampaignsView(container, ctx = {}) {
                       ${isLivePreview ? `
                         <div class="live-preview-box">
                           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px dashed #fdba74; padding-bottom: 8px;">
-                            <span style="font-size: 11.5px; font-weight: 700; color: #ea580c; display: inline-flex; align-items: center; gap: 5px;">
+                            <span style="font-size: 11.5px; font-weight: 700; color: #167448; display: inline-flex; align-items: center; gap: 5px;">
                               ${ICONS.sparkles} Live Preview for: <strong>${sampleLead.fullName || sampleLead.firstName} (${sampleLead.company})</strong>
                             </span>
                             <span style="font-size: 11px; color: #9a3412;">Variables & Spintax dynamically resolved</span>
@@ -3680,7 +3760,7 @@ export async function renderCampaignsView(container, ctx = {}) {
           found = savedMessageTemplates.find((t) => String(t.id) === id);
         } else if (val.startsWith('preset_')) {
           const id = val.replace('preset_', '');
-          found = (OUTFOX_PRESET_TEMPLATES[normCat] || []).find((p) => String(p.id) === id);
+          found = (CRAFTURE_PRESET_TEMPLATES[normCat] || []).find((p) => String(p.id) === id);
         }
         if (found) {
           if (curStep.type === 'invite') {

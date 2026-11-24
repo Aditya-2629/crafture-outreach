@@ -1,5 +1,5 @@
 /**
- * OutFox — config access.
+ * Crafture Network — config access.
  *
  * One place to read and write the clamped Config. Hard ceilings are enforced
  * by `clampConfig`, so no caller — popup, bridge, MCP client — can raise them.

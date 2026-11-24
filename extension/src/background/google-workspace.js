@@ -1,9 +1,9 @@
 /**
- * OutFox — Unified Google Workspace & Cloud Engine.
+ * Crafture Network — Unified Google Workspace & Cloud Engine.
  *
  * Powers:
- * 1. Auto-Created "OutFox Live CRM" Google Sheet with real-time event row syncing.
- * 2. Google Drive Cloud Backup & 1-Click Restore (`OutFox Backups/outfox-backup.json`).
+ * 1. Auto-Created "Crafture Network Live CRM" Google Sheet with real-time event row syncing.
+ * 2. Google Drive Cloud Backup & 1-Click Restore (`Crafture Network Backups/crafture-backup.json`).
  * 3. Local JSON snapshot export/import.
  */
 
@@ -31,21 +31,21 @@ export {
   AUTH_WORKER_URL,
 };
 
-const SHEETS_CRM_STORAGE_KEY = 'outfox_sheets_crm_meta';
-const DRIVE_BACKUP_FOLDER = 'OutFox Backups';
-const DRIVE_BACKUP_FILENAME = 'outfox-backup.json';
+const SHEETS_CRM_STORAGE_KEY = 'crafture_sheets_crm_meta';
+const DRIVE_BACKUP_FOLDER = 'Crafture Network Backups';
+const DRIVE_BACKUP_FILENAME = 'crafture-backup.json';
 
 /* ================================================================== */
 /*  1. Google Sheets Live CRM                                         */
 /* ================================================================== */
 
 /**
- * Creates the "OutFox Live CRM" Google Sheet with a frozen header row.
+ * Creates the "Crafture Network Live CRM" Google Sheet with a frozen header row.
  */
 export async function createLiveCrmSheet(token) {
   const payload = {
     properties: {
-      title: 'OutFox Live CRM',
+      title: 'Crafture Network Live CRM',
     },
     sheets: [
       {
@@ -108,13 +108,13 @@ export async function createLiveCrmSheet(token) {
 
   await new Promise((r) => chrome.storage.local.set({
     [SHEETS_CRM_STORAGE_KEY]: { spreadsheetId, spreadsheetUrl },
-    outfox_sheets_crm: { spreadsheetId, spreadsheetUrl },
+    crafture_sheets_crm: { spreadsheetId, spreadsheetUrl },
   }, r));
   return { spreadsheetId, spreadsheetUrl };
 }
 
 /**
- * Retrieves existing or auto-creates "OutFox Live CRM" Google Sheet.
+ * Retrieves existing or auto-creates "Crafture Network Live CRM" Google Sheet.
  */
 export async function getOrCreateLiveCrmSheet(token) {
   const cfg = await getConfig();
@@ -125,8 +125,8 @@ export async function getOrCreateLiveCrmSheet(token) {
     };
   }
 
-  const stored = await new Promise((r) => chrome.storage.local.get([SHEETS_CRM_STORAGE_KEY, 'outfox_sheets_crm'], (res) => {
-    r(res?.[SHEETS_CRM_STORAGE_KEY] || res?.outfox_sheets_crm);
+  const stored = await new Promise((r) => chrome.storage.local.get([SHEETS_CRM_STORAGE_KEY, 'crafture_sheets_crm'], (res) => {
+    r(res?.[SHEETS_CRM_STORAGE_KEY] || res?.crafture_sheets_crm || res?.outfox_sheets_crm);
   }));
 
   if (stored?.spreadsheetId && stored?.spreadsheetUrl) {
@@ -143,7 +143,7 @@ export async function getOrCreateLiveCrmSheet(token) {
 }
 
 /**
- * Ensures "OutFox Live CRM" Google Sheet is created and returns metadata.
+ * Ensures "Crafture Network Live CRM" Google Sheet is created and returns metadata.
  */
 export async function ensureLiveCrmSheet(interactive = false) {
   const token = await getWorkspaceToken(interactive);
@@ -239,7 +239,7 @@ onEvent(async (name, payload = {}) => {
 });
 
 /**
- * Batch-appends all stored profiles into "OutFox Live CRM" Sheet.
+ * Batch-appends all stored profiles into "Crafture Network Live CRM" Sheet.
  */
 export async function syncAllLeadsToSheet() {
   const cfg = await getConfig();
@@ -302,7 +302,7 @@ export async function exportFullSnapshot() {
       }
       resolve({
         version: 1,
-        source: 'OutFox',
+        source: 'Crafture Network',
         exportedAt: new Date().toISOString(),
         collectionsCount: Object.keys(filtered).length,
         data: filtered,
@@ -341,10 +341,10 @@ export async function importFullSnapshot(snapshotInput) {
 }
 
 /**
- * Helper to find or create the "OutFox Backups" folder on Google Drive.
+ * Helper to find or create the "Crafture Network Backups" folder on Google Drive.
  */
 async function getOrCreateDriveBackupFolder(token) {
-  const query = `name = '${DRIVE_BACKUP_FOLDER}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+  const query = `(name = '${DRIVE_BACKUP_FOLDER}' or name = 'Crafture Network Backups') and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
   const listUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)`;
 
   const listRes = await fetch(listUrl, {
@@ -381,7 +381,7 @@ async function getOrCreateDriveBackupFolder(token) {
 }
 
 /**
- * Uploads full snapshot to "OutFox Backups/outfox-backup.json" on Google Drive.
+ * Uploads full snapshot to "Crafture Network Backups/crafture-backup.json" on Google Drive.
  */
 export async function backupToGoogleDrive() {
   const cfg = await getConfig();
@@ -394,7 +394,7 @@ export async function backupToGoogleDrive() {
   const snapshot = await exportFullSnapshot();
   const fileContent = JSON.stringify(snapshot, null, 2);
 
-  // Check if outfox-backup.json already exists in folder
+  // Check if crafture-backup.json already exists in folder
   const fileQuery = `name = '${DRIVE_BACKUP_FILENAME}' and '${folderId}' in parents and trashed = false`;
   const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(fileQuery)}&fields=files(id,name)`;
 
@@ -428,7 +428,7 @@ export async function backupToGoogleDrive() {
     fileId = existingFileId;
   } else {
     // Multipart create
-    const boundary = '-------outfox_drive_backup_boundary';
+    const boundary = '-------crafture_drive_backup_boundary';
     const delimiter = `\r\n--${boundary}\r\n`;
     const closeDelimiter = `\r\n--${boundary}--`;
 
@@ -476,7 +476,7 @@ export async function backupToGoogleDrive() {
 }
 
 /**
- * Downloads and restores the latest outfox-backup.json from Google Drive.
+ * Downloads and restores the latest crafture-backup.json from Google Drive.
  */
 export async function restoreFromGoogleDrive() {
   const cfg = await getConfig();
@@ -486,8 +486,8 @@ export async function restoreFromGoogleDrive() {
 
   const token = await getWorkspaceToken();
 
-  // Search for outfox-backup.json
-  const fileQuery = `name = '${DRIVE_BACKUP_FILENAME}' and trashed = false`;
+  // Search for crafture-backup.json (or legacy crafture-backup.json)
+  const fileQuery = `(name = '${DRIVE_BACKUP_FILENAME}' or name = 'crafture-backup.json') and trashed = false`;
   const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(fileQuery)}&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)`;
 
   const searchRes = await fetch(searchUrl, {

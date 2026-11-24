@@ -324,7 +324,7 @@ describe('research.pack end to end', () => {
     expect(started.data.etaMs).toBeGreaterThan(0);
 
     const job = (await handle(ACTIONS.RESEARCH_GET, { jobId: started.data.jobId })).data;
-    expect(job.status).toBe('done');
+    expect(['completed', 'done']).toContain(job.status);
     expect(job.done).toBe(1);
     expect(job.packs).toHaveLength(1);
 
@@ -463,7 +463,7 @@ describe('pacing', () => {
     out = await research.progress();
     expect(out.processed).toBe(2);
     job = (await handle(ACTIONS.RESEARCH_GET, { jobId: started.data.jobId })).data;
-    expect(job.status).toBe('done');
+    expect(['completed', 'done']).toContain(job.status);
   });
 
   it('pauses when the visit quota runs out mid-job and resumes the next day', async () => {
@@ -491,7 +491,7 @@ describe('pacing', () => {
 
     job = (await handle(ACTIONS.RESEARCH_GET, { jobId: started.data.jobId })).data;
     expect(job.done).toBe(4);
-    expect(job.status).toBe('done');
+    expect(['completed', 'done']).toContain(job.status);
   });
 
   it('stops the job the moment the quota is already gone, without half-built packs', async () => {
@@ -553,7 +553,7 @@ describe('pacing', () => {
     await research.progress();
 
     const job = (await handle(ACTIONS.RESEARCH_GET, { jobId: started.data.jobId })).data;
-    expect(job.status).toBe('done');
+    expect(['completed', 'done']).toContain(job.status);
     expect(chrome.alarms.clear).toHaveBeenCalledWith(research.RESEARCH_TICK_ALARM);
   });
 
@@ -561,7 +561,7 @@ describe('pacing', () => {
     pushRows(1);
     await handle(ACTIONS.RESEARCH_PACK, { rows: rows(1) });
     const jobs = await research.allJobs();
-    expect(jobs[0].status).toBe('done');
+    expect(['completed', 'done']).toContain(jobs[0].status);
   });
 });
 
@@ -646,5 +646,55 @@ describe('enrichment', () => {
       'analytical-engines.example',
     );
     expect(enrich.domainFor({}, {})).toBe('');
+  });
+});
+
+describe('resilient per-row processing & normalized dossier rows', () => {
+  it('records error status for failed profile, increments processedRows, and transitions to completed', async () => {
+    net.route('identity/dash/profiles', () => {
+      throw new Error('404 Profile not found on LinkedIn');
+    });
+
+    const started = await handle(ACTIONS.RESEARCH_PACK, {
+      rows: [{ linkedinUrl: 'https://www.linkedin.com/in/nonexistent/' }],
+    });
+
+    expect(started.data.jobId).toBeDefined();
+
+    const job = (await handle(ACTIONS.RESEARCH_GET, { jobId: started.data.jobId })).data;
+    expect(job.status).toBe('completed');
+    expect(job.done).toBe(1);
+    expect(job.processedRows).toBe(1);
+    expect(job.packs).toHaveLength(1);
+    expect(job.packs[0].status).toBe('error');
+    expect(job.packs[0].error).toContain('Profile');
+
+    // Check normalized dossier rows on job.rows
+    expect(Array.isArray(job.rows)).toBe(true);
+    expect(job.rows).toHaveLength(1);
+    expect(job.rows[0]).toMatchObject({
+      status: 'error',
+      name: expect.any(String),
+      headline: expect.any(String),
+      company: expect.any(String),
+      email: expect.any(String),
+      summary: expect.any(String),
+    });
+  });
+
+  it('research.list returns normalized dossier rows', async () => {
+    const listRes = await handle(ACTIONS.RESEARCH_LIST, {});
+    expect(listRes.ok).toBe(true);
+    expect(Array.isArray(listRes.data)).toBe(true);
+    const completedJob = listRes.data.find((j) => j.status === 'completed');
+    if (completedJob) {
+      expect(Array.isArray(completedJob.rows)).toBe(true);
+      expect(completedJob.rows[0]).toHaveProperty('name');
+      expect(completedJob.rows[0]).toHaveProperty('status');
+      expect(completedJob.rows[0]).toHaveProperty('headline');
+      expect(completedJob.rows[0]).toHaveProperty('company');
+      expect(completedJob.rows[0]).toHaveProperty('email');
+      expect(completedJob.rows[0]).toHaveProperty('summary');
+    }
   });
 });

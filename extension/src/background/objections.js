@@ -1,5 +1,5 @@
 /**
- * OutFox — Smart Objection Playbook, AI Intent Personalizer & 30-Day Snooze Engine
+ * Crafture Network — Smart Objection Playbook, AI Intent Personalizer & 30-Day Snooze Engine
  * Persistent Objection Rules, Multi-Provider Semantic Intent Matcher & Snooze Lifecycle
  */
 
@@ -9,8 +9,8 @@ import { getConfig } from '../lib/config.js';
 import { register } from './engine.js';
 import { getActiveCandidate } from './candidates.js';
 
-export const OBJECTIONS_KEY = 'outfox_objections';
-export const SNOOZE_KEY = 'outfox_snoozed_leads';
+export const OBJECTIONS_KEY = 'crafture_objections';
+export const SNOOZE_KEY = 'crafture_snoozed_leads';
 
 export const DEFAULT_OBJECTIONS = [
   {
@@ -317,7 +317,7 @@ export async function matchAndAdaptObjection(inboundMessage = '', prospectInfo =
   }
 
   // System Prompt for Semantic Matching & Natural Personalization
-  const systemPrompt = `You are OutFox AI SDR, an expert LinkedIn outreach closer.
+  const systemPrompt = `You are Crafture Network AI SDR, an expert LinkedIn outreach closer.
 Your task is to analyze an inbound LinkedIn message, determine the prospect's objection/intent, match it to the best Playbook rule, and personalize the base answer naturally.
 
 PLAYBOOK RULES:

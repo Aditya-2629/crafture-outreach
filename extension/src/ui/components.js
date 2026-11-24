@@ -1,5 +1,5 @@
 /**
- * OutFox — shared UI building blocks.
+ * Crafture Network — shared UI building blocks.
  *
  * Every button that talks to the engine goes through `busyButton`, so every
  * action in the popup gets the same spinner, the same disabled-while-running
@@ -239,7 +239,7 @@ export function busyButton(label, handler, opts = {}) {
       if (opts.onDone) await opts.onDone(result);
     } catch (e) {
       if (opts.error) opts.error.show(e);
-      else console.error('[OutFox]', e);
+      else console.error('[Crafture Network]', e);
     } finally {
       button.disabled = Boolean(opts.disabled);
       button.classList.remove('is-busy');

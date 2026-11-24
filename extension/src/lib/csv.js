@@ -1,5 +1,5 @@
 /**
- * OutFox — CSV reader and writer (RFC 4180).
+ * Crafture Network — CSV reader and writer (RFC 4180).
  *
  * Used by `export.csv` and by `list.importCsv`. No dependencies: this runs
  * inside the MV3 service worker.

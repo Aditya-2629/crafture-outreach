@@ -1,5 +1,5 @@
 /**
- * OutFox — status and config actions.
+ * Crafture Network — status and config actions.
  *
  * `status.get` is the one call a client makes to know whether it can do
  * anything at all: are we logged in, is a challenge or a backoff live, what is

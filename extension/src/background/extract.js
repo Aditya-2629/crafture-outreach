@@ -1,5 +1,5 @@
 /**
- * OutFox — extraction actions.
+ * Crafture Network — extraction actions.
  *
  * Every read the contract defines: search, profiles, companies, post engagers,
  * groups, events, connections, followers and connection status. Each one
@@ -369,7 +369,7 @@ register(ACTIONS.NETWORK_STATUS, async ({ publicIds }) => {
 });
 
 /* ================================================================== */
-/*  Auto-Import Triggers (OutFox Video Frames 18 & 26)                */
+/*  Auto-Import Triggers (Crafture Network Video Frames 18 & 26)                */
 /* ================================================================== */
 
 register(ACTIONS.IMPORT_PROFILE_VIEWERS, async () => {

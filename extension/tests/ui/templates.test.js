@@ -154,7 +154,7 @@ describe('TemplatesView — Objections Playbook', () => {
     await flush();
 
     // Confirm modal should appear
-    const confirmModal = document.getElementById('OutFox-modal-backdrop');
+    const confirmModal = (document.getElementById('cn-modal-backdrop'));
     expect(confirmModal).not.toBeNull();
     confirmModal.querySelector('#modal-btn-confirm').click();
     await flush();
